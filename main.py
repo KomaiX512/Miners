@@ -12,7 +12,8 @@ from rag_implementation import RagImplementation
 from recommendation_generation import RecommendationGenerator
 from config import R2_CONFIG, LOGGING_CONFIG, GEMINI_CONFIG
 import pandas as pd
-from r2_storage_manager import R2StorageManager
+from r2_storage_manager import R2StorageManager  # <-- Now using R2StorageManager
+from instagram_scraper import InstagramScraper  # <-- Add import
 
 # Set up logging
 logging.basicConfig(
@@ -37,7 +38,17 @@ class ContentRecommendationSystem:
             rag=self.rag,
             time_series=self.time_series
         )
+        # Initialize R2 Storage Manager (for exporting to the tasks bucket)
+        self.storage_manager = R2StorageManager()
     
+    def ensure_sample_data_in_r2(self):
+        """
+        Ensure that sample data exists in the R2 bucket.
+        This is a stub implementation. Add your logic here if needed.
+        """
+        logger.info("ensure_sample_data_in_r2: Stub implementation; no sample data was uploaded.")
+        return True
+
     def process_social_data(self, data_key):
         """
         Process social media data from R2.
@@ -55,12 +66,12 @@ class ContentRecommendationSystem:
             raw_data = self.data_retriever.get_json_data(data_key)
             
             # Check if we have data
-            if not raw_data:
+            if raw_data is None:  # Explicitly check for None
                 logger.error(f"No data found at {data_key}")
                 return None
             
-            # Process Instagram data structure
-            if 'humansofny' in data_key:
+            # Case 1: Raw Instagram data coming as a list with a 'latestPosts' key in first element
+            if isinstance(raw_data, list) and raw_data and 'latestPosts' in raw_data[0]:
                 data = self.process_instagram_data(raw_data)
                 if data:
                     logger.info("Successfully processed Instagram data")
@@ -68,6 +79,12 @@ class ContentRecommendationSystem:
                 else:
                     logger.error("Failed to process Instagram data")
                     return None
+            
+            # Case 2: Already processed data (a dictionary with required keys)
+            elif isinstance(raw_data, dict) and 'posts' in raw_data and 'engagement_history' in raw_data:
+                logger.info("Data is already processed. Using it directly.")
+                return raw_data
+            
             else:
                 logger.error(f"Unsupported data format in {data_key}")
                 return None
@@ -175,7 +192,8 @@ class ContentRecommendationSystem:
                     'fullName': account_data.get('fullName', ''),
                     'followersCount': account_data.get('followersCount', 0),
                     'followsCount': account_data.get('followsCount', 0),
-                    'biography': account_data.get('biography', '')
+                    'biography': account_data.get('biography', ''),
+                    'account_type': account_data.get('account_type', 'unknown')
                 }
             }
             
@@ -315,105 +333,201 @@ class ContentRecommendationSystem:
         except Exception as e:
             logger.error(f"Error saving content plan: {str(e)}")
             return False
-    
-    def run_pipeline(self, data_key):
-        """
-        Run the complete pipeline.
-        
-        Args:
-            data_key: Key of the data file in R2
-            
-        Returns:
-            Dictionary with results
-        """
-        logger.info("Starting complete pipeline")
-        
-        results = {
-            'success': False,
-            'data_retrieved': False,
-            'posts_indexed': 0,
-            'engagement_analyzed': False,
-            'plan_generated': False,
-            'plan_saved': False
-        }
-        
+
+    def export_content_plan_sections(self, content_plan):
+        """Export content plan sections to R2 with username-based directory structure"""
         try:
-            # Process social data
-            data = self.process_social_data(data_key)
+            logger.info("Starting content plan export")
             
-            # Validate data structure
-            if data and self.validate_data_structure(data):
-                results['data_retrieved'] = True
-                
-                # Index posts
-                posts_indexed = self.index_posts(data['posts'])
-                results['posts_indexed'] = posts_indexed
-                
-                # Analyze engagement
-                engagement_results = self.analyze_engagement(data)
-                results['engagement_analyzed'] = engagement_results is not None
-                
-                # Generate content plan
-                plan = self.recommendation_generator.generate_enhanced_content_plan(
-                    data['posts'], 
-                    data.get('profile', {})
+            if not content_plan:
+                logger.error("Cannot export empty content plan")
+                return False
+
+            # Extract username from the processed data
+            username = content_plan.get('profile_analysis', {}).get('username')
+            if not username:
+                logger.error("Cannot export - username not found in content plan")
+                return False
+
+            # Validate required sections
+            required_sections = {
+                'recommendations': ['profile_analysis', 'improvement_recommendations', 'competitors'],
+                'creative': ['next_post_prediction']
+            }
+            
+            # Prepare recommendations export
+            recommendations = {
+                section: content_plan.get(section, {})
+                for section in required_sections['recommendations']
+            }
+            
+            # Prepare creative export
+            creative = content_plan.get('next_post_prediction', {})
+            if not creative.get('image_prompt') or not creative.get('caption'):
+                logger.warning("Incomplete creative section in content plan")
+
+            # Create file objects
+            recommendations_file = io.BytesIO(
+                json.dumps(recommendations, indent=2).encode('utf-8')
+            )
+            creative_file = io.BytesIO(
+                json.dumps(creative, indent=2).encode('utf-8')
+            )
+
+            # Export paths with username-based directory structure
+            export_paths = {
+                'recommendations': {
+                    'key': f'recommendations/{username}/content_analysis.json',
+                    'file': recommendations_file
+                },
+                'creative': {
+                    'key': f'next_post/{username}/next_post_prediction.json',
+                    'file': creative_file
+                }
+            }
+
+            # Execute exports
+            results = {}
+            for section, data in export_paths.items():
+                success = self.storage_manager.upload_file(
+                    key=data['key'],
+                    file_obj=data['file'],
+                    bucket='tasks'
                 )
+                results[section] = success
+                if not success:
+                    logger.error(f"Failed to export {section} section")
+
+            # Verify all exports succeeded
+            if all(results.values()):
+                logger.info("All content plan sections exported successfully")
+                return True
+            
+            logger.error(f"Partial export failure: {[k for k,v in results.items() if not v]}")
+            return False
+
+        except Exception as e:
+            logger.error(f"Export failed: {str(e)}")
+            return False
+
+    def run_pipeline(self, object_key):
+        """Run the complete pipeline for content recommendation."""
+        try:
+            logger.info("Starting pipeline")
+            
+            # Step 1: Retrieve and process data
+            data = self.process_social_data(object_key)
+            
+            if not data or not data.get('posts'):
+                logger.info(f"No posts found in {object_key}, checking account type...")
+                account_type = data.get('profile', {}).get('account_type', 'unknown')
                 
-                results['plan_generated'] = plan is not None
+                if account_type == 'business_no_posts':
+                    logger.info("Generating initial content suggestions for business account")
+                    return self.handle_new_business_account(data)
+                elif account_type == 'private_account':
+                    logger.warning("Skipping private account analysis")
+                    return {"success": False, "message": "Private account cannot be analyzed"}
+                # ... other account type handling
                 
-                # Save content plan
-                results['plan_saved'] = self.save_content_plan(plan)
-                
-                # Overall success
-                results['success'] = all([
-                    results['data_retrieved'],
-                    results['posts_indexed'] > 0,
-                    results['plan_generated'],
-                    results['plan_saved']
-                ])
-                
-                logger.info(f"Pipeline completed successfully with {posts_indexed} posts indexed")
-            else:
-                logger.error("Failed to retrieve valid data - stopping pipeline")
-                results['success'] = False
-        
+            # Step 2: Index posts
+            posts_indexed = self.index_posts(data['posts'])
+            if posts_indexed == 0:
+                logger.error("Pipeline failed: No posts indexed")
+                return {
+                    "success": False,
+                    "data_retrieved": True,
+                    "posts_indexed": 0,
+                    "engagement_analyzed": False,
+                    "plan_generated": False,
+                    "plan_saved": False
+                }
+            
+            # Step 3: Analyze engagement
+            engagement_analysis = self.analyze_engagement(data)
+            if engagement_analysis is None:
+                logger.error("Pipeline failed: Engagement analysis failed")
+                return {
+                    "success": False,
+                    "data_retrieved": True,
+                    "posts_indexed": posts_indexed,
+                    "engagement_analyzed": False,
+                    "plan_generated": False,
+                    "plan_saved": False
+                }
+            
+            # Step 4: Generate content plan
+            content_plan = self.recommendation_generator.generate_content_plan(data)
+            if content_plan is None:
+                logger.error("Pipeline failed: Content plan generation failed")
+                return {
+                    "success": False,
+                    "data_retrieved": True,
+                    "posts_indexed": posts_indexed,
+                    "engagement_analyzed": True,
+                    "plan_generated": False,
+                    "plan_saved": False
+                }
+            
+            # Step 5: Save content plan
+            plan_saved = self.save_content_plan(content_plan)
+            if not plan_saved:
+                logger.error("Pipeline failed: Content plan save failed")
+                return {
+                    "success": False,
+                    "data_retrieved": True,
+                    "posts_indexed": posts_indexed,
+                    "engagement_analyzed": True,
+                    "plan_generated": True,
+                    "plan_saved": False
+                }
+            
+            # Step 6: Export content plan sections
+            exported = self.export_content_plan_sections(content_plan)
+            
+            logger.info("Pipeline completed successfully")
+            return {
+                "success": True,
+                "message": "Content plan generated successfully",
+                "data_retrieved": True,
+                "posts_indexed": posts_indexed,
+                "engagement_analyzed": True,
+                "plan_generated": True,
+                "plan_saved": True,
+                "exported_plan_sections": exported,
+                "content_plan": content_plan
+            }
+            
         except Exception as e:
             logger.error(f"Error in pipeline: {str(e)}")
-            import traceback
-            logger.error(traceback.format_exc())
-        
-        logger.info(f"Pipeline completed with status: {results['success']}")
-        return results
+            return {"success": False, "message": str(e)}
 
-    def ensure_sample_data_in_r2(self):
-        """Ensure sample data exists in R2 storage."""
+    def handle_new_business_account(self, data):
+        """Generate initial content suggestions for new business accounts"""
         try:
-            # Check if social_data.json exists in the bucket
-            objects = self.data_retriever.list_objects()
-            file_exists = any(obj['Key'] == 'social_data.json' for obj in objects)
+            # Custom logic for new business accounts
+            suggestions = {
+                "recommendations": [
+                    "Create introductory posts about your business",
+                    "Share your brand story and mission",
+                    "Post product/service highlights"
+                ],
+                "content_plan": {
+                    "first_week": [
+                        "Day 1: Brand introduction",
+                        "Day 3: Product showcase",
+                        "Day 5: Customer testimonial request"
+                    ]
+                }
+            }
             
-            if not file_exists:
-                logger.info("social_data.json not found in R2, creating and uploading sample data")
-                
-                # Create sample data in memory (set use_file=False so that we get generated data)
-                sample_data = self.create_sample_data(use_file=False)
-                
-                # Convert sample data to a bytes buffer so it can be uploaded
-                file_obj = io.BytesIO(json.dumps(sample_data).encode('utf-8'))
-                
-                if self.data_retriever.upload_file('social_data.json', file_obj):
-                    logger.info("Successfully uploaded sample data to R2")
-                    return True
-                else:
-                    logger.error("Failed to upload sample data to R2")
-                    return False
-            else:
-                logger.info("social_data.json already exists in R2")
-                return True
-                
+            return {
+                "success": True,
+                "message": "Generated initial content suggestions",
+                "suggestions": suggestions
+            }
         except Exception as e:
-            logger.error(f"Error ensuring sample data in R2: {str(e)}")
-            return False
+            return {"success": False, "message": str(e)}
 
     def validate_data_structure(self, data):
         """
@@ -550,7 +664,8 @@ class ContentRecommendationSystem:
                 'fullName': 'Sample User',
                 'followersCount': 10000,
                 'followsCount': 500,
-                'biography': 'This is a sample profile for testing purposes.'
+                'biography': 'This is a sample profile for testing purposes.',
+                'account_type': 'unknown'
             }
             
             # Combine into data structure
@@ -573,16 +688,7 @@ class ContentRecommendationSystem:
             }
 
     def process_instagram_username(self, username, results_limit=10):
-        """
-        Process Instagram username by scraping, uploading, and analyzing.
-        
-        Args:
-            username (str): Instagram username to process
-            results_limit (int): Maximum number of results to fetch
-            
-        Returns:
-            dict: Result with success status and content plan
-        """
+        """Updated version that returns object_key"""
         try:
             logger.info(f"Processing Instagram username: {username}")
             
@@ -614,7 +720,8 @@ class ContentRecommendationSystem:
                 "success": True,
                 "message": "Successfully generated recommendations",
                 "details": pipeline_result,
-                "content_plan_file": "content_plan.json"
+                "content_plan_file": "content_plan.json",
+                "object_key": object_key  # <-- Return object key
             }
             
         except Exception as e:
@@ -629,51 +736,46 @@ def main():
     try:
         logger.info("Starting Social Media Content Recommendation System")
         
-        # Create system
+        # Initialize components
+        scraper = InstagramScraper()
         system = ContentRecommendationSystem()
         
-        # Check if R2 is accessible
+        # Check R2 connectivity
         try:
             system.data_retriever.list_objects()
-            use_r2 = True
             logger.info("R2 storage is accessible")
-            
-            # Ensure sample data exists in R2
-            system.ensure_sample_data_in_r2()
-            
         except Exception as e:
             logger.error(f"R2 storage is not accessible: {str(e)}")
             logger.error("Cannot proceed without R2 access")
             return False
         
-        logger.info("Starting complete pipeline")
-        # Change the data_key below to the correct key that was uploaded
-        results = system.run_pipeline(data_key='social_data.json')
+        # Process pending Instagram usernames
+        processed_object_keys = scraper.retrieve_and_process_usernames()
         
-        # Print results
-        print("\n" + "="*50)
-        print("CONTENT RECOMMENDATION SYSTEM RESULTS")
-        print("="*50)
-        print(f"Pipeline success: {results['success']}")
-        print(f"Data retrieved: {results['data_retrieved']}")
-        print(f"Posts indexed: {results['posts_indexed']}")
-        print(f"Engagement analyzed: {results['engagement_analyzed']}")
-        print(f"Plan generated: {results['plan_generated']}")
-        print(f"Plan saved: {results['plan_saved']}")
+        if not processed_object_keys:
+            logger.info("No pending usernames to process")
+            return True
+            
+        # Process each scraped dataset
+        for object_key in processed_object_keys:
+            logger.info(f"Processing scraped data: {object_key}")
+            result = system.run_pipeline(object_key)
+            
+            # Print results
+            print("\n" + "="*50)
+            print(f"PROCESSING RESULTS FOR {object_key}")
+            print("="*50)
+            if result['success']:
+                print(f"Success: {result.get('message', 'Operation completed successfully')}")
+                print(f"Posts analyzed: {result.get('posts_indexed', 0)}")
+                print(f"Recommendations generated: {len(result.get('content_plan', {}).get('improvement_recommendations', []))}")
+            else:
+                print(f"Failed: {result.get('message', 'Unknown error occurred')}")
         
-        if results['success']:
-            print("\nContent plan saved to content_plan.json")
-        else:
-            print("\nPipeline failed - no valid content plan generated")
-        
-        print("="*50)
-        
-        return results['success']
+        return True
         
     except Exception as e:
-        logger.error(f"Error in main: {str(e)}")
-        import traceback
-        logger.error(traceback.format_exc())
+        logger.error(f"Error in main function: {str(e)}")
         return False
 
 

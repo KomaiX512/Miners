@@ -148,12 +148,8 @@ class InstagramScraper:
         """
         Scrape Instagram profile and upload to R2 in one operation.
         
-        Args:
-            username (str): Instagram username to scrape
-            results_limit (int): Maximum number of results to fetch
-        
         Returns:
-            dict: Result with success status and message
+            dict: Result with success status, message, and object_key
         """
         logger.info(f"Starting scrape and upload for {username}")
         
@@ -170,14 +166,20 @@ class InstagramScraper:
             return {"success": False, "message": "Failed to upload data to R2"}
         
         logger.info(f"Completed scrape and upload for {username}")
-        return {"success": True, "message": "Successfully scraped and uploaded data"}
+        return {
+            "success": True,
+            "message": "Pipeline completed successfully",
+            "object_key": object_key
+        }
     
     def retrieve_and_process_usernames(self):
         """
         Retrieve pending usernames from "tasks" bucket, process them, and update statuses.
+        Returns list of processed object keys.
         """
         usernames_bucket = "tasks"
         usernames_key = "Usernames/instagram.json"
+        processed_keys = []
         
         s3 = boto3.client(
             's3',
@@ -187,43 +189,48 @@ class InstagramScraper:
             config=Config(signature_version='s3v4')
         )
         
-        # Retrieve usernames from "tasks" bucket
         try:
             response = s3.get_object(Bucket=usernames_bucket, Key=usernames_key)
             usernames_data = json.loads(response['Body'].read().decode('utf-8'))
         except ClientError as e:
             if e.response['Error']['Code'] == "NoSuchKey":
                 logger.info("No usernames file found in 'tasks' bucket")
-                return
+                return processed_keys
             logger.error(f"Failed to retrieve usernames from R2: {str(e)}")
-            return
+            return processed_keys
         except Exception as e:
             logger.error(f"Failed to retrieve usernames from R2: {str(e)}")
-            return
-        
-        # Process pending usernames
+            return processed_keys
+
+        updated = False
         for entry in usernames_data:
             if entry.get('status') == 'pending':
                 username = entry['username']
                 logger.info(f"Processing username: {username}")
                 result = self.scrape_and_upload(username)
+                
                 if result['success']:
                     entry['status'] = 'processed'
+                    entry['processed_at'] = datetime.now().isoformat()
+                    processed_keys.append(result['object_key'])
+                    updated = True
                     logger.info(f"Successfully processed {username}")
                 else:
                     logger.warning(f"Failed to process {username}: {result['message']}")
-        
-        # Update the usernames file in "tasks" bucket
-        try:
-            s3.put_object(
-                Bucket=usernames_bucket,
-                Key=usernames_key,
-                Body=json.dumps(usernames_data, indent=4),
-                ContentType='application/json'
-            )
-            logger.info("Updated usernames status in 'tasks' bucket")
-        except Exception as e:
-            logger.error(f"Failed to update usernames in R2: {str(e)}")
+
+        if updated:
+            try:
+                s3.put_object(
+                    Bucket=usernames_bucket,
+                    Key=usernames_key,
+                    Body=json.dumps(usernames_data, indent=4),
+                    ContentType='application/json'
+                )
+                logger.info("Updated usernames status in 'tasks' bucket")
+            except Exception as e:
+                logger.error(f"Failed to update usernames in R2: {str(e)}")
+
+        return processed_keys
 
 def test_instagram_scraper():
     """Test the Instagram scraper with a single username."""

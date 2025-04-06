@@ -72,8 +72,7 @@ class R2DataRetriever:
             return data
         except Exception as e:
             logger.error(f"Error parsing JSON from {key}: {str(e)}")
-            # Return empty dict instead of raising to allow pipeline to continue
-            return {}
+            return None  # Return None instead of {}
     
     def get_social_media_data(self, key='humansofny/humansofny_20250404_112030.json'):
         """Get social media data specifically."""

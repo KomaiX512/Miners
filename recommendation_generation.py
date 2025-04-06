@@ -7,6 +7,7 @@ from rag_implementation import RagImplementation
 from time_series_analysis import TimeSeriesAnalyzer
 from config import CONTENT_TEMPLATES, LOGGING_CONFIG
 from datetime import datetime
+import pandas as pd
 
 # Set up logging
 logging.basicConfig(
@@ -98,15 +99,15 @@ class RecommendationGenerator:
             results = self.time_series.analyze_data(data, timestamp_col, value_col)
             
             # Get trending periods
-            trending_periods = results.get('trending_periods')
+            trending_periods = list(results.get('trending_periods', pd.DataFrame()).iterrows())[:top_n]
             
-            if trending_periods is None or trending_periods.empty:
+            if trending_periods is None or len(trending_periods) == 0:
                 logger.warning("No trending periods detected")
                 return []
             
             # Format trending periods
             trending_topics = []
-            for _, row in trending_periods.iterrows()[:top_n]:
+            for _, row in trending_periods:
                 trending_topics.append({
                     'date': row['ds'].strftime('%Y-%m-%d'),
                     'value': row['yhat'],
@@ -132,16 +133,40 @@ class RecommendationGenerator:
             Dictionary with recommendations by topic
         """
         try:
+            if not topics or n_per_topic <= 0:
+                logger.warning("Invalid input for generate_recommendations")
+                return {}
+
+            # Validate topic types
+            if not all(isinstance(topic, (str, dict)) for topic in topics):
+                logger.error("Invalid topic format - must be strings or dictionaries")
+                return {}
+
+            # Convert dictionary topics to strings if needed
+            topic_strings = []
+            for topic in topics:
+                if isinstance(topic, dict):
+                    topic_str = topic.get('topic', '').strip() or str(topic)
+                    topic_strings.append(topic_str)
+                else:
+                    topic_strings.append(str(topic).strip())
+
+            # Remove empty topics
+            valid_topics = [t for t in topic_strings if t]
+            if not valid_topics:
+                logger.error("No valid topics provided for recommendations")
+                return {}
+
             # Batch all topics into a single RAG request
-            combined_prompt = self._create_batch_prompt(topics)
+            combined_prompt = self._create_batch_prompt(valid_topics)
             
             # Generate a single response for all topics
-            batch_response = self.rag.generate_batch_recommendations(combined_prompt, topics)
+            batch_response = self.rag.generate_batch_recommendations(combined_prompt, valid_topics)
             
             # Process the batch response into individual recommendations
             recommendations = {}
             
-            for topic in topics:
+            for topic in valid_topics:
                 if topic in batch_response:
                     topic_recs = batch_response[topic]
                     # Ensure we have the requested number of recommendations
@@ -161,11 +186,11 @@ class RecommendationGenerator:
                         topic_recs.append(rec)
                     recommendations[topic] = topic_recs
             
-            logger.info(f"Generated recommendations for {len(topics)} topics")
+            logger.info(f"Generated recommendations for {len(valid_topics)} topics")
             return recommendations
         except Exception as e:
-            logger.error(f"Error generating recommendations: {str(e)}")
-            return {topic: [] for topic in topics}
+            logger.error(f"Critical error in generate_recommendations: {str(e)}")
+            return {}
     
     def _create_batch_prompt(self, topics):
         """Create a prompt for batch recommendation generation."""
@@ -401,9 +426,6 @@ class RecommendationGenerator:
             Dictionary with posting trend analysis
         """
         try:
-            import pandas as pd
-            from collections import Counter
-            
             # Extract timestamps and convert to datetime
             timestamps = []
             for post in posts:
@@ -705,6 +727,16 @@ class RecommendationGenerator:
             Dictionary with improvement recommendations
         """
         try:
+            # Ensure account_analysis is properly formatted
+            if not isinstance(account_analysis, dict):
+                logger.warning("Invalid account analysis format - using fallback")
+                return [{"recommendation": "Post more consistently"}]
+
+            # Safely extract account type with fallbacks
+            account_type = account_analysis.get('account_type', 'Unknown')
+            if not isinstance(account_type, str):  # Handle unexpected types
+                account_type = str(account_type)
+
             # Extract relevant information from account analysis
             context = ""
             
@@ -823,75 +855,78 @@ class RecommendationGenerator:
                 }
             ]
     
-    def generate_enhanced_content_plan(self, posts, profile_info=None):
-        """
-        Generate an enhanced content plan with comprehensive analysis.
-        
-        Args:
-            posts: List of post dictionaries
-            profile_info: Optional dictionary with profile information
-            
-        Returns:
-            Dictionary with enhanced content plan
-        """
+    def generate_content_plan(self, data):
+        """Generate complete content plan with all recommendations."""
         try:
-            # Perform all analyses
-            account_type_analysis = self.analyze_account_type(posts)
+            if not data or not data.get('posts'):
+                logger.error("Cannot generate content plan - no posts in data")
+                return None
+                
+            posts = data['posts']
+            engagement_data = data.get('engagement_history', [])
+            
+            # 1. Perform account analysis
+            account_analysis = self.analyze_account_type(posts)
+            if not account_analysis:
+                logger.warning("Failed to generate account analysis")
+                account_analysis = {'account_type': 'Unknown'}  # Add default
+            
+            # 2. Analyze engagement patterns
             engagement_analysis = self.analyze_engagement(posts)
-            posting_trends_analysis = self.analyze_posting_trends(posts)
+            if not engagement_analysis:
+                logger.warning("Failed to generate engagement analysis")
+                engagement_analysis = {'summary': 'No engagement analysis available'}  # Add default
             
-            # Combine analyses into a single object
-            account_analysis = {
-                'account_type': account_type_analysis,
-                'engagement': engagement_analysis,
-                'posting_trends': posting_trends_analysis
+            # 3. Analyze posting trends
+            posting_trends = self.analyze_posting_trends(posts)
+            if not posting_trends:
+                logger.warning("Failed to analyze posting trends")
+                posting_trends = {'summary': 'No posting trend analysis available'}  # Add default
+            
+            # 4. Generate next post prediction (CRUCIAL FIX)
+            next_post = self.generate_next_post_prediction(posts, account_analysis)
+            if not next_post:  # Add fallback if prediction fails
+                logger.warning("Using fallback next post prediction")
+                next_post = {
+                    "caption": "Check out our latest updates!",
+                    "hashtags": ["#New", "#Update"],
+                    "call_to_action": "Visit our profile for more",
+                    "image_prompt": "Modern lifestyle image with vibrant colors"
+                }
+            
+            # 5. Generate improvement recommendations
+            improvement_recs = self.generate_improvement_recommendations(account_analysis)
+            if not improvement_recs:  # Add fallback
+                improvement_recs = [{"recommendation": "Post more consistently"}]
+            
+            # 6. Identify competitors
+            competitors = self.identify_competitors(posts, data.get('profile'))
+            if not competitors:  # Add default
+                competitors = {"similar_accounts": []}
+            
+            # Compile final content plan
+            content_plan = {
+                'generated_date': datetime.now().isoformat(),
+                'profile_analysis': account_analysis,
+                'engagement_analysis': engagement_analysis,
+                'posting_trends': posting_trends,
+                'next_post_prediction': next_post,  # WAS MISSING
+                'improvement_recommendations': improvement_recs,
+                'competitors': competitors
             }
             
-            # Generate next post prediction
-            next_post_prediction = self.generate_next_post_prediction(posts, account_analysis)
+            # Add trending topics if available
+            if engagement_data:
+                trending = self.generate_trending_topics(engagement_data)
+                if trending:
+                    content_plan['trending_topics'] = trending
             
-            # Identify competitors
-            competitors = self.identify_competitors(posts, profile_info)
-            
-            # Generate improvement recommendations
-            improvement_recommendations = self.generate_improvement_recommendations(account_analysis)
-            
-            # Generate content recommendations for topics
-            topics = ["summer fashion", "product promotion", "customer engagement"]
-            if engagement_analysis and 'best_performing_category' in engagement_analysis:
-                if engagement_analysis['best_performing_category']:
-                    topics[0] = engagement_analysis['best_performing_category']
-            
-            content_recommendations = self.generate_recommendations(topics)
-            
-            # Create enhanced content plan
-            enhanced_plan = {
-                'generated_date': datetime.now().strftime('%Y-%m-%d'),
-                'profile_analysis': {
-                    'account_type': account_type_analysis,
-                    'engagement': engagement_analysis,
-                    'posting_trends': posting_trends_analysis
-                },
-                'next_post_prediction': next_post_prediction,
-                'competitors': competitors,
-                'improvement_recommendations': improvement_recommendations,
-                'topics': topics,
-                'recommendations': content_recommendations
-            }
-            
-            logger.info("Successfully generated enhanced content plan")
-            return enhanced_plan
+            logger.info(f"Generated content plan with {len(improvement_recs)} recommendations")
+            return content_plan
             
         except Exception as e:
-            logger.error(f"Error generating enhanced content plan: {str(e)}")
-            # Return a basic content plan
-            return {
-                'generated_date': datetime.now().strftime('%Y-%m-%d'),
-                'topics': ["summer fashion", "product promotion", "customer engagement"],
-                'recommendations': self.generate_recommendations(
-                    ["summer fashion", "product promotion", "customer engagement"]
-                )
-            }
+            logger.error(f"Error generating content plan: {str(e)}")
+            return None
 
 
 # Test function
