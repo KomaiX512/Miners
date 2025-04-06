@@ -5,8 +5,10 @@ R2_CONFIG = {
     'endpoint_url': f'https://51abf57b5c6f9b6cf2f91cc87e0b9ffe.r2.cloudflarestorage.com',
     'aws_access_key_id': '2093fa05ee0323bb39de512a19638e78',
     'aws_secret_access_key': 'e9e7173d1ee514b452b3a3eb7cef6fb57a248423114f1f949d71dabd34eee04f',
-    'bucket_name': 'structuredb'
+    'bucket_name': 'structuredb',
+    'bucket_name2': 'tasks'
 }
+
 
 # Time Series Analysis Configuration
 TIME_SERIES_CONFIG = {

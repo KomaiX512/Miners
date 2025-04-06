@@ -3,6 +3,7 @@
 import logging
 import json
 import os
+import io  # <-- Added import for io module
 from datetime import datetime
 from data_retrieval import R2DataRetriever
 from time_series_analysis import TimeSeriesAnalyzer
@@ -11,6 +12,7 @@ from rag_implementation import RagImplementation
 from recommendation_generation import RecommendationGenerator
 from config import R2_CONFIG, LOGGING_CONFIG, GEMINI_CONFIG
 import pandas as pd
+from r2_storage_manager import R2StorageManager
 
 # Set up logging
 logging.basicConfig(
@@ -386,21 +388,25 @@ class ContentRecommendationSystem:
     def ensure_sample_data_in_r2(self):
         """Ensure sample data exists in R2 storage."""
         try:
-            # Check if social_data.json exists
+            # Check if social_data.json exists in the bucket
             objects = self.data_retriever.list_objects()
             file_exists = any(obj['Key'] == 'social_data.json' for obj in objects)
             
             if not file_exists:
                 logger.info("social_data.json not found in R2, creating and uploading sample data")
                 
-                # Create sample data
-                sample_data = self.create_sample_data(use_file=True)
+                # Create sample data in memory (set use_file=False so that we get generated data)
+                sample_data = self.create_sample_data(use_file=False)
                 
-                # Upload to R2
-                with open('sample_social_data.json', 'rb') as f:
-                    self.data_retriever.upload_file('social_data.json', f)
-                logger.info("Successfully uploaded sample data to R2")
-                return True
+                # Convert sample data to a bytes buffer so it can be uploaded
+                file_obj = io.BytesIO(json.dumps(sample_data).encode('utf-8'))
+                
+                if self.data_retriever.upload_file('social_data.json', file_obj):
+                    logger.info("Successfully uploaded sample data to R2")
+                    return True
+                else:
+                    logger.error("Failed to upload sample data to R2")
+                    return False
             else:
                 logger.info("social_data.json already exists in R2")
                 return True
@@ -640,8 +646,9 @@ def main():
             logger.error("Cannot proceed without R2 access")
             return False
         
-        # Run the pipeline with the specific file path
-        results = system.run_pipeline(data_key='humansofny/humansofny_20250404_112030.json')
+        logger.info("Starting complete pipeline")
+        # Change the data_key below to the correct key that was uploaded
+        results = system.run_pipeline(data_key='social_data.json')
         
         # Print results
         print("\n" + "="*50)

@@ -6,6 +6,7 @@ import os
 import logging
 import boto3
 from botocore.client import Config
+from botocore.exceptions import ClientError
 from datetime import datetime
 from apify_client import ApifyClient
 from config import R2_CONFIG, LOGGING_CONFIG
@@ -26,8 +27,8 @@ class InstagramScraper:
     def __init__(self, api_token=APIFY_API_TOKEN, r2_config=R2_CONFIG):
         """Initialize with API token and R2 configuration."""
         self.api_token = api_token
-        self.r2_config = r2_config
-        
+        self.r2_config = r2_config  # Assumes R2_CONFIG is set for "structuredb"
+    
     def scrape_profile(self, username, results_limit=10):
         """
         Scrape Instagram profile using Apify.
@@ -37,7 +38,7 @@ class InstagramScraper:
             results_limit (int): Maximum number of results to fetch
         
         Returns:
-            dict: Scraped data or None if failed
+            list: Scraped data or None if failed
         """
         logger.info(f"Scraping Instagram profile: {username}")
         
@@ -54,9 +55,8 @@ class InstagramScraper:
             actor = client.actor("apify/instagram-profile-scraper")
             run = actor.call(run_input=run_input)
             
-            # Wait for scraping to complete
             logger.info(f"Waiting for scraping to complete for {username}")
-            time.sleep(15)  # Increased wait time for more reliable results
+            time.sleep(15)  # Wait for reliable results
             
             dataset = client.dataset(run["defaultDatasetId"])
             items = dataset.list_items().items
@@ -64,14 +64,11 @@ class InstagramScraper:
             if not items:
                 logger.warning(f"No items found for {username} - account may be private or unavailable")
                 return None
-            else:
-                logger.info(f"Successfully scraped {len(items)} items for {username}")
-                return items
+            logger.info(f"Successfully scraped {len(items)} items for {username}")
+            return items
                 
         except Exception as e:
-            logger.error(f"Error occurred while scraping {username}: {str(e)}")
-            import traceback
-            logger.error(traceback.format_exc())
+            logger.error(f"Error scraping {username}: {str(e)}")
             return None
     
     def save_to_local_file(self, data, username):
@@ -79,7 +76,7 @@ class InstagramScraper:
         Save scraped data to a local file.
         
         Args:
-            data (dict): Scraped data
+            data (list): Scraped data
             username (str): Instagram username
         
         Returns:
@@ -89,24 +86,21 @@ class InstagramScraper:
             logger.warning("No data to save to local file")
             return None
         
-        # Create timestamp for unique filename
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"{username}_{timestamp}.json"
         
         try:
             with open(filename, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=4)
-            
             logger.info(f"Data saved to local file: {filename}")
             return filename
-        
         except Exception as e:
             logger.error(f"Error saving data to local file: {str(e)}")
             return None
     
     def upload_to_r2(self, local_file_path, username):
         """
-        Upload file to Cloudflare R2 storage.
+        Upload file to Cloudflare R2 storage ("structuredb").
         
         Args:
             local_file_path (str): Path to local file
@@ -120,7 +114,6 @@ class InstagramScraper:
             return None
         
         try:
-            # Configure S3 client to use with R2
             s3 = boto3.client(
                 's3',
                 endpoint_url=self.r2_config['endpoint_url'],
@@ -129,20 +122,17 @@ class InstagramScraper:
                 config=Config(signature_version='s3v4')
             )
             
-            # Create a unique object key for the file in R2
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             object_key = f"{username}/{username}_{timestamp}.json"
             
-            # Upload file to R2
             s3.upload_file(
-                local_file_path, 
-                self.r2_config['bucket_name'],
+                local_file_path,
+                self.r2_config['bucket_name'],  # "structuredb"
                 object_key
             )
             
-            logger.info(f"Successfully uploaded to R2 bucket {self.r2_config['bucket_name']} with key: {object_key}")
+            logger.info(f"Uploaded to R2 bucket {self.r2_config['bucket_name']} with key: {object_key}")
             
-            # Clean up local file
             try:
                 os.remove(local_file_path)
                 logger.info(f"Removed local file: {local_file_path}")
@@ -150,11 +140,8 @@ class InstagramScraper:
                 logger.warning(f"Failed to remove local file {local_file_path}: {str(e)}")
             
             return object_key
-        
         except Exception as e:
             logger.error(f"Error uploading to R2: {str(e)}")
-            import traceback
-            logger.error(traceback.format_exc())
             return None
     
     def scrape_and_upload(self, username, results_limit=10):
@@ -166,67 +153,94 @@ class InstagramScraper:
             results_limit (int): Maximum number of results to fetch
         
         Returns:
-            dict: Result with success status and object key
+            dict: Result with success status and message
         """
-        logger.info(f"Starting scrape and upload process for {username}")
+        logger.info(f"Starting scrape and upload for {username}")
         
-        # Scrape profile
         data = self.scrape_profile(username, results_limit)
-        
         if not data:
-            logger.warning(f"No data retrieved for {username}")
             return {"success": False, "message": "Failed to scrape profile"}
         
-        # Save to local file
         local_file_path = self.save_to_local_file(data, username)
-        
         if not local_file_path:
-            logger.warning(f"Failed to save data to local file for {username}")
             return {"success": False, "message": "Failed to save data to local file"}
         
-        # Upload to R2
         object_key = self.upload_to_r2(local_file_path, username)
-        
         if not object_key:
-            logger.warning(f"Failed to upload data to R2 for {username}")
             return {"success": False, "message": "Failed to upload data to R2"}
         
-        logger.info(f"Successfully completed scrape and upload process for {username}")
-        return {
-            "success": True, 
-            "message": "Successfully scraped and uploaded data",
-            "object_key": object_key
-        }
-
+        logger.info(f"Completed scrape and upload for {username}")
+        return {"success": True, "message": "Successfully scraped and uploaded data"}
+    
+    def retrieve_and_process_usernames(self):
+        """
+        Retrieve pending usernames from "tasks" bucket, process them, and update statuses.
+        """
+        usernames_bucket = "tasks"
+        usernames_key = "Usernames/instagram.json"
+        
+        s3 = boto3.client(
+            's3',
+            endpoint_url=self.r2_config['endpoint_url'],
+            aws_access_key_id=self.r2_config['aws_access_key_id'],
+            aws_secret_access_key=self.r2_config['aws_secret_access_key'],
+            config=Config(signature_version='s3v4')
+        )
+        
+        # Retrieve usernames from "tasks" bucket
+        try:
+            response = s3.get_object(Bucket=usernames_bucket, Key=usernames_key)
+            usernames_data = json.loads(response['Body'].read().decode('utf-8'))
+        except ClientError as e:
+            if e.response['Error']['Code'] == "NoSuchKey":
+                logger.info("No usernames file found in 'tasks' bucket")
+                return
+            logger.error(f"Failed to retrieve usernames from R2: {str(e)}")
+            return
+        except Exception as e:
+            logger.error(f"Failed to retrieve usernames from R2: {str(e)}")
+            return
+        
+        # Process pending usernames
+        for entry in usernames_data:
+            if entry.get('status') == 'pending':
+                username = entry['username']
+                logger.info(f"Processing username: {username}")
+                result = self.scrape_and_upload(username)
+                if result['success']:
+                    entry['status'] = 'processed'
+                    logger.info(f"Successfully processed {username}")
+                else:
+                    logger.warning(f"Failed to process {username}: {result['message']}")
+        
+        # Update the usernames file in "tasks" bucket
+        try:
+            s3.put_object(
+                Bucket=usernames_bucket,
+                Key=usernames_key,
+                Body=json.dumps(usernames_data, indent=4),
+                ContentType='application/json'
+            )
+            logger.info("Updated usernames status in 'tasks' bucket")
+        except Exception as e:
+            logger.error(f"Failed to update usernames in R2: {str(e)}")
 
 def test_instagram_scraper():
-    """Test the Instagram scraper functionality."""
+    """Test the Instagram scraper with a single username."""
     try:
-        # Create scraper
         scraper = InstagramScraper()
-        
-        # Test username
         test_username = "humansofny"
-        
-        # Scrape and upload
         result = scraper.scrape_and_upload(test_username, results_limit=5)
         
         if result["success"]:
             logger.info(f"Test successful: {result['message']}")
-            logger.info(f"Object key: {result['object_key']}")
             return True
-        else:
-            logger.warning(f"Test failed: {result['message']}")
-            return False
-            
+        logger.warning(f"Test failed: {result['message']}")
+        return False
     except Exception as e:
         logger.error(f"Test failed with exception: {str(e)}")
-        import traceback
-        logger.error(traceback.format_exc())
         return False
 
-
 if __name__ == "__main__":
-    # Test the Instagram scraper
-    success = test_instagram_scraper()
-    print(f"Instagram scraper test {'successful' if success else 'failed'}")
+    scraper = InstagramScraper()
+    scraper.retrieve_and_process_usernames()

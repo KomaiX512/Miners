@@ -50,3 +50,7 @@ config.local.py
 
 # Generated files
 content_plan.json
+humansofny_humansofny_*.json
+instagram.db
+myenv/
+test_forecast.html
