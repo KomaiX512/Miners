@@ -1,20 +1,33 @@
 # Social Media Content Recommendation System
 
-A system that analyzes social media data and generates content recommendations based on trending topics and historical engagement patterns.
+A comprehensive system that analyzes social media data and generates content recommendations using time series forecasting and RAG patterns.
 
-## Overview
+## Key Components
+1. **Data Collection**
+   - Instagram scraping via Apify API
+   - Cloudflare R2 storage integration
+2. **Core Pipeline**
+   - Time series analysis with Prophet
+   - Vector embeddings with TF-IDF/ChromaDB
+   - RAG implementation using Google Gemini
+3. **API Layer**
+   - Flask-based REST API
+   - CORS-enabled endpoints
+   - Async processing support
+4. **Recommendation Engine**
+   - Content type analysis
+   - Engagement pattern detection
+   - AI-generated suggestions
 
-This project implements a pipeline that:
-1. Retrieves social media data from Cloudflare R2 storage
-2. Analyzes engagement trends using Prophet for time series forecasting
-3. Indexes content in a vector database using ChromaDB
-4. Implements RAG (Retrieval-Augmented Generation) with Llama-3
-5. Generates personalized content recommendations
-
-## System Architecture
+## Enhanced System Architecture
 
 ```
-R2 (Raw Data) → Prophet (Trends) → ChromaDB (Vectors) → Llama-3 (RAG) → Recommendations
+API Layer (Flask)
+│
+├── Scraper Service → R2 Storage
+│
+└── Analysis Pipeline:
+    R2 (Raw Data) → Data Cleaning → Prophet → ChromaDB → Gemini (RAG) → Content Plan Generator
 ```
 
 ## Prerequisites
@@ -92,4 +105,25 @@ python rag_implementation.py
 
 # Test recommendation generation
 python recommendation_generation.py
+```
+
+## Key API Endpoints
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/scrape` | POST | Scrape Instagram profile |
+| `/posts/<username>` | GET | Retrieve stored posts |
+| `/api/analyze` | POST | Full analysis pipeline |
+| `/r2/update` | POST | Direct R2 storage update |
+
+## Advanced Usage
+1. Run Flask API server:
+```bash
+gunicorn api:app -b 0.0.0.0:5000
+```
+
+2. Process multiple accounts:
+```python
+from main import ContentRecommendationSystem
+system = ContentRecommendationSystem()
+system.process_instagram_username("username", results_limit=50)
 ```
