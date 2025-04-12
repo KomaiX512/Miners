@@ -14,14 +14,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class VectorDatabaseManager:
-    """Class to handle vector database operations."""
+    """Class to handle vector database operations with username metadata."""
     
     def __init__(self, config=VECTOR_DB_CONFIG):
         """Initialize with vector database configuration."""
         self.config = config
         self.client = chromadb.Client()
         self.collection = self._get_or_create_collection()
-        # Initialize TF-IDF vectorizer
         self.vectorizer = TfidfVectorizer()
         self.fitted = False
         
@@ -31,21 +30,23 @@ class VectorDatabaseManager:
             collection = self.client.get_or_create_collection(
                 name=self.config['collection_name']
             )
-            logger.info(f"Using collection: {self.config['collection_name']}")
+            logger.info(f"Initialized collection: {self.config['collection_name']}")
             return collection
         except Exception as e:
-            logger.error(f"Error with collection: {str(e)}")
+            logger.error(f"Error initializing collection: {str(e)}")
             raise
     
     def _get_embeddings(self, texts):
         """Generate embeddings for the given texts using TF-IDF."""
         try:
+            if not texts or all(not text.strip() for text in texts):
+                logger.warning("No valid text provided for embeddings")
+                return []
+            
             if not self.fitted:
-                # First time, fit and transform
                 embeddings = self.vectorizer.fit_transform(texts).toarray()
                 self.fitted = True
             else:
-                # For subsequent calls, just transform
                 embeddings = self.vectorizer.transform(texts).toarray()
             
             # Normalize embeddings
@@ -53,6 +54,7 @@ class VectorDatabaseManager:
             norms[norms == 0] = 1  # Avoid division by zero
             normalized_embeddings = embeddings / norms
             
+            logger.info(f"Generated embeddings for {len(texts)} texts")
             return normalized_embeddings.tolist()
         except Exception as e:
             logger.error(f"Error generating embeddings: {str(e)}")
@@ -61,10 +63,21 @@ class VectorDatabaseManager:
     def add_documents(self, documents, ids=None, metadatas=None):
         """Add documents to the vector database."""
         try:
+            if not documents:
+                logger.warning("No documents provided to add")
+                return
+            
             if ids is None:
                 ids = [f"doc_{i}" for i in range(len(documents))]
             
+            if len(documents) != len(ids) or (metadatas and len(documents) != len(metadatas)):
+                logger.error("Mismatch in lengths of documents, ids, and metadatas")
+                raise ValueError("Length mismatch in inputs")
+            
             embeddings = self._get_embeddings(documents)
+            if not embeddings:
+                logger.warning("No embeddings generated; skipping add")
+                return
             
             self.collection.add(
                 documents=documents,
@@ -77,16 +90,24 @@ class VectorDatabaseManager:
             logger.error(f"Error adding documents: {str(e)}")
             raise
     
-    def query_similar(self, query_text, n_results=5):
-        """Query for similar documents."""
+    def query_similar(self, query_text, n_results=5, filter_username=None):
+        """Query for similar documents with optional username filter."""
         try:
-            query_embedding = self._get_embeddings([query_text])[0]
+            if not query_text.strip():
+                logger.warning("Empty query text provided")
+                return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
             
-            results = self.collection.query(
-                query_embeddings=[query_embedding],
-                n_results=n_results
-            )
-            logger.info(f"Found {len(results['documents'][0])} similar documents")
+            query_embedding = self._get_embeddings([query_text])[0]
+            query_params = {
+                'query_embeddings': [query_embedding],
+                'n_results': n_results
+            }
+            
+            if filter_username:
+                query_params['where'] = {'username': filter_username}
+            
+            results = self.collection.query(**query_params)
+            logger.info(f"Found {len(results['documents'][0])} similar documents for query")
             return results
         except Exception as e:
             logger.error(f"Error querying similar documents: {str(e)}")
@@ -95,53 +116,66 @@ class VectorDatabaseManager:
     def get_count(self):
         """Get the number of documents in the collection."""
         try:
-            return self.collection.count()
+            count = self.collection.count()
+            logger.info(f"Collection contains {count} documents")
+            return count
         except Exception as e:
             logger.error(f"Error getting collection count: {str(e)}")
             return 0
     
-    def add_posts(self, posts):
-        """Add social media posts to the vector database."""
+    def add_posts(self, posts, primary_username):
+        """
+        Add social media posts to the vector database with username metadata.
+        
+        Args:
+            posts: List of post dictionaries
+            primary_username: Primary username to differentiate posts
+            
+        Returns:
+            int: Number of posts added
+        """
         try:
+            if not posts:
+                logger.warning("No posts provided to add")
+                return 0
+            
             documents = []
             ids = []
             metadatas = []
+            post_count = 0
             
             for post in posts:
-                # Extract text content
-                text = post.get('caption', '')
-                
-                # Skip empty posts
+                text = post.get('caption', '').strip()
                 if not text:
+                    logger.debug(f"Skipping post with empty caption: {post.get('id', 'unknown')}")
                     continue
                 
-                # Add to lists
-                documents.append(text)
-                ids.append(f"post_{post.get('id', len(documents))}")
+                post_id = post.get('id', f"post_{post_count}")
+                username = post.get('username', primary_username if 'maccosmetics' in str(post_id) else 'unknown')
                 
-                # Extract metadata - convert any lists to strings to avoid ChromaDB errors
+                documents.append(text)
+                ids.append(f"post_{post_id}_{username}")  # Unique ID with username
+                
                 metadata = {
+                    'username': username,
                     'engagement': int(post.get('engagement', 0)),
                     'likes': int(post.get('likes', 0)),
                     'comments': int(post.get('comments', 0)),
-                    'timestamp': str(post.get('timestamp', ''))
+                    'timestamp': str(post.get('timestamp', '')),
                 }
                 
-                # Add hashtags if available - convert list to string
                 if 'hashtags' in post:
-                    if isinstance(post['hashtags'], list):
-                        metadata['hashtags'] = ' '.join(post['hashtags'])
-                    else:
-                        metadata['hashtags'] = str(post['hashtags'])
+                    metadata['hashtags'] = ' '.join(post['hashtags']) if isinstance(post['hashtags'], list) else str(post['hashtags'])
                 
                 metadatas.append(metadata)
+                post_count += 1
             
-            # Add to collection
             if documents:
                 self.add_documents(documents, ids, metadatas)
-                return len(documents)
+                logger.info(f"Indexed {post_count} posts with usernames for {primary_username}")
+                return post_count
             else:
-                logger.warning("No valid posts to add")
+                logger.warning("No valid posts to add after filtering")
                 return 0
                 
         except Exception as e:
@@ -151,65 +185,87 @@ class VectorDatabaseManager:
     def clear_collection(self):
         """Clear all documents from the collection."""
         try:
-            # Get current count
             count_before = self.get_count()
-            
-            # Delete collection and recreate it
             self.client.delete_collection(self.config['collection_name'])
             self.collection = self._get_or_create_collection()
-            
-            # Reset vectorizer
             self.vectorizer = TfidfVectorizer()
             self.fitted = False
-            
             logger.info(f"Cleared collection with {count_before} documents")
             return True
         except Exception as e:
             logger.error(f"Error clearing collection: {str(e)}")
             return False
 
-# Function to test the vector database
-def test_vector_db():
-    """Test vector database operations."""
+
+def test_vector_db_multi_user():
+    """Test vector database operations with primary and secondary usernames."""
     try:
         manager = VectorDatabaseManager()
+        manager.clear_collection()  # Start fresh
         
-        # Test documents
-        test_docs = [
-            "Engagement is high for posts about product features",
-            "Users respond well to promotional content with discounts",
-            "Tutorial videos get the most shares and comments",
-            "Behind-the-scenes content builds brand loyalty"
+        # Simulate posts from provided files
+        primary_username = "maccosmetics"
+        secondary_usernames = [
+            "anastasiabeverlyhills", "fentybeauty", "narsissist", "toofaced",
+            "competitor1", "competitor2", "competitor3", "competitor4", "competitor5"
         ]
         
-        # Test adding documents
-        manager.add_documents(
-            documents=test_docs,
-            ids=["doc_1", "doc_2", "doc_3", "doc_4"],
-            metadatas=[
-                {"type": "feature", "engagement": 0.8},
-                {"type": "promotion", "engagement": 0.7},
-                {"type": "tutorial", "engagement": 0.9},
-                {"type": "brand", "engagement": 0.6}
-            ]
-        )
+        sample_posts = [
+            # Primary posts
+            {"id": "1", "caption": "New lipstick launch!", "engagement": 1200, "likes": 1000, "comments": 200, 
+             "timestamp": "2025-04-01T10:00:00Z", "username": primary_username},
+            {"id": "2", "caption": "Spring collection reveal", "engagement": 1500, "likes": 1300, "comments": 200, 
+             "timestamp": "2025-04-02T12:00:00Z", "username": primary_username},
+            # Secondary posts
+            {"id": "3", "caption": "Bold brows tutorial", "engagement": 800, "likes": 700, "comments": 100, 
+             "timestamp": "2025-04-01T14:00:00Z", "username": "anastasiabeverlyhills"},
+            {"id": "4", "caption": "Glowy skin promo", "engagement": 900, "likes": 800, "comments": 100, 
+             "timestamp": "2025-04-02T15:00:00Z", "username": "fentybeauty"},
+            {"id": "5", "caption": "Matte lip trend", "engagement": 700, "likes": 600, "comments": 100, 
+             "timestamp": "2025-04-03T09:00:00Z", "username": "narsissist"}
+        ]
+        
+        # Add posts
+        added_count = manager.add_posts(sample_posts, primary_username)
+        if added_count != len(sample_posts):
+            logger.error(f"Expected {len(sample_posts)} posts, added {added_count}")
+            return False
         
         # Test querying
-        query = "What content gets the most engagement?"
-        results = manager.query_similar(query)
+        query = "What’s trending in makeup?"
+        results_all = manager.query_similar(query, n_results=3)
+        results_primary = manager.query_similar(query, n_results=2, filter_username=primary_username)
+        results_secondary = manager.query_similar(query, n_results=2, filter_username="fentybeauty")
         
-        print("\nQuery:", query)
-        print("\nResults:")
-        for i, doc in enumerate(results['documents'][0]):
-            metadata = results['metadatas'][0][i]
-            print(f"- {doc} (Type: {metadata.get('type', 'N/A')}, Engagement: {metadata.get('engagement', 'N/A')})")
+        # Validate results
+        if not results_all['documents'][0] or not results_primary['documents'][0] or not results_secondary['documents'][0]:
+            logger.error("Query returned empty results")
+            return False
         
+        logger.info("\nQuery: " + query)
+        logger.info("All results:")
+        for doc, meta in zip(results_all['documents'][0], results_all['metadatas'][0]):
+            logger.info(f"- {doc} (Username: {meta['username']}, Engagement: {meta['engagement']})")
+        
+        logger.info(f"Primary ({primary_username}) results:")
+        for doc, meta in zip(results_primary['documents'][0], results_primary['metadatas'][0]):
+            logger.info(f"- {doc} (Engagement: {meta['engagement']})")
+        
+        logger.info("Secondary (fentybeauty) results:")
+        for doc, meta in zip(results_secondary['documents'][0], results_secondary['metadatas'][0]):
+            logger.info(f"- {doc} (Engagement: {meta['engagement']})")
+        
+        if manager.get_count() != added_count:
+            logger.error("Collection count mismatch")
+            return False
+        
+        logger.info("Multi-user vector database test successful")
         return True
     except Exception as e:
-        logger.error(f"Vector database test failed: {str(e)}")
+        logger.error(f"Multi-user test failed: {str(e)}")
         return False
 
+
 if __name__ == "__main__":
-    # Test the vector database
-    success = test_vector_db()
-    print(f"\nVector database test {'successful' if success else 'failed'}")
+    success = test_vector_db_multi_user()
+    print(f"Multi-user vector database test {'successful' if success else 'failed'}")

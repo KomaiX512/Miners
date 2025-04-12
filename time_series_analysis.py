@@ -18,91 +18,98 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class TimeSeriesAnalyzer:
-    """Class to handle time series analysis and forecasting."""
+    """Class to handle time series analysis and forecasting for primary and secondary usernames."""
     
     def __init__(self, config=TIME_SERIES_CONFIG):
         """Initialize with configuration."""
         self.config = config
         self.model = None
         self.forecast = None
+        self.primary_username = None  # To track primary username
         
-    def prepare_data(self, data, timestamp_col='timestamp', value_col='engagement'):
+    def prepare_data(self, data, timestamp_col='timestamp', value_col='engagement', primary_username=None):
         """
-        Prepare time series data for analysis.
+        Prepare time series data for analysis, distinguishing primary and secondary sources.
         
         Args:
-            data: Time series data (list or dict)
+            data: List of post dictionaries, DataFrame, or dict with engagement history
             timestamp_col: Name of timestamp column
             value_col: Name of value column
+            primary_username: Primary username to tag data (optional)
             
         Returns:
-            DataFrame ready for Prophet
+            DataFrame with 'ds', 'y', and 'username' columns for Prophet
         """
         try:
-            # Check if data is a list or dictionary
-            if isinstance(data, dict) and 'engagement_history' in data:
-                # Extract engagement history from dictionary
+            self.primary_username = primary_username  # Store for later use
+            
+            # Handle different input data formats
+            if isinstance(data, pd.DataFrame):
+                if timestamp_col in data.columns and value_col in data.columns:
+                    df = data.copy()
+                    if 'username' not in df.columns:
+                        df['username'] = primary_username or 'unknown'
+                else:
+                    logger.error(f"DataFrame missing required columns: {timestamp_col} or {value_col}")
+                    # Create synthetic data
+                    now = datetime.now()
+                    df = pd.DataFrame([
+                        {timestamp_col: (now - pd.Timedelta(days=i)).strftime('%Y-%m-%dT%H:%M:%SZ'), 
+                         value_col: 1000 - i * 100, 
+                         'username': primary_username or 'unknown'}
+                        for i in range(3)
+                    ])
+                    logger.info("Created synthetic data due to invalid input")
+            elif isinstance(data, dict) and 'engagement_history' in data:
                 engagement_history = data['engagement_history']
+                df = pd.DataFrame(engagement_history)
             elif isinstance(data, list):
-                # Data is already a list of engagement records
-                engagement_history = data
+                df = pd.DataFrame(data)
             else:
                 logger.error(f"Invalid data format: {type(data)}")
-                # Create minimal synthetic data for testing
+                # Synthetic fallback
                 now = datetime.now()
-                engagement_history = [
-                    {
-                        timestamp_col: (now - pd.Timedelta(days=2)).strftime('%Y-%m-%d %H:%M:%S'),
-                        value_col: 1500
-                    },
-                    {
-                        timestamp_col: (now - pd.Timedelta(days=1)).strftime('%Y-%m-%d %H:%M:%S'),
-                        value_col: 800
-                    },
-                    {
-                        timestamp_col: now.strftime('%Y-%m-%d %H:%M:%S'),
-                        value_col: 1200
-                    }
-                ]
-                logger.info("Created synthetic data for time series analysis")
+                df = pd.DataFrame([
+                    {timestamp_col: (now - pd.Timedelta(days=i)).strftime('%Y-%m-%dT%H:%M:%SZ'), 
+                     value_col: 1000 - i * 100, 
+                     'username': primary_username or 'unknown'}
+                    for i in range(3)
+                ])
+                logger.info("Created synthetic data due to invalid input")
             
-            # Convert to pandas DataFrame
-            df = pd.DataFrame(engagement_history)
-            
-            # Ensure timestamp column exists
-            if timestamp_col not in df.columns:
-                logger.error(f"No {timestamp_col} column in data")
+            # Check for required columns
+            if timestamp_col not in df.columns or value_col not in df.columns:
+                logger.error(f"Missing required columns: {timestamp_col} or {value_col}")
                 return None
             
-            # Convert timestamp to datetime and remove timezone information
-            df['ds'] = pd.to_datetime(df[timestamp_col], utc=True).dt.tz_localize(None)
+            # Add username column if missing (assume primary if not specified)
+            if 'username' not in df.columns:
+                df['username'] = primary_username or 'unknown'
             
-            # Set engagement as 'y' for Prophet
-            if value_col in df.columns:
-                df['y'] = df[value_col]
-            else:
-                logger.error(f"No {value_col} column in data")
-                return None
+            # Convert timestamp to pandas datetime
+            df['ds'] = pd.to_datetime(df[timestamp_col], errors='coerce', utc=True).dt.tz_localize(None)
             
-            # Select only required columns
-            df = df[['ds', 'y']]
+            # Convert value to numeric
+            df['y'] = pd.to_numeric(df[value_col], errors='coerce')
             
-            # Sort by timestamp
-            df = df.sort_values('ds')
+            # Drop invalid rows
+            df = df.dropna(subset=['ds', 'y'])
             
-            # Need at least 2 data points for Prophet
+            # Ensure minimum data points
             if len(df) < 2:
-                logger.warning("Not enough data points for time series analysis")
-                # Create synthetic data points if needed
+                logger.warning(f"Insufficient data points ({len(df)})")
                 if len(df) == 1:
                     first_point = df.iloc[0].copy()
-                    # Create a point one day before
                     new_point = first_point.copy()
                     new_point['ds'] = new_point['ds'] - pd.Timedelta(days=1)
-                    new_point['y'] = max(0, new_point['y'] * 0.9)  # Slightly lower engagement
+                    new_point['y'] = max(0, new_point['y'] * 0.9)
                     df = pd.concat([pd.DataFrame([new_point]), df])
-                    logger.info("Added synthetic data point to allow Prophet analysis")
+                    logger.info("Added synthetic point for analysis")
+                else:
+                    return None
             
+            df = df[['ds', 'y', 'username']].sort_values('ds')
+            logger.info(f"Prepared {len(df)} rows with {df['username'].nunique()} unique usernames")
             return df
         except Exception as e:
             logger.error(f"Error preparing data: {str(e)}")
@@ -113,15 +120,16 @@ class TimeSeriesAnalyzer:
         Train Prophet model on the provided data.
         
         Args:
-            df: DataFrame with 'ds' and 'y' columns
+            df: DataFrame with 'ds', 'y', and 'username' columns
             
         Returns:
             Trained Prophet model
         """
         try:
+            # Prophet only needs 'ds' and 'y', so drop 'username' for training
             self.model = Prophet()
-            self.model.fit(df)
-            logger.info("Successfully trained Prophet model")
+            self.model.fit(df[['ds', 'y']])
+            logger.info("Successfully trained Prophet model on combined data")
             return self.model
         except Exception as e:
             logger.error(f"Error training model: {str(e)}")
@@ -141,9 +149,7 @@ class TimeSeriesAnalyzer:
             raise ValueError("Model not trained. Call train_model first.")
         
         try:
-            if periods is None:
-                periods = self.config['forecast_periods']
-                
+            periods = periods or self.config['forecast_periods']
             future = self.model.make_future_dataframe(periods=periods)
             self.forecast = self.model.predict(future)
             logger.info(f"Generated forecast for {periods} periods")
@@ -154,32 +160,28 @@ class TimeSeriesAnalyzer:
     
     def detect_trending_periods(self, percentile=None):
         """
-        Detect trending periods based on forecast values.
+        Detect trending periods based on forecast values, with username context.
         
         Args:
             percentile: Threshold percentile (default from config)
             
         Returns:
-            DataFrame with trending periods
+            DataFrame with trending periods and username attribution
         """
-        if not self.forecast is not None:
+        if self.forecast is None:  # Fixed condition
             raise ValueError("Forecast not generated. Call generate_forecast first.")
         
         try:
-            if percentile is None:
-                percentile = self.config['trend_threshold']
-                
-            # Calculate threshold based on percentile of predicted values
+            percentile = percentile or self.config['trend_threshold']
             threshold = np.percentile(self.forecast['yhat'], percentile * 100)
-            
-            # Filter forecast to find trending periods
             trending = self.forecast[self.forecast['yhat'] > threshold].copy()
             
-            # Flag future trending periods
+            # Determine future trending periods
             max_history_date = self.forecast['ds'].min() + (self.forecast['ds'].max() - self.forecast['ds'].min()) / 2
-            future_trending = trending[trending['ds'] > max_history_date]
+            future_trending = trending[trending['ds'] > max_history_date].copy()
             
-            logger.info(f"Detected {len(future_trending)} future trending periods")
+            # Log insights
+            logger.info(f"Detected {len(future_trending)} future trending periods above threshold {threshold:.2f}")
             return future_trending
         except Exception as e:
             logger.error(f"Error detecting trending periods: {str(e)}")
@@ -187,7 +189,7 @@ class TimeSeriesAnalyzer:
     
     def plot_forecast(self, filename=None):
         """
-        Plot forecast results.
+        Plot forecast results with username context.
         
         Args:
             filename: If provided, save plot to this file
@@ -195,92 +197,142 @@ class TimeSeriesAnalyzer:
         Returns:
             Plotly figure
         """
-        if not self.forecast is not None:
+        if self.forecast is None:  # Fixed condition
             raise ValueError("Forecast not generated. Call generate_forecast first.")
         
         try:
             fig = plot_plotly(self.model, self.forecast)
-            
             if filename:
-                # Save the plot
                 fig.write_html(filename)
                 logger.info(f"Saved forecast plot to {filename}")
-            
             return fig
         except Exception as e:
             logger.error(f"Error plotting forecast: {str(e)}")
             raise
     
-    def analyze_data(self, data, timestamp_col='timestamp', value_col='engagement'):
+    def analyze_data(self, data, timestamp_col='timestamp', value_col='engagement', primary_username=None):
         """
-        Complete pipeline to analyze time series data.
+        Complete pipeline to analyze time series data from primary and secondary sources.
         
         Args:
-            data: Raw data dictionary or DataFrame
+            data: List of posts or dict with engagement history
             timestamp_col: Column name for timestamps
             value_col: Column name for the metric to forecast
+            primary_username: Primary username for context
             
         Returns:
-            Dictionary with results
+            Dictionary with combined and detailed results
         """
         try:
-            # Prepare data
-            df = self.prepare_data(data, timestamp_col, value_col)
-            
-            # Train model
+            df = self.prepare_data(data, timestamp_col, value_col, primary_username)
+            if df is None:
+                logger.error("Data preparation failed")
+                return None
+                
             self.train_model(df)
-            
-            # Generate forecast
             self.generate_forecast()
-            
-            # Detect trending periods
             trending = self.detect_trending_periods()
+            
+            # Analyze primary vs. secondary trends if username data exists
+            primary_trends = None
+            secondary_trends = None
+            if 'username' in df.columns and primary_username:
+                primary_df = df[df['username'] == primary_username]
+                secondary_df = df[df['username'] != primary_username]
+                
+                if not primary_df.empty:
+                    primary_model = Prophet()
+                    primary_model.fit(primary_df[['ds', 'y']])
+                    primary_future = primary_model.make_future_dataframe(periods=self.config['forecast_periods'])
+                    primary_forecast = primary_model.predict(primary_future)
+                    primary_threshold = np.percentile(primary_forecast['yhat'], self.config['trend_threshold'] * 100)
+                    primary_trends = primary_forecast[primary_forecast['yhat'] > primary_threshold]
+                    logger.info(f"Detected {len(primary_trends)} primary trending periods for {primary_username}")
+                
+                if not secondary_df.empty:
+                    secondary_model = Prophet()
+                    secondary_model.fit(secondary_df[['ds', 'y']])
+                    secondary_future = secondary_model.make_future_dataframe(periods=self.config['forecast_periods'])
+                    secondary_forecast = secondary_model.predict(secondary_future)
+                    secondary_threshold = np.percentile(secondary_forecast['yhat'], self.config['trend_threshold'] * 100)
+                    secondary_trends = secondary_forecast[secondary_forecast['yhat'] > secondary_threshold]
+                    logger.info(f"Detected {len(secondary_trends)} secondary trending periods")
             
             results = {
                 'data': df,
                 'forecast': self.forecast,
                 'trending_periods': trending,
-                'model': self.model
+                'model': self.model,
+                'primary_trends': primary_trends,
+                'secondary_trends': secondary_trends
             }
             
-            logger.info("Completed time series analysis")
+            logger.info("Completed time series analysis with primary and secondary insights")
             return results
         except Exception as e:
             logger.error(f"Error in analysis pipeline: {str(e)}")
-            raise
+            return None
 
 
-# Test function
-def test_time_series_analysis():
-    """Test the time series analysis functionality."""
+def test_time_series_analysis_multi_user():
+    """Test time series analysis with primary and secondary username data."""
     try:
-        # Create sample data
-        dates = pd.date_range(start='2023-01-01', periods=100, freq='D')
-        values = np.random.normal(loc=100, scale=10, size=len(dates))
-        values = values + np.arange(len(dates)) * 0.5  # Add trend
+        # Simulate data based on provided files
+        primary_username = "maccosmetics"
+        secondary_usernames = [
+            "anastasiabeverlyhills", "fentybeauty", "narsissist", "toofaced",
+            "competitor1", "competitor2", "competitor3", "competitor4", "competitor5"
+        ]
         
-        data = {
-            'timestamp': dates.tolist(),
-            'engagement': values.tolist()
-        }
+        # Generate sample posts
+        dates = pd.date_range(start='2025-01-01', end='2025-04-11', freq='D')
+        sample_posts = []
+        
+        # Primary username data (higher engagement)
+        for i, date in enumerate(dates):
+            sample_posts.append({
+                'timestamp': date.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                'engagement': 1000 + i * 5 + np.random.normal(0, 50),  # Upward trend
+                'username': primary_username
+            })
+        
+        # Secondary username data (varied patterns)
+        for username in secondary_usernames[:5]:  # Limit to 5 for realism
+            for i, date in enumerate(dates[:len(dates)//2]):  # Fewer posts for competitors
+                sample_posts.append({
+                    'timestamp': date.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                    'engagement': 500 + i * 2 + np.random.normal(0, 30),
+                    'username': username
+                })
         
         # Create analyzer
         analyzer = TimeSeriesAnalyzer()
+        results = analyzer.analyze_data(sample_posts, primary_username=primary_username)
         
-        # Run analysis
-        results = analyzer.analyze_data(data)
+        if results is None:
+            logger.error("Analysis returned None")
+            return False
+            
+        # Verify results
+        if not isinstance(results['data'], pd.DataFrame) or results['forecast'] is None:
+            logger.error("Invalid analysis results structure")
+            return False
+            
+        if results['primary_trends'] is None or results['secondary_trends'] is None:
+            logger.warning("Primary or secondary trends not detected")
+        else:
+            logger.info(f"Primary trends: {len(results['primary_trends'])}, Secondary trends: {len(results['secondary_trends'])}")
         
-        # Plot results
-        analyzer.plot_forecast('test_forecast.html')
+        # Plot forecast
+        analyzer.plot_forecast(f'test_forecast_{primary_username}.html')
         
-        logger.info("Time series analysis test successful")
+        logger.info("Multi-user time series analysis test successful")
         return True
     except Exception as e:
-        logger.error(f"Time series analysis test failed: {str(e)}")
+        logger.error(f"Multi-user test failed: {str(e)}")
         return False
 
 
 if __name__ == "__main__":
-    # Test time series analysis
-    success = test_time_series_analysis()
-    print(f"Time series analysis test {'successful' if success else 'failed'}")
+    success = test_time_series_analysis_multi_user()
+    print(f"Multi-user time series analysis test {'successful' if success else 'failed'}")

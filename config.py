@@ -2,9 +2,9 @@
 
 # R2 Storage Configuration
 R2_CONFIG = {
-    'endpoint_url': f'https://51abf57b5c6f9b6cf2f91cc87e0b9ffe.r2.cloudflarestorage.com',
-    'aws_access_key_id': '2093fa05ee0323bb39de512a19638e78',
-    'aws_secret_access_key': 'e9e7173d1ee514b452b3a3eb7cef6fb57a248423114f1f949d71dabd34eee04f',
+    'endpoint_url': f'https://9069781eea9a108d41848d73443b3a87.r2.cloudflarestorage.com',
+    'aws_access_key_id': 'b94be077bc48dcc2aec3e4331233327e',
+    'aws_secret_access_key': '791d5eeddcd8ed5bf3f41bfaebbd37e58af7dcb12275b1422747605d7dc75bc4',
     'bucket_name': 'structuredb',
     'bucket_name2': 'tasks'
 }
@@ -26,7 +26,10 @@ VECTOR_DB_CONFIG = {
 GEMINI_CONFIG = {
     'api_key': 'AIzaSyDrvJG2BghzqtSK-HIZ_NsfRWiNwrIk3DQ',
     'model': 'gemini-2.0-flash',
-    'max_tokens': 200
+    'max_tokens': 2000,
+    'temperature': 0.2,  # Lower temperature for more focused, analytical responses
+    'top_p': 0.95,       # Slightly more deterministic for business analysis
+    'top_k': 40          # Broader selection of tokens for more detailed responses
 }
 
 # Content Templates

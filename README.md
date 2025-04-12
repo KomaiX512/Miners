@@ -127,3 +127,34 @@ from main import ContentRecommendationSystem
 system = ContentRecommendationSystem()
 system.process_instagram_username("username", results_limit=50)
 ```
+
+## Content Plan Export Functionality
+
+The system now supports exporting content plan sections to R2 storage with the following directory structure:
+
+### Directory Structure
+
+1. **Competitor Analysis**
+   - Path: `competitor_analysis/{primary_username}/{competitor_username}/analysis_{n}.json`
+   - Contains competitor analysis for each competitor with sequential numbering
+   - Each file includes analysis data and a status field (pending/processed)
+
+2. **Recommendations**
+   - Path: `recommendations/{primary_username}/recommendation_{n}.json`
+   - Contains content recommendations with sequential numbering
+   - Each file includes recommendations, primary analysis, and additional insights with a status field
+
+3. **Next Posts**
+   - Path: `next_posts/{primary_username}/post_{n}.json`
+   - Contains next post predictions with sequential numbering
+   - Each file includes post details (caption, hashtags, visual prompt, etc.) with a status field
+
+### Testing Export Functionality
+
+You can test the export functionality using the provided test script:
+
+```bash
+python test_export.py
+```
+
+This will export the content plan sections from the existing `content_plan.json` file to R2 storage following the directory structure described above.

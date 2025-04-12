@@ -1,11 +1,11 @@
-"""Module for RAG implementation using Google Gemini API."""
+"""Module for RAG implementation using Google Gemini API with enhanced contextual intelligence."""
 
 import logging
 import json
 import re
 from google import genai
 from vector_database import VectorDatabaseManager
-from config import GEMINI_CONFIG, LOGGING_CONFIG
+from config import GEMINI_CONFIG, LOGGING_CONFIG, CONTENT_TEMPLATES
 
 # Set up logging
 logging.basicConfig(
@@ -15,10 +15,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class RagImplementation:
-    """Class for RAG implementation using Google Gemini API."""
+    """Class for RAG implementation using Google Gemini API with multi-user analysis."""
     
     def __init__(self, config=GEMINI_CONFIG, vector_db=None):
-        """Initialize with configuration."""
+        """Initialize with configuration and vector database."""
         self.config = config
         self.vector_db = vector_db or VectorDatabaseManager()
         self._initialize_gemini()
@@ -26,7 +26,6 @@ class RagImplementation:
     def _initialize_gemini(self):
         """Initialize the Gemini API client."""
         try:
-            # Initialize the Gemini client - updated API usage
             self.client = genai.Client(api_key=self.config['api_key'])
             self.model = self.config['model']
             logger.info(f"Successfully initialized Gemini API with model: {self.model}")
@@ -35,20 +34,10 @@ class RagImplementation:
             logger.warning("Proceeding without Gemini capabilities - responses will be limited")
             self.client = None
     
-    def _construct_prompt(self, query, context_docs):
-        """
-        Construct a prompt for Gemini using the query and context documents.
-        
-        Args:
-            query: The original query
-            context_docs: List of relevant context documents
-            
-        Returns:
-            Constructed prompt string
-        """
+    def _construct_basic_prompt(self, query, context_docs):
+        """Construct a basic prompt for simple post generation."""
         context_text = "\n".join([f"- {doc}" for doc in context_docs])
-        
-        prompt = f"""
+        return f"""
         You are an expert social media content creator. Based on the following context from successful posts:
         
         {context_text}
@@ -69,376 +58,305 @@ class RagImplementation:
         
         Ensure your response is only the JSON object, nothing else.
         """
+    
+    def _construct_enhanced_prompt(self, primary_username, secondary_usernames, query):
+        """Construct a detailed prompt for comprehensive analysis and recommendations."""
+        primary_data = self.vector_db.query_similar(query, n_results=5, filter_username=primary_username)
+        secondary_data = {username: self.vector_db.query_similar(query, n_results=3, filter_username=username)
+                         for username in secondary_usernames}
         
+        primary_context = "\n".join([f"- {doc} (Engagement: {meta['engagement']}, Timestamp: {meta['timestamp']})"
+                                   for doc, meta in zip(primary_data['documents'][0], primary_data['metadatas'][0])])
+        secondary_context = {username: "\n".join([f"- {doc} (Engagement: {meta['engagement']}, Timestamp: {meta['timestamp']})"
+                                                for doc, meta in zip(data['documents'][0], data['metadatas'][0])])
+                            for username, data in secondary_data.items()}
+        
+        prompt = f"""
+        You are a professional social media intelligence analyst with expertise in competitor research for the beauty industry. Your mission is to provide {primary_username} with detailed, actionable intelligence and recommendations to outperform their competitors in the beauty market.
+
+        **Primary Account**: {primary_username}
+        **Competitors Being Analyzed**: {', '.join(secondary_usernames)}
+        **Topic Focus**: {query}
+        **Current Date**: April 11, 2025
+
+        The following data represents actual social media content from these accounts, including engagement metrics:
+
+        **PRIMARY ACCOUNT POSTS**: {primary_username}
+        {primary_context if primary_context else "No recent posts available."}
+
+        **COMPETITOR POSTS**:
+        {chr(10).join([f"---{username}---{chr(10)}{context if context else 'No recent posts available.'}" for username, context in secondary_context.items()])}
+
+        Your task is to provide an intelligence report with four distinct sections:
+
+        1. **Primary Account Analysis** [CONFIDENTIAL]
+           - Analyze posting patterns and identify content themes that perform well
+           - Assess hashtag strategy effectiveness by comparing engagement across posts
+           - Identify content gaps and missed opportunities compared to competitors
+           - Highlight unique strengths or brand positioning advantages
+
+        2. **Competitor Intelligence Report** [TOP SECRET]
+           - For each competitor, analyze:
+             * Their most successful content formats and topics (based on engagement metrics)
+             * The specific tactics they use to drive engagement (e.g., contests, aesthetics, CTAs)
+             * Their posting frequency and optimal posting times
+             * Any noticeable strategic shifts in their content approach
+             * Their unique value proposition and how they differentiate themselves
+           - Identify "spy intel" - specific competitor techniques {primary_username} could adapt
+
+        3. **Strategic Advantage Plan** [ACTIONABLE INTEL]
+           - Recommend specific content strategies to exploit weaknesses in competitor approaches
+           - Suggest unique ways to differentiate from competitors while targeting similar audiences 
+           - Provide 3-5 specific post ideas that directly counter competitor strengths
+           - For each recommendation, explicitly cite why you're suggesting it based on competitor behavior (e.g., "Competitor X is seeing 40% higher engagement when they post Y, so you should adapt this by...")
+           - Include optimal timing recommendations based on engagement patterns
+
+        4. **Next Post Blueprint** [IMMEDIATE ACTION REQUIRED]
+           - Design a specific post that directly capitalizes on intelligence gathered from competitor analysis
+           - Include:
+             * A detailed caption that leverages the most successful elements from competitor strategies
+             * Strategic hashtags that competitors are under-utilizing but show high potential
+             * A compelling call to action that outperforms typical CTAs used by competitors
+             * A detailed visual concept description that specifically positions against competitor visuals
+
+        Format your response as a valid JSON object with these four main keys. For competitors, use a nested object with each competitor username as a key. Ensure all analysis directly references specific examples from the posts provided.
+
+        The intelligence report must:
+        - Be highly specific to the beauty industry and these exact accounts
+        - Reference concrete examples from the post data, not general marketing advice
+        - Include actual metrics and specific strategies observed in the data
+        - Provide actionable recommendations that directly counter competitor advantages
+        - Format all output as properly escaped JSON with the following structure:
+
+        {{
+            "primary_analysis": "Detailed intelligence on primary account strengths and weaknesses",
+            "competitor_analysis": {{
+                "competitor1": "Detailed intelligence on their specific strategies and vulnerabilities",
+                "competitor2": "Detailed intelligence on their specific strategies and vulnerabilities"
+            }},
+            "recommendations": "Actionable strategic advantages to exploit, with direct reference to competitor weaknesses",
+            "next_post": {{
+                "caption": "Strategically crafted caption",
+                "hashtags": ["#strategic", "#hashtags"],
+                "call_to_action": "Compelling CTA that outperforms competitors",
+                "visual_prompt": "Detailed visual concept that positions against competitor aesthetics"
+            }}
+        }}
+        """
         return prompt
     
     def _generate_fallback_response(self, query):
-        """
-        Generate a fallback response when Gemini is not available.
-        
-        Args:
-            query: The original query
-            
-        Returns:
-            Dictionary with fallback recommendation
-        """
+        """Generate a fallback response when Gemini is unavailable."""
         try:
-            # Extract topic from query
             topic = query.lower()
-            
-            # Generate hashtags based on topic
-            hashtags = []
-            if 'fashion' in topic:
-                hashtags = ['#Fashion', '#Style', '#Trending']
-            elif 'product' in topic:
-                hashtags = ['#NewProduct', '#MustHave', '#ShopNow']
-            elif 'sale' in topic or 'discount' in topic:
-                hashtags = ['#Sale', '#Discount', '#LimitedOffer']
-            else:
-                hashtags = ['#Trending', '#MustSee', '#NewContent']
-            
-            # Add topic as hashtag if not already included
-            topic_hashtag = f"#{topic.replace(' ', '')}"
-            if topic_hashtag not in hashtags:
-                hashtags.append(topic_hashtag)
-            
-            # Generate caption based on topic
-            caption = f"Check out the latest {topic} that everyone's talking about!"
-            
-            # Generate call to action
-            call_to_action = "Click the link in bio to learn more!"
-            
-            logger.info(f"Generated fallback response for query: {query}")
-            
+            hashtags = ['#Trending', '#MustSee', f"#{topic.replace(' ', '')}"]
             return {
-                'caption': caption,
-                'hashtags': hashtags,
-                'call_to_action': call_to_action
+                "primary_analysis": f"Unable to analyze {topic} due to API issues.",
+                "competitor_analysis": {},
+                "recommendations": f"Focus on {topic} with engaging visuals and strong CTAs.",
+                "next_post": {
+                    "caption": f"Unlock the latest in {topic}!",
+                    "hashtags": hashtags,
+                    "call_to_action": "Share your thoughts below!",
+                    "visual_prompt": f"A vibrant graphic showcasing {topic} trends"
+                }
             }
         except Exception as e:
-            logger.error(f"Error generating fallback response: {str(e)}")
+            logger.error(f"Error in fallback response: {str(e)}")
             return {
-                'caption': f"Exciting content about {query}!",
-                'hashtags': ['#Trending', '#MustSee'],
-                'call_to_action': "Check out our website for more!"
+                "primary_analysis": "Analysis unavailable.",
+                "competitor_analysis": {},
+                "recommendations": "Post regularly about trending topics.",
+                "next_post": {
+                    "caption": "Stay tuned for more!",
+                    "hashtags": ["#Trending"],
+                    "call_to_action": "Check back soon!",
+                    "visual_prompt": "Generic promotional image"
+                }
             }
     
-    def generate_recommendation(self, query, n_context=3):
-        """Generate a content recommendation based on a query."""
+    def generate_recommendation(self, primary_username, secondary_usernames, query, n_context=3):
+        """Generate a comprehensive content recommendation and strategy."""
         try:
-            # Get similar documents from vector DB
-            similar_docs = self.vector_db.query_similar(query, n_results=n_context)
+            if not self.client:
+                logger.error("Gemini API not initialized.")
+                return self._generate_fallback_response(query)
             
-            # Check if we found any similar documents
-            if similar_docs and len(similar_docs['documents'][0]) > 0:
-                context_docs = similar_docs['documents'][0]
-                logger.info(f"Found {len(context_docs)} similar documents for query: {query}")
-            else:
-                logger.warning(f"No similar documents found for query: {query}")
-                # Create synthetic context based on the query
-                context_docs = [
-                    f"Create engaging content about {query}",
-                    f"Users respond well to posts about {query} with clear calls to action",
-                    f"Visual content about {query} gets high engagement"
-                ]
-                logger.info(f"Created synthetic context for query: {query}")
+            prompt = self._construct_enhanced_prompt(primary_username, secondary_usernames, query)
+            response = self.client.models.generate_content(model=self.model, contents=prompt)
+            response_text = response.text.strip()
             
-            # Build prompt with context
-            prompt = self._construct_prompt(query, context_docs)
+            # Log raw response for debugging
+            logger.debug(f"Raw Gemini response: {response_text}")
             
-            # Generate response using Gemini API
-            response = self.client.models.generate_content(
-                model=self.model,
-                contents=prompt
-            )
-            
-            # Parse the response
-            response_text = response.text
-            
-            # Clean up the response text
-            response_text = response_text.strip()
-            
-            # Parse JSON from the response
+            # Attempt JSON parsing with multiple strategies
             try:
-                # Find JSON content in the response
                 json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
                 if json_match:
-                    json_str = json_match.group(0)
-                    recommendation = json.loads(json_str)
-                    logger.info(f"Generated recommendation for query: {query}")
-                    return recommendation
+                    recommendation = json.loads(json_match.group(0))
                 else:
-                    # Try parsing the entire response as JSON
-                    try:
-                        recommendation = json.loads(response_text)
-                        logger.info(f"Generated recommendation for query: {query}")
-                        return recommendation
-                    except:
-                        logger.warning(f"No JSON found in response: {response_text}")
-                        # Extract information from text response
-                        return self._extract_recommendation_from_text(response_text, query)
+                    recommendation = json.loads(response_text)
+                logger.info(f"Generated recommendation for {primary_username}")
+                return recommendation
             except json.JSONDecodeError as e:
-                logger.error(f"Error parsing JSON from response: {str(e)}")
-                logger.error(f"Response text: {response_text}")
-                # Extract information from text response
-                return self._extract_recommendation_from_text(response_text, query)
-                
+                logger.warning(f"JSON parsing failed: {str(e)}. Attempting repair.")
+                # Try fixing common JSON issues (e.g., missing commas)
+                fixed_text = re.sub(r'}(\s*"[^"]+":)', r'},\1', response_text)  # Add missing commas
+                try:
+                    recommendation = json.loads(fixed_text)
+                    logger.info(f"Repaired and parsed JSON for {primary_username}")
+                    return recommendation
+                except json.JSONDecodeError as e2:
+                    logger.error(f"Repair failed: {str(e2)}. Raw text: {response_text}")
+                    return self._extract_recommendation_from_text(response_text, query)
         except Exception as e:
             logger.error(f"Error generating recommendation: {str(e)}")
-            raise  # Re-raise to see the full error
+            return self._generate_fallback_response(query)
     
     def apply_template(self, recommendation, template_type):
-        """
-        Apply a template to a recommendation.
-        
-        Args:
-            recommendation: The recommendation to apply the template to
-            template_type: The type of template to apply
-            
-        Returns:
-            Formatted string with the template applied
-        """
-        from config import CONTENT_TEMPLATES
-        
+        """Apply a template to a recommendation."""
         try:
             template = CONTENT_TEMPLATES.get(template_type, '{caption} {hashtags}')
-            
-            # Format hashtags as a string
             hashtags_str = ' '.join(recommendation.get('hashtags', []))
-            
-            # Apply template
             formatted = template.format(
                 caption=recommendation.get('caption', ''),
                 hashtags=hashtags_str
             )
-            
             return formatted
         except Exception as e:
             logger.error(f"Error applying template: {str(e)}")
             return f"{recommendation.get('caption', '')} {' '.join(recommendation.get('hashtags', []))}"
-
+    
     def _extract_recommendation_from_text(self, text, query):
-        """Extract recommendation components from text response."""
+        """Extract recommendation components from unstructured text response."""
         try:
-            # Send a follow-up request to format the response as JSON
             format_prompt = f"""
-            Convert the following social media post into a properly formatted JSON object:
-            
-            {text}
-            
-            Format as:
+            Convert this text into a valid JSON object with the structure:
             {{
-                "caption": "The main caption text",
-                "hashtags": ["#hashtag1", "#hashtag2"],
-                "call_to_action": "The call to action text"
+                "primary_analysis": "Text",
+                "competitor_analysis": {{}},
+                "recommendations": "Text",
+                "next_post": {{
+                    "caption": "Text",
+                    "hashtags": ["#tag1"],
+                    "call_to_action": "Text",
+                    "visual_prompt": "Text"
+                }}
             }}
             
-            Return ONLY the JSON object, nothing else.
+            Text:
+            {text}
+            
+            Return ONLY the JSON object, ensuring proper syntax.
             """
-            
-            # Generate response using Gemini API
-            response = self.client.models.generate_content(
-                model=self.model,
-                contents=format_prompt
-            )
-            
-            # Parse the response
-            response_text = response.text.strip()
-            
-            # Try to parse as JSON
-            try:
-                # Find JSON content in the response
+            if self.client:
+                response = self.client.models.generate_content(model=self.model, contents=format_prompt)
+                response_text = response.text.strip()
                 json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
                 if json_match:
-                    json_str = json_match.group(0)
-                    recommendation = json.loads(json_str)
-                    logger.info(f"Successfully extracted recommendation from text")
-                    return recommendation
-                else:
-                    recommendation = json.loads(response_text)
-                    logger.info(f"Successfully extracted recommendation from text")
-                    return recommendation
-            except:
-                # If all else fails, create a structured recommendation from the text
-                lines = text.split('\n')
-                caption = next((line for line in lines if len(line) > 20), f"Exciting content about {query}")
-                
-                # Extract hashtags
-                hashtag_pattern = r'#\w+'
-                hashtags = re.findall(hashtag_pattern, text)
-                if not hashtags:
-                    # Create hashtags from query
-                    query_words = query.split()
-                    hashtags = [f"#{word.capitalize()}" for word in query_words]
-                    hashtags.append("#MustSee")
-                
-                # Extract call to action
-                cta_candidates = [
-                    line for line in lines 
-                    if any(phrase in line.lower() for phrase in ["click", "check out", "visit", "learn more", "shop now", "follow"])
-                ]
-                call_to_action = cta_candidates[0] if cta_candidates else "Click the link in bio to learn more!"
-                
-                return {
+                    return json.loads(json_match.group(0))
+            
+            # Manual extraction as fallback
+            lines = text.split('\n')
+            caption = next((line for line in lines if len(line) > 20), f"Explore {query}!")
+            hashtags = re.findall(r'#\w+', text) or [f"#{query.replace(' ', '')}", "#Trend"]
+            cta = next((line for line in lines if any(p in line.lower() for p in ["click", "check", "visit"])), 
+                      "Join the conversation!")
+            return {
+                "primary_analysis": text[:200] if text else "No analysis available.",
+                "competitor_analysis": {},
+                "recommendations": text[200:400] if len(text) > 400 else "Use engaging visuals.",
+                "next_post": {
                     "caption": caption,
                     "hashtags": hashtags,
-                    "call_to_action": call_to_action
+                    "call_to_action": cta,
+                    "visual_prompt": f"Bold graphic for {query}"
                 }
-                
-        except Exception as e:
-            logger.error(f"Error extracting recommendation from text: {str(e)}")
-            # Create a basic recommendation based on the query
-            return {
-                "caption": f"Discover the latest trends in {query} that everyone's talking about!",
-                "hashtags": [f"#{word.capitalize()}" for word in query.split()] + ["#TrendAlert"],
-                "call_to_action": "Click the link in bio to see more!"
             }
-
+        except Exception as e:
+            logger.error(f"Error extracting recommendation: {str(e)}")
+            return self._generate_fallback_response(query)
+    
     def generate_batch_recommendations(self, prompt, topics):
         """Generate recommendations for multiple topics in a single API call."""
         try:
-            # Get context documents for all topics
             all_context = {}
             for topic in topics:
                 similar_docs = self.vector_db.query_similar(topic, n_results=3)
-                if similar_docs and len(similar_docs['documents'][0]) > 0:
-                    all_context[topic] = similar_docs['documents'][0]
-                    logger.info(f"Found {len(similar_docs['documents'][0])} similar documents for topic: {topic}")
-                else:
-                    # Create synthetic context
-                    all_context[topic] = [
-                        f"Create engaging content about {topic}",
-                        f"Users respond well to posts about {topic} with clear calls to action",
-                        f"Visual content about {topic} gets high engagement"
-                    ]
-                    logger.info(f"Created synthetic context for topic: {topic}")
+                all_context[topic] = similar_docs['documents'][0] if similar_docs and similar_docs['documents'][0] else [
+                    f"Engage with {topic} content",
+                    f"{topic} posts with CTAs perform well",
+                    f"Visuals boost {topic} engagement"
+                ]
+                logger.info(f"Context prepared for topic: {topic}")
             
-            # Enhance the prompt with context
             enhanced_prompt = self._enhance_batch_prompt(prompt, all_context)
-            
-            # Generate response using Gemini API
-            response = self.client.models.generate_content(
-                model=self.model,
-                contents=enhanced_prompt
-            )
-            
-            # Parse the response
+            response = self.client.models.generate_content(model=self.model, contents=enhanced_prompt)
             response_text = response.text.strip()
             
-            # Try to parse as JSON
-            try:
-                # Find JSON content in the response
-                json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
-                if json_match:
-                    json_str = json_match.group(0)
-                    recommendations = json.loads(json_str)
-                    logger.info(f"Successfully generated batch recommendations for {len(topics)} topics")
-                    return recommendations
-                else:
-                    # Try parsing the entire response
-                    recommendations = json.loads(response_text)
-                    logger.info(f"Successfully generated batch recommendations for {len(topics)} topics")
-                    return recommendations
-            except json.JSONDecodeError as e:
-                logger.error(f"Error parsing JSON from batch response: {str(e)}")
-                logger.error(f"Response text: {response_text}")
-                # Fall back to individual recommendations
-                return {}
-            
-        except Exception as e:
-            logger.error(f"Error generating batch recommendations: {str(e)}")
+            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            if json_match:
+                recommendations = json.loads(json_match.group(0))
+                logger.info(f"Generated batch recommendations for {len(topics)} topics")
+                return recommendations
             return {}
-        
+        except Exception as e:
+            logger.error(f"Error in batch recommendations: {str(e)}")
+            return {}
+    
     def _enhance_batch_prompt(self, prompt, context_by_topic):
         """Enhance the batch prompt with context for each topic."""
-        context_section = ""
-        
-        for topic, context_docs in context_by_topic.items():
-            context_section += f"\nContext for '{topic}':\n"
-            context_section += "\n".join([f"- {doc}" for doc in context_docs])
-            context_section += "\n"
-        
-        enhanced_prompt = f"""
-        {prompt}
-        
-        Use the following context from successful posts to inform your recommendations:
-        
-        {context_section}
-        
-        Remember to format your response as a JSON object with topics as keys.
-        """
-        
-        return enhanced_prompt
+        context_section = "\n".join([f"Context for '{topic}':\n{' '.join(docs)}" 
+                                   for topic, docs in context_by_topic.items()])
+        return f"{prompt}\n\nUse the following context:\n{context_section}\n\nFormat as JSON with topics as keys."
 
-
-# Test function
 def test_rag_implementation():
-    """Test the RAG implementation."""
+    """Test the enhanced RAG implementation with multi-user data."""
     try:
-        # Create vector DB manager with sample data
         vector_db = VectorDatabaseManager()
+        vector_db.clear_collection()
         
-        # Add sample posts
         sample_posts = [
-            {
-                'id': '1',
-                'caption': 'Summer sale going on now! #SummerSale #Discount',
-                'hashtags': ['#SummerSale', '#Discount'],
-                'engagement': 123
-            },
-            {
-                'id': '2',
-                'caption': 'Check out our new product line! #NewProducts',
-                'hashtags': ['#NewProducts'],
-                'engagement': 85
-            },
-            {
-                'id': '3',
-                'caption': 'Tips for summer fashion. #SummerStyle #Fashion',
-                'hashtags': ['#SummerStyle', '#Fashion'],
-                'engagement': 210
-            }
+            {'id': '1', 'caption': 'Bold summer looks! #SummerMakeup', 'hashtags': ['#SummerMakeup'], 
+             'engagement': 150, 'likes': 120, 'comments': 30, 'timestamp': '2025-04-01T10:00:00Z', 
+             'username': 'maccosmetics'},
+            {'id': '2', 'caption': 'New palette drop! #GlowUp', 'hashtags': ['#GlowUp'], 
+             'engagement': 200, 'likes': 170, 'comments': 30, 'timestamp': '2025-04-02T12:00:00Z', 
+             'username': 'maccosmetics'},
+            {'id': '3', 'caption': 'Brow perfection! #BrowGame', 'hashtags': ['#BrowGame'], 
+             'engagement': 180, 'likes': 150, 'comments': 30, 'timestamp': '2025-04-03T14:00:00Z', 
+             'username': 'anastasiabeverlyhills'},
+            {'id': '4', 'caption': 'Glowy skin secrets! #Skincare', 'hashtags': ['#Skincare'], 
+             'engagement': 220, 'likes': 190, 'comments': 30, 'timestamp': '2025-04-04T15:00:00Z', 
+             'username': 'fentybeauty'}
         ]
+        vector_db.add_posts(sample_posts, 'maccosmetics')
         
-        # Force add the sample posts
-        count = vector_db.add_posts(sample_posts)
-        logger.info(f"Added {count} sample posts to vector database for testing")
-        
-        # Verify posts were added
-        collection_count = vector_db.get_count()
-        logger.info(f"Vector database contains {collection_count} documents")
-        
-        # Create RAG implementation
         rag = RagImplementation(vector_db=vector_db)
+        primary_username = "maccosmetics"
+        secondary_usernames = ["anastasiabeverlyhills", "fentybeauty"]
+        query = "summer makeup trends"
         
-        # Test recommendation generation
-        query = "summer fashion trends"
-        logger.info(f"Testing recommendation generation for query: {query}")
-        recommendation = rag.generate_recommendation(query)
+        recommendation = rag.generate_recommendation(primary_username, secondary_usernames, query)
         
-        # Print the recommendation for debugging
-        logger.info(f"Generated recommendation: {json.dumps(recommendation, indent=2)}")
+        required_blocks = ["primary_analysis", "competitor_analysis", "recommendations", "next_post"]
+        next_post_fields = ["caption", "hashtags", "call_to_action", "visual_prompt"]
         
-        # Verify if all required fields are present
-        required_fields = ['caption', 'hashtags', 'call_to_action']
-        has_required_fields = all(field in recommendation for field in required_fields)
+        missing_blocks = [block for block in required_blocks if block not in recommendation]
+        missing_fields = [field for field in next_post_fields if field not in recommendation.get("next_post", {})]
         
-        if has_required_fields:
-            logger.info("RAG implementation test successful - all required fields present")
-            return True
-        else:
-            missing = [field for field in required_fields if field not in recommendation]
-            logger.warning(f"RAG test completed but missing required fields: {missing}")
+        # Fail the test if we hit the fallback due to an error
+        if "due to API issues" in recommendation["primary_analysis"] or missing_blocks or missing_fields:
+            logger.error(f"Test failed: Missing blocks: {missing_blocks}, Missing fields: {missing_fields}, Used fallback: {recommendation['primary_analysis']}")
             return False
-            
+        
+        logger.info("Test successful: All blocks and fields present.")
+        logger.info(f"Recommendation:\n{json.dumps(recommendation, indent=2)}")
+        return True
     except Exception as e:
-        logger.error(f"RAG implementation test failed: {str(e)}")
-        import traceback
-        logger.error(traceback.format_exc())
+        logger.error(f"Test failed: {str(e)}")
         return False
 
-
 if __name__ == "__main__":
-    # Test RAG implementation
     success = test_rag_implementation()
-    print(f"RAG implementation test {'successful' if success else 'failed'}")
+    print(f"Enhanced RAG implementation test {'successful' if success else 'failed'}")
