@@ -122,8 +122,8 @@ class RagImplementation:
         Format your response as a valid JSON object with these four main keys. For competitors, use a nested object with each competitor username as a key. Ensure all analysis directly references specific examples from the posts provided.
 
         The intelligence report must:
-        - Be highly specific to the beauty industry and these exact accounts
-        - Reference concrete examples from the post data, not general marketing advice
+        - Be highly specific to catagory in which primery usernames and Comeptitors are abouts. 
+        - Reference concrete examples from the post data, not general marketing advice. Competitors 
         - Include actual metrics and specific strategies observed in the data
         - Provide actionable recommendations that directly counter competitor advantages
         - Format all output as properly escaped JSON with the following structure:
@@ -131,15 +131,18 @@ class RagImplementation:
         {{
             "primary_analysis": "Detailed intelligence on primary account strengths and weaknesses",
             "competitor_analysis": {{
-                "competitor1": "Detailed intelligence on their specific strategies and vulnerabilities",
-                "competitor2": "Detailed intelligence on their specific strategies and vulnerabilities"
+                "competitor1": "Detailed intelligence on their specific strategies and vulnerabilities, And 2 sentences About recent activities they did",
+                "competitor2": "Detailed intelligence on their specific strategies and vulnerabilities, And 2 sentences About recent activities they did",
+                "competitor3": "Detailed intelligence on their specific strategies and vulnerabilities, And 2 sentences About recent activities they did",
+                "competitor4": "Detailed intelligence on their specific strategies and vulnerabilities, And 2 sentences About recent activities they did",
+                "competitor5": "Detailed intelligence on their specific strategies and vulnerabilities, And 2 sentences About recent activities they did",
             }},
             "recommendations": "Actionable strategic advantages to exploit, with direct reference to competitor weaknesses",
             "next_post": {{
-                "caption": "Strategically crafted caption",
+                "caption": "Strategically crafted caption that should matches with our own primary accounts captions patterns and styles.",
                 "hashtags": ["#strategic", "#hashtags"],
                 "call_to_action": "Compelling CTA that outperforms competitors",
-                "visual_prompt": "Detailed visual concept that positions against competitor aesthetics"
+                "visual_prompt": "Detailed Graphical visual concept that positions against competitor aesthetics but consistent with the our primary account posts theme and its color themes. Shape meaningful concept in Graphical Viusals image prompt"
             }}
         }}
         """
@@ -183,35 +186,243 @@ class RagImplementation:
                 return self._generate_fallback_response(query)
             
             prompt = self._construct_enhanced_prompt(primary_username, secondary_usernames, query)
-            response = self.client.models.generate_content(model=self.model, contents=prompt)
-            response_text = response.text.strip()
+            
+            try:
+                response = self.client.models.generate_content(model=self.model, contents=prompt)
+                response_text = response.text.strip()
+            except Exception as api_e:
+                logger.error(f"Gemini API call failed: {str(api_e)}")
+                return self._generate_fallback_response(query)
+            
+            # Check if response is empty
+            if not response_text:
+                logger.error("Empty response from Gemini API")
+                return self._generate_fallback_response(query)
             
             # Log raw response for debugging
-            logger.debug(f"Raw Gemini response: {response_text}")
+            logger.debug(f"Raw Gemini response: {response_text[:500]}...")
             
             # Attempt JSON parsing with multiple strategies
-            try:
-                json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
-                if json_match:
-                    recommendation = json.loads(json_match.group(0))
-                else:
-                    recommendation = json.loads(response_text)
-                logger.info(f"Generated recommendation for {primary_username}")
+            recommendation = self._parse_and_repair_json(response_text, primary_username, query)
+            if recommendation:
                 return recommendation
-            except json.JSONDecodeError as e:
-                logger.warning(f"JSON parsing failed: {str(e)}. Attempting repair.")
-                # Try fixing common JSON issues (e.g., missing commas)
-                fixed_text = re.sub(r'}(\s*"[^"]+":)', r'},\1', response_text)  # Add missing commas
-                try:
-                    recommendation = json.loads(fixed_text)
-                    logger.info(f"Repaired and parsed JSON for {primary_username}")
-                    return recommendation
-                except json.JSONDecodeError as e2:
-                    logger.error(f"Repair failed: {str(e2)}. Raw text: {response_text}")
-                    return self._extract_recommendation_from_text(response_text, query)
+            
+            # If all parsing attempts fail, use text extraction
+            logger.warning(f"All JSON parsing attempts failed. Falling back to text extraction.")
+            return self._extract_recommendation_from_text(response_text, query)
+            
         except Exception as e:
             logger.error(f"Error generating recommendation: {str(e)}")
             return self._generate_fallback_response(query)
+    
+    def _parse_and_repair_json(self, text, primary_username, query):
+        """Parse and repair JSON from text with multiple fallback strategies."""
+        if not text or not text.strip():
+            logger.error("Empty text provided to JSON parser")
+            return None
+            
+        # First attempt: extract JSON within triple backticks if present
+        try:
+            json_block_match = re.search(r'```(?:json)?\s*(\{[\s\S]*?\})\s*```', text, re.DOTALL)
+            if json_block_match:
+                json_text = json_block_match.group(1).strip()
+                if json_text:
+                    try:
+                        recommendation = json.loads(json_text)
+                        logger.info(f"Successfully parsed JSON from code block for {primary_username}")
+                        return recommendation
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"Failed to parse JSON from code block: {str(e)}")
+        except Exception as e:
+            logger.warning(f"Error in backtick extraction: {str(e)}")
+        
+        # Second attempt: find JSON object with regex
+        try:
+            json_match = re.search(r'\{[\s\S]*?\}', text, re.DOTALL)
+            if json_match:
+                json_text = json_match.group(0).strip()
+                if json_text:
+                    try:
+                        recommendation = json.loads(json_text)
+                        logger.info(f"Successfully parsed JSON with regex for {primary_username}")
+                        return recommendation
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"Failed to parse JSON with regex: {str(e)}")
+        except Exception as e:
+            logger.warning(f"Error in JSON regex extraction: {str(e)}")
+        
+        # Third attempt: find any JSON-like structure with more flexible regex
+        try:
+            json_like_match = re.search(r'\{[\s\S]*\}', text, re.DOTALL)
+            if json_like_match:
+                json_text = json_like_match.group(0).strip()
+                if json_text:
+                    try:
+                        # Apply basic fixes before attempting to parse
+                        fixed_text = self._apply_basic_json_fixes(json_text)
+                        recommendation = json.loads(fixed_text)
+                        logger.info(f"Successfully parsed JSON with basic fixes for {primary_username}")
+                        return recommendation
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"Failed to parse JSON with basic fixes: {str(e)}")
+        except Exception as e:
+            logger.warning(f"Error in flexible JSON extraction: {str(e)}")
+        
+        # Advanced JSON repair strategies
+        try:
+            # Safety check - don't try to repair an empty string
+            if not text.strip():
+                logger.error("Empty text for repair")
+                return None
+                
+            fixed_text = self._apply_advanced_json_repairs(text)
+            
+            # Try parsing the fixed JSON
+            try:
+                recommendation = json.loads(fixed_text)
+                logger.info(f"Repaired and parsed JSON for {primary_username}")
+                return recommendation
+            except json.JSONDecodeError as e:
+                logger.warning(f"Advanced repair attempt failed: {str(e)}")
+            
+            # If full repair fails, try extracting and repairing just the next_post part
+            recommendation = self._extract_next_post_section(fixed_text, query)
+            if recommendation:
+                return recommendation
+                
+        except Exception as repair_e:
+            logger.error(f"Repair failed: {str(repair_e)}. Raw text sample: {text[:100]}...")
+        
+        return None
+    
+    def _apply_basic_json_fixes(self, text):
+        """Apply basic fixes to potentially invalid JSON."""
+        if not text:
+            return "{}"
+            
+        # Replace None with null, True with true, False with false
+        text = re.sub(r'\bNone\b', 'null', text)
+        text = re.sub(r'\bTrue\b', 'true', text)
+        text = re.sub(r'\bFalse\b', 'false', text)
+        
+        # Replace single quotes with double quotes
+        text = re.sub(r'\'([^\']+)\'', r'"\1"', text)
+        
+        # Fix unquoted property names
+        text = re.sub(r'([{,]\s*)(\w+)(\s*:)', r'\1"\2"\3', text)
+        
+        return text
+    
+    def _apply_advanced_json_repairs(self, text):
+        """Apply advanced repairs to invalid JSON."""
+        if not text:
+            return "{}"
+            
+        # Make a copy of the text for repair attempts
+        fixed_text = text
+        
+        # Strategy 1: Fix missing commas between key-value pairs
+        fixed_text = re.sub(r'}(\s*"[^"]+":)', r'},\1', fixed_text)
+        
+        # Strategy 2: Fix unquoted property names (more comprehensive)
+        fixed_text = re.sub(r'([{,]\s*)(\w+)(\s*:)', r'\1"\2"\3', fixed_text)
+        
+        # Strategy 3: Fix trailing commas in arrays/objects
+        fixed_text = re.sub(r',(\s*[}\]])', r'\1', fixed_text)
+        
+        # Strategy 4: Fix missing quotes around string values
+        fixed_text = re.sub(r':\s*([^"{}\[\],\d][^,}\]]*?)(\s*[,}\]])', r': "\1"\2', fixed_text)
+        
+        # Strategy 5: Fix single quotes used instead of double quotes
+        fixed_text = re.sub(r'\'([^\']+)\'', r'"\1"', fixed_text)
+        
+        # Strategy 6: Fix JavaScript-style comments
+        fixed_text = re.sub(r'//.*?\n', r' ', fixed_text)
+        fixed_text = re.sub(r'/\*.*?\*/', r' ', fixed_text, flags=re.DOTALL)
+        
+        # Strategy 7: Fix Python literal values
+        fixed_text = re.sub(r'\bNone\b', 'null', fixed_text)
+        fixed_text = re.sub(r'\bTrue\b', 'true', fixed_text)
+        fixed_text = re.sub(r'\bFalse\b', 'false', fixed_text)
+        
+        # Strategy 8: Fix improper escaping in strings
+        fixed_text = re.sub(r'(["])([^"\\]*(?:\\.[^"\\]*)*)\\([^\\])', r'\1\2\\\\\3', fixed_text)
+        
+        # Strategy 9: Remove extraneous text outside the JSON structure
+        json_match = re.search(r'(\{[\s\S]*\})', fixed_text, re.DOTALL)
+        if json_match:
+            fixed_text = json_match.group(1)
+        
+        return fixed_text
+    
+    def _extract_next_post_section(self, text, query):
+        """Extract and repair just the next_post section."""
+        try:
+            # Find the next_post section
+            next_post_match = re.search(r'"next_post"[^{]*?({[^{}]*(?:{[^{}]*})*[^{}]*})', text, re.DOTALL)
+            if next_post_match:
+                next_post_text = next_post_match.group(1).strip()
+                if next_post_text:
+                    try:
+                        # Apply all repairs to the next_post section
+                        next_post_text = self._apply_advanced_json_repairs(next_post_text)
+                        
+                        # Handle list items in hashtags that might be malformed
+                        hashtags_match = re.search(r'"hashtags"\s*:\s*\[\s*([^\]]*)\s*\]', next_post_text, re.DOTALL)
+                        if hashtags_match:
+                            hashtags_content = hashtags_match.group(1).strip()
+                            if hashtags_content:
+                                # Properly format hashtags with double quotes and commas
+                                fixed_hashtags = []
+                                for tag in re.findall(r'[^",\s]+', hashtags_content):
+                                    fixed_hashtags.append(f'"{tag}"')
+                                fixed_hashtags_str = ", ".join(fixed_hashtags)
+                                next_post_text = re.sub(r'"hashtags"\s*:\s*\[\s*([^\]]*)\s*\]', 
+                                                   f'"hashtags": [{fixed_hashtags_str}]', 
+                                                   next_post_text)
+                        
+                        logger.debug(f"Attempting to parse next_post: {next_post_text}")
+                        next_post = json.loads(next_post_text)
+                        
+                        # Create a complete recommendation with the extracted next_post
+                        recommendation = self._generate_fallback_response(query)
+                        recommendation["next_post"] = next_post
+                        logger.info(f"Extracted and repaired next_post section")
+                        return recommendation
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"Failed to repair next_post section: {str(e)}")
+                    except Exception as e:
+                        logger.warning(f"Error in next_post extraction: {str(e)}")
+            
+            # Special case: If we have raw caption and hashtags, create a minimal structure
+            try:
+                caption_match = re.search(r'"caption"\s*:\s*"([^"]+)"', text, re.DOTALL)
+                hashtags_match = re.search(r'"hashtags"\s*:\s*\[\s*([^\]]*)\s*\]', text, re.DOTALL)
+                
+                if caption_match:
+                    caption = caption_match.group(1).strip()
+                    hashtags = []
+                    
+                    if hashtags_match:
+                        hashtags_content = hashtags_match.group(1).strip()
+                        hashtags = re.findall(r'"([^"]+)"', hashtags_content)
+                    
+                    if not hashtags:
+                        hashtags = [f"#{word.capitalize()}" for word in query.split() if len(word) > 3]
+                        hashtags.append("#Trending")
+                    
+                    recommendation = self._generate_fallback_response(query)
+                    recommendation["next_post"]["caption"] = caption
+                    recommendation["next_post"]["hashtags"] = hashtags
+                    logger.info("Created recommendation from raw caption and hashtags")
+                    return recommendation
+            except Exception as e:
+                logger.warning(f"Failed to extract caption and hashtags: {str(e)}")
+                
+        except Exception as e:
+            logger.warning(f"Error extracting next_post: {str(e)}")
+        
+        return None
     
     def apply_template(self, recommendation, template_type):
         """Apply a template to a recommendation."""
@@ -230,47 +441,108 @@ class RagImplementation:
     def _extract_recommendation_from_text(self, text, query):
         """Extract recommendation components from unstructured text response."""
         try:
-            format_prompt = f"""
-            Convert this text into a valid JSON object with the structure:
-            {{
-                "primary_analysis": "Text",
-                "competitor_analysis": {{}},
-                "recommendations": "Text",
-                "next_post": {{
-                    "caption": "Text",
-                    "hashtags": ["#tag1"],
-                    "call_to_action": "Text",
-                    "visual_prompt": "Text"
-                }}
-            }}
-            
-            Text:
-            {text}
-            
-            Return ONLY the JSON object, ensuring proper syntax.
-            """
+            # If text is empty, return a fallback response immediately
+            if not text or not text.strip():
+                logger.error("Empty text provided to extract_recommendation")
+                return self._generate_fallback_response(query)
+                
+            # Try to extract structured data using Gemini's help
             if self.client:
-                response = self.client.models.generate_content(model=self.model, contents=format_prompt)
-                response_text = response.text.strip()
-                json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
-                if json_match:
-                    return json.loads(json_match.group(0))
+                try:
+                    format_prompt = f"""
+                    Convert this text into a valid JSON object with the structure:
+                    {{
+                        "primary_analysis": "Text",
+                        "competitor_analysis": {{}},
+                        "recommendations": "Text",
+                        "next_post": {{
+                            "caption": "Text",
+                            "hashtags": ["#tag1"],
+                            "call_to_action": "Text",
+                            "visual_prompt": "Text"
+                        }}
+                    }}
+                    
+                    Text:
+                    {text[:2000]}
+                    
+                    Return ONLY the JSON object with valid syntax. No markdown formatting, no backticks.
+                    """
+                    
+                    response = self.client.models.generate_content(model=self.model, contents=format_prompt)
+                    response_text = response.text.strip()
+                    
+                    # Check if response is empty
+                    if not response_text:
+                        logger.error("Empty response from formatting request")
+                        raise ValueError("Empty response from formatting request")
+                    
+                    # Parse with the main parser which already has all repair strategies
+                    recommendation = self._parse_and_repair_json(response_text, "extraction", query)
+                    if recommendation:
+                        logger.info("Successfully extracted structured data using Gemini")
+                        return recommendation
+                        
+                except Exception as e:
+                    logger.error(f"Error in reformatting with Gemini: {str(e)}")
             
             # Manual extraction as fallback
-            lines = text.split('\n')
-            caption = next((line for line in lines if len(line) > 20), f"Explore {query}!")
-            hashtags = re.findall(r'#\w+', text) or [f"#{query.replace(' ', '')}", "#Trend"]
-            cta = next((line for line in lines if any(p in line.lower() for p in ["click", "check", "visit"])), 
-                      "Join the conversation!")
+            logger.info("Using manual text extraction as fallback")
+            
+            # Extract caption - find a sentence of reasonable length
+            caption_candidates = re.findall(r'([A-Z][^.!?]{15,100}[.!?])', text)
+            caption = caption_candidates[0] if caption_candidates else f"Discover the latest in {query}!"
+            
+            # Extract hashtags - find all hashtags or create from keywords
+            hashtags = re.findall(r'#\w+', text)
+            if not hashtags:
+                # Create hashtags from keywords in the query
+                keywords = [word for word in query.split() if len(word) > 3]
+                hashtags = [f"#{word.capitalize()}" for word in keywords] or [f"#{query.replace(' ', '')}"]
+                hashtags.extend(["#Trending", "#MustSee"])
+            
+            # Extract call to action - find sentences with action verbs
+            cta_patterns = [
+                r'([^.!?]*(?:click|tap|share|comment|follow|subscribe|check|visit|explore|discover|join|shop)[^.!?]*[.!?])',
+                r'([^.!?]*(?:what|how|who|when)[^.!?]*\?)'
+            ]
+            
+            cta = None
+            for pattern in cta_patterns:
+                cta_matches = re.findall(pattern, text, re.IGNORECASE)
+                if cta_matches:
+                    cta = cta_matches[0].strip()
+                    break
+            
+            if not cta:
+                cta = f"Share your thoughts on {query} below!"
+            
+            # Find any visual description
+            visual_prompt = None
+            visual_patterns = [
+                r'(?:visual|image|photo|picture|graphic)(?:[^.!?]*)[.!?]',
+                r'[^.!?]*(?:showing|featuring|displaying|with)[^.!?]*[.!?]'
+            ]
+            
+            for pattern in visual_patterns:
+                visual_matches = re.findall(pattern, text, re.IGNORECASE)
+                if visual_matches:
+                    visual_prompt = visual_matches[0].strip()
+                    break
+            
+            if not visual_prompt:
+                visual_prompt = f"High-quality image related to {query} with vibrant colors and professional composition."
+            
+            # Construct the best structured response we can
             return {
-                "primary_analysis": text[:200] if text else "No analysis available.",
+                "primary_analysis": text[:250] if text else f"Analysis of {query} content strategy.",
                 "competitor_analysis": {},
-                "recommendations": text[200:400] if len(text) > 400 else "Use engaging visuals.",
+                "recommendations": text[250:500] if len(text) > 500 else f"Focus on {query} with engaging visuals.",
                 "next_post": {
                     "caption": caption,
-                    "hashtags": hashtags,
+                    "hashtags": hashtags[:5],  # Limit to 5 hashtags
                     "call_to_action": cta,
-                    "visual_prompt": f"Bold graphic for {query}"
+                    "visual_prompt": visual_prompt
                 }
             }
         except Exception as e:

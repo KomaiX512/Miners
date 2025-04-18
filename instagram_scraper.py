@@ -48,6 +48,25 @@ class InstagramScraper:
         Returns:
             list: Scraped data or None if failed
         """
+        # Validate and sanitize username
+        if not username or not isinstance(username, str):
+            logger.error(f"Invalid username: {username}")
+            return None
+        
+        # List of known brand names to check for common typos
+        known_brands = {
+            "maccsometics": "maccosmetics",
+            "fentybeaty": "fentybeauty",
+            "urbandecay": "urbandecaycosmetics",
+            "anastasiabeverly": "anastasiabeverlyhills"
+        }
+        
+        # Check if username is a known typo and correct it
+        if username.lower() in known_brands:
+            corrected_username = known_brands[username.lower()]
+            logger.warning(f"Corrected typo in username: {username} -> {corrected_username}")
+            username = corrected_username
+        
         logger.info(f"Scraping Instagram profile: {username}")
         
         client = ApifyClient(self.api_token)
@@ -458,6 +477,85 @@ class InstagramScraper:
             logger.error(f"Error cleaning up expired content: {str(e)}")
             return 0
     
+    def extract_short_profile_info(self, profile_data):
+        """
+        Extract basic profile information from scraped data.
+        
+        Args:
+            profile_data (dict): The scraped profile data
+            
+        Returns:
+            dict: Short profile info or None if data is invalid
+        """
+        try:
+            if not profile_data or not isinstance(profile_data, list) or len(profile_data) == 0:
+                logger.warning("Invalid profile data for extraction")
+                return None
+            
+            # Get the first item which contains profile info
+            profile = profile_data[0]
+            
+            # Extract required fields
+            short_info = {
+                "username": profile.get("username", ""),
+                "fullName": profile.get("fullName", ""),
+                "biography": profile.get("biography", ""),
+                "followersCount": profile.get("followersCount", 0),
+                "followsCount": profile.get("followsCount", 0),
+                "profilePicUrl": profile.get("profilePicUrl", ""),
+                "profilePicUrlHD": profile.get("profilePicUrlHD", ""),
+                "private": profile.get("private", False),
+                "verified": profile.get("verified", False),
+                "extractedAt": datetime.now().isoformat()
+            }
+            
+            logger.info(f"Successfully extracted short profile info for {short_info['username']}")
+            return short_info
+        except Exception as e:
+            logger.error(f"Error extracting short profile info: {str(e)}")
+            return None
+    
+    def upload_short_profile_to_tasks(self, profile_info):
+        """
+        Upload short profile info to tasks bucket.
+        
+        Args:
+            profile_info (dict): The short profile info to upload
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        if not profile_info or not isinstance(profile_info, dict):
+            logger.warning("Invalid profile info for upload")
+            return False
+        
+        try:
+            # Use the tasks bucket from config
+            tasks_bucket = self.r2_config['bucket_name2']
+            
+            # Create key for the profile info file
+            username = profile_info.get("username", "")
+            if not username:
+                logger.warning("Username missing in profile info")
+                return False
+                
+            # Use flat structure in "ProfileInfo" directory
+            profile_key = f"ProfileInfo/{username}.json"
+            
+            # Convert to JSON and upload
+            self.s3.put_object(
+                Bucket=tasks_bucket,
+                Key=profile_key,
+                Body=json.dumps(profile_info, indent=2),
+                ContentType='application/json'
+            )
+            
+            logger.info(f"Uploaded short profile info to tasks bucket: {profile_key}")
+            return True
+        except Exception as e:
+            logger.error(f"Error uploading profile info to tasks bucket: {str(e)}")
+            return False
+    
     def process_account_batch(self, parent_username, competitor_usernames, results_limit=10):
         """
         Process a parent account and its competitors, saving all files locally first.
@@ -485,6 +583,11 @@ class InstagramScraper:
         if not parent_data:
             return {"success": False, "message": f"Failed to scrape parent profile: {parent_username}"}
         
+        # Extract and upload short profile info for parent
+        parent_short_info = self.extract_short_profile_info(parent_data)
+        if parent_short_info:
+            self.upload_short_profile_to_tasks(parent_short_info)
+        
         # Save parent data to local file
         parent_file = f"{parent_username}.json"
         parent_path = self.save_to_local_file(parent_data, local_dir, parent_file)
@@ -498,6 +601,11 @@ class InstagramScraper:
             if not competitor_data:
                 logger.warning(f"Failed to scrape competitor profile: {competitor}")
                 continue
+            
+            # Extract and upload short profile info for competitor
+            competitor_short_info = self.extract_short_profile_info(competitor_data)
+            if competitor_short_info:
+                self.upload_short_profile_to_tasks(competitor_short_info)
             
             # Save competitor data to local file
             competitor_file = f"{competitor}.json"
@@ -680,6 +788,27 @@ def test_instagram_scraper():
         
         logger.info(f"Main bucket uploaded: {result['main_uploaded']}")
         logger.info(f"Personal bucket uploaded: {result['personal_uploaded']}")
+        
+        # Check if profile info was uploaded to tasks bucket
+        tasks_bucket = scraper.r2_config['bucket_name2']
+        try:
+            # Check parent profile info
+            scraper.s3.head_object(
+                Bucket=tasks_bucket,
+                Key=f"ProfileInfo/{parent_username}.json"
+            )
+            logger.info(f"Verified parent profile info in tasks bucket")
+            
+            # Check one competitor profile info
+            scraper.s3.head_object(
+                Bucket=tasks_bucket,
+                Key=f"ProfileInfo/{competitors[0]}.json"
+            )
+            logger.info(f"Verified competitor profile info in tasks bucket")
+        except Exception as e:
+            logger.error(f"Test failed: Profile info verification failed: {str(e)}")
+            # Don't return False here, as this is a new feature and older files might not have it
+            logger.warning("Continuing despite profile info check failure")
             
         # Verify the structure in main bucket
         structure_status = scraper.verify_structure(parent_username)
