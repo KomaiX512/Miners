@@ -7,7 +7,7 @@ import shutil
 import boto3
 from botocore.client import Config
 from botocore.exceptions import ClientError
-from datetime import datetime
+from datetime import datetime, timedelta
 from apify_client import ApifyClient
 from config import R2_CONFIG, LOGGING_CONFIG
 
@@ -128,6 +128,83 @@ class InstagramScraper:
             logger.error(f"Error saving data to local file: {str(e)}")
             return None
     
+    def check_directory_exists(self, parent_username, bucket_name):
+        """
+        Check if a directory for a parent username already exists in the specified bucket.
+        
+        Args:
+            parent_username (str): Username of the parent account
+            bucket_name (str): Name of the bucket to check
+            
+        Returns:
+            bool: True if directory exists, False otherwise
+        """
+        try:
+            # List objects with the parent username prefix
+            response = self.s3.list_objects_v2(
+                Bucket=bucket_name,
+                Prefix=f"{parent_username}/"
+            )
+            
+            # If there are contents, the directory exists
+            return 'Contents' in response and len(response['Contents']) > 0
+        except Exception as e:
+            logger.error(f"Error checking if directory exists in {bucket_name}: {str(e)}")
+            return False
+            
+    def check_content_matches(self, local_file_path, bucket_name, object_key):
+        """
+        Check if a local file matches a remote file using file size comparison.
+        Files are considered matching if their sizes differ by ≤20%.
+        
+        Args:
+            local_file_path (str): Path to the local file
+            bucket_name (str): Name of the bucket
+            object_key (str): Key of the object in the bucket
+            
+        Returns:
+            bool: True if content matches, False otherwise
+        """
+        try:
+            # Get local file size
+            local_size = os.path.getsize(local_file_path)
+                
+            # Get remote file info
+            try:
+                remote_obj = self.s3.head_object(
+                    Bucket=bucket_name,
+                    Key=object_key
+                )
+                remote_size = remote_obj['ContentLength']
+                
+                # Calculate the size ratio (always >= 1.0)
+                size_ratio = max(local_size, remote_size) / min(local_size, remote_size)
+                
+                # Calculate the difference percentage for logging
+                diff_percentage = (size_ratio - 1.0) * 100
+                
+                # Files match if their size ratio is at most 1.2 (20% difference)
+                # Using a tiny epsilon to account for floating point precision
+                epsilon = 0.00001
+                max_ratio = 1.2 + epsilon
+                
+                if size_ratio <= max_ratio:
+                    logger.info(f"File sizes within 20% tolerance: {local_file_path} ({local_size} bytes) vs {object_key} ({remote_size} bytes), diff: {diff_percentage:.2f}%")
+                    return True
+                else:
+                    logger.info(f"File sizes differ by more than 20%: {local_file_path} ({local_size} bytes) vs {object_key} ({remote_size} bytes), diff: {diff_percentage:.2f}%")
+                    return False
+                    
+            except ClientError as e:
+                # Object doesn't exist
+                if e.response['Error']['Code'] in ['404', 'NoSuchKey']:
+                    return False
+                raise
+                
+        except Exception as e:
+            logger.error(f"Error checking content match: {str(e)}")
+            return False
+    
     def upload_directory_to_r2(self, local_directory, r2_prefix):
         """
         Upload an entire directory to R2 storage.
@@ -177,6 +254,209 @@ class InstagramScraper:
         except Exception as e:
             logger.error(f"Failed to upload directory to R2: {str(e)}")
             return False
+            
+    def upload_directory_to_both_buckets(self, local_directory, r2_prefix):
+        """
+        Upload directory to both main and personal buckets with conditions.
+        For main bucket: only upload if content doesn't already exist
+        For personal bucket: always upload and add cleanup metadata
+        
+        Args:
+            local_directory (str): Path to the local directory
+            r2_prefix (str): Prefix to use in R2 bucket
+            
+        Returns:
+            dict: Result with success status and details
+        """
+        if not os.path.exists(local_directory):
+            logger.error(f"Local directory does not exist: {local_directory}")
+            return {"main_uploaded": False, "personal_uploaded": False, "success": False}
+            
+        # Check if directory already exists in main bucket
+        main_bucket = self.r2_config['bucket_name']
+        personal_bucket = self.r2_config['personal_bucket_name']
+        main_exists = self.check_directory_exists(r2_prefix, main_bucket)
+        main_uploaded = False
+        
+        # Only upload to main bucket if it doesn't exist or content differs
+        if not main_exists:
+            logger.info(f"Directory doesn't exist in main bucket, uploading: {r2_prefix}")
+            try:
+                # First create a directory marker
+                self.s3.put_object(
+                    Bucket=main_bucket,
+                    Key=f"{r2_prefix}/"
+                )
+                
+                # Upload all files in the directory to main bucket
+                all_files_match = True
+                for filename in os.listdir(local_directory):
+                    local_file_path = os.path.join(local_directory, filename)
+                    
+                    # Skip directories
+                    if os.path.isdir(local_file_path):
+                        continue
+                        
+                    # Check if content matches before uploading to main bucket
+                    object_key = f"{r2_prefix}/{filename}"
+                    content_matches = self.check_content_matches(local_file_path, main_bucket, object_key)
+                    
+                    if not content_matches:
+                        # Upload file to main bucket
+                        self.s3.upload_file(
+                            local_file_path,
+                            main_bucket,
+                            object_key,
+                            ExtraArgs={'ContentType': 'application/json'}
+                        )
+                        logger.info(f"Uploaded file to main bucket: {object_key}")
+                        all_files_match = False
+                    else:
+                        logger.info(f"File already exists with similar content, skipping upload: {object_key}")
+                
+                if not all_files_match:
+                    logger.info(f"Successfully uploaded directory to main bucket: {r2_prefix}/")
+                    main_uploaded = True
+                else:
+                    logger.info(f"All files already exist in main bucket with matching content, skipping upload")
+            except Exception as e:
+                logger.error(f"Failed to upload directory to main bucket: {str(e)}")
+        else:
+            logger.info(f"Directory already exists in main bucket, checking content: {r2_prefix}")
+            # Check if content matches for each file
+            content_differs = False
+            match_count = 0
+            total_files = 0
+            
+            for filename in os.listdir(local_directory):
+                local_file_path = os.path.join(local_directory, filename)
+                
+                # Skip directories
+                if os.path.isdir(local_file_path):
+                    continue
+                    
+                total_files += 1
+                # Check if content matches
+                object_key = f"{r2_prefix}/{filename}"
+                if not self.check_content_matches(local_file_path, main_bucket, object_key):
+                    content_differs = True
+                    # Upload file to main bucket if content differs
+                    self.s3.upload_file(
+                        local_file_path,
+                        main_bucket,
+                        object_key,
+                        ExtraArgs={'ContentType': 'application/json'}
+                    )
+                    logger.info(f"Content differs, uploaded file to main bucket: {object_key}")
+                else:
+                    match_count += 1
+                    logger.info(f"Content matches within tolerance, no upload needed: {object_key}")
+                    
+            if content_differs:
+                logger.info(f"Some files had different content ({total_files-match_count}/{total_files}), updated in main bucket: {r2_prefix}/")
+                main_uploaded = True
+            else:
+                logger.info(f"All content matches within tolerance ({match_count}/{total_files}), no upload needed")
+        
+        # Always upload to personal bucket with cleanup metadata
+        personal_uploaded = False
+        try:
+            # Set expiration timestamp (24 hours from now)
+            expiration_time = (datetime.now() + timedelta(days=1)).isoformat()
+            
+            # Create a directory marker with metadata
+            self.s3.put_object(
+                Bucket=personal_bucket,
+                Key=f"{r2_prefix}/",
+                Metadata={
+                    'expiration-time': expiration_time
+                }
+            )
+            
+            # Upload all files in the directory to personal bucket
+            for filename in os.listdir(local_directory):
+                local_file_path = os.path.join(local_directory, filename)
+                
+                # Skip directories
+                if os.path.isdir(local_file_path):
+                    continue
+                    
+                # Upload file to personal bucket with metadata
+                object_key = f"{r2_prefix}/{filename}"
+                self.s3.upload_file(
+                    local_file_path,
+                    personal_bucket,
+                    object_key,
+                    ExtraArgs={
+                        'ContentType': 'application/json',
+                        'Metadata': {
+                            'expiration-time': expiration_time
+                        }
+                    }
+                )
+            
+            logger.info(f"Successfully uploaded directory to personal bucket with expiration: {r2_prefix}/")
+            personal_uploaded = True
+            
+        except Exception as e:
+            logger.error(f"Failed to upload directory to personal bucket: {str(e)}")
+        
+        return {
+            "main_uploaded": main_uploaded,
+            "personal_uploaded": personal_uploaded,
+            "success": main_uploaded or personal_uploaded
+        }
+    
+    def cleanup_expired_personal_content(self):
+        """
+        Clean up expired content from the personal bucket that is older than 24 hours.
+        
+        Returns:
+            int: Number of objects cleaned up
+        """
+        try:
+            personal_bucket = self.r2_config['personal_bucket_name']
+            current_time = datetime.now()
+            cleaned_count = 0
+            
+            # List all objects in the personal bucket
+            paginator = self.s3.get_paginator('list_objects_v2')
+            for page in paginator.paginate(Bucket=personal_bucket):
+                if 'Contents' not in page:
+                    continue
+                    
+                for obj in page['Contents']:
+                    key = obj['Key']
+                    
+                    try:
+                        # Get object metadata to check expiration
+                        response = self.s3.head_object(
+                            Bucket=personal_bucket,
+                            Key=key
+                        )
+                        
+                        if 'Metadata' in response and 'expiration-time' in response['Metadata']:
+                            expiration_str = response['Metadata']['expiration-time']
+                            expiration_time = datetime.fromisoformat(expiration_str)
+                            
+                            # If expired, delete the object
+                            if current_time > expiration_time:
+                                self.s3.delete_object(
+                                    Bucket=personal_bucket,
+                                    Key=key
+                                )
+                                cleaned_count += 1
+                                logger.info(f"Cleaned up expired object: {key}")
+                    except Exception as e:
+                        logger.error(f"Error processing object {key}: {str(e)}")
+                        continue
+            
+            logger.info(f"Cleaned up {cleaned_count} expired objects from personal bucket")
+            return cleaned_count
+            
+        except Exception as e:
+            logger.error(f"Error cleaning up expired content: {str(e)}")
+            return 0
     
     def process_account_batch(self, parent_username, competitor_usernames, results_limit=10):
         """
@@ -228,18 +508,25 @@ class InstagramScraper:
                 
             logger.info(f"Successfully processed competitor: {competitor}")
         
-        # Upload entire directory to R2
-        if self.upload_directory_to_r2(local_dir, parent_username):
-            # Clean up local directory
-            try:
-                shutil.rmtree(local_dir)
-                logger.info(f"Removed local directory: {local_dir}")
-            except Exception as e:
-                logger.warning(f"Failed to remove local directory {local_dir}: {str(e)}")
-                
+        # Upload to both buckets with condition checking
+        upload_result = self.upload_directory_to_both_buckets(local_dir, parent_username)
+        
+        # Clean up local directory
+        try:
+            shutil.rmtree(local_dir)
+            logger.info(f"Removed local directory: {local_dir}")
+        except Exception as e:
+            logger.warning(f"Failed to remove local directory {local_dir}: {str(e)}")
+        
+        # Clean up expired content in personal bucket
+        self.cleanup_expired_personal_content()
+        
+        if upload_result["success"]:
             return {
                 "success": True,
-                "message": f"Successfully processed account batch for: {parent_username}"
+                "message": f"Successfully processed account batch for: {parent_username}",
+                "main_uploaded": upload_result["main_uploaded"],
+                "personal_uploaded": upload_result["personal_uploaded"]
             }
         else:
             return {"success": False, "message": f"Failed to upload directory to R2: {parent_username}"}
@@ -385,21 +672,46 @@ def test_instagram_scraper():
         parent_username = "humansofny"
         competitors = ["natgeo", "instagram"]
         
-        # Process entire batch
+        # Process entire batch with dual bucket upload
         result = scraper.process_account_batch(parent_username, competitors, results_limit=5)
         if not result["success"]:
             logger.error(f"Test failed: {result['message']}")
             return False
+        
+        logger.info(f"Main bucket uploaded: {result['main_uploaded']}")
+        logger.info(f"Personal bucket uploaded: {result['personal_uploaded']}")
             
-        # Verify the structure
+        # Verify the structure in main bucket
         structure_status = scraper.verify_structure(parent_username)
         if not all([structure_status.get(f"{parent_username}/{parent_username}.json"), 
                    structure_status.get(f"{parent_username}/competitor1.json"),
                    structure_status.get(f"{parent_username}/competitor2.json")]):
-            logger.error(f"Test failed: Structure verification failed")
+            logger.error(f"Test failed: Structure verification failed in main bucket")
             return False
         
-        logger.info("Test successful: All accounts processed correctly with proper directory structure")
+        # Verify existence in personal bucket
+        personal_bucket = scraper.r2_config['personal_bucket_name']
+        try:
+            # Check parent file
+            scraper.s3.head_object(
+                Bucket=personal_bucket,
+                Key=f"{parent_username}/{parent_username}.json"
+            )
+            # Check at least one competitor file
+            scraper.s3.head_object(
+                Bucket=personal_bucket,
+                Key=f"{parent_username}/{competitors[0]}.json"
+            )
+            logger.info(f"Verified content in personal bucket")
+        except Exception as e:
+            logger.error(f"Test failed: Personal bucket verification failed: {str(e)}")
+            return False
+        
+        # Test cleanup (just call it, don't actually clean for test purposes)
+        cleanup_count = scraper.cleanup_expired_personal_content()
+        logger.info(f"Cleanup test found {cleanup_count} expired objects")
+        
+        logger.info("Test successful: All accounts processed correctly with proper directory structure in both buckets")
         return True
     except Exception as e:
         logger.error(f"Test failed with exception: {str(e)}")
@@ -407,5 +719,11 @@ def test_instagram_scraper():
 
 if __name__ == "__main__":
     scraper = InstagramScraper()
+    # Run cleanup on startup
+    logger.info(f"Cleaning up expired content from personal bucket")
+    cleaned = scraper.cleanup_expired_personal_content()
+    logger.info(f"Cleaned {cleaned} expired objects")
+    
+    # Process usernames
     processed = scraper.retrieve_and_process_usernames()
     logger.info(f"Processed {len(processed)} parent accounts")

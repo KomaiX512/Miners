@@ -6,6 +6,7 @@ R2_CONFIG = {
     'aws_access_key_id': 'b94be077bc48dcc2aec3e4331233327e',
     'aws_secret_access_key': '791d5eeddcd8ed5bf3f41bfaebbd37e58af7dcb12275b1422747605d7dc75bc4',
     'bucket_name': 'structuredb',
+    'personal_bucket_name': 'miner',  # Personal bucket for miner validation
     'bucket_name2': 'tasks'
 }
 

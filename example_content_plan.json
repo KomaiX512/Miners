@@ -1,0 +1,332 @@
+{
+  "primary_username": "maccosmetics",
+  "competitors": [
+    "anastasiabeverlyhills",
+    "fentybeauty"
+  ],
+  "generated_at": "2025-04-18T01:28:43.320759",
+  "query": "Summer makeup collection",
+  "trending_topics": [
+    {
+      "date": "2025-04-18",
+      "value": 1000,
+      "topic": "Spring Makeup Essentials"
+    },
+    {
+      "date": "2025-04-19",
+      "value": 950,
+      "topic": "Bold Lip Colors"
+    },
+    {
+      "date": "2025-04-20",
+      "value": 900,
+      "topic": "Natural Skincare Routines"
+    },
+    {
+      "date": "2025-04-21",
+      "value": 850,
+      "topic": "Eye Palette Trends"
+    },
+    {
+      "date": "2025-04-22",
+      "value": 800,
+      "topic": "Sustainable Beauty Products"
+    }
+  ],
+  "account_analysis": {
+    "account_type": {
+      "account_type": "Personal",
+      "confidence": 60,
+      "analysis": "Personal use likely: Only 1/2 posts suggest business intent."
+    },
+    "engagement_metrics": {
+      "content_type_analysis": {
+        "photo": {
+          "count": 2,
+          "total_engagement": 2000,
+          "avg_engagement": 1000.0
+        }
+      },
+      "category_analysis": {},
+      "best_type": "photo",
+      "best_category": null,
+      "summary": "Best content type: photo (avg engagement: 1000.0). Best category: N/A (avg engagement: 0.0)."
+    },
+    "posting_trends": {
+      "most_active_day": "Friday",
+      "most_active_hour": "1 AM",
+      "posts_per_day": 1.0,
+      "day_distribution": {
+        "Friday": 1,
+        "Thursday": 1
+      },
+      "hour_distribution": {
+        "1": 2
+      },
+      "high_activity_months": {
+        "Apr": 2
+      },
+      "summary": "Most active: Fridays at 1 AM. Frequency: 1.0 posts/day. High activity: Apr."
+    },
+    "top_hashtags": {
+      "#SummerFashion": 1,
+      "#NewProduct": 1
+    },
+    "hashtag_effectiveness": {
+      "top_hashtags": {
+        "#SummerFashion": {
+          "count": 2,
+          "total_engagement": 2400,
+          "avg_engagement": 1200.0
+        },
+        "#Trending": {
+          "count": 1,
+          "total_engagement": 1200,
+          "avg_engagement": 1200.0
+        },
+        "#NewProduct": {
+          "count": 2,
+          "total_engagement": 1600,
+          "avg_engagement": 800.0
+        },
+        "#Promotion": {
+          "count": 1,
+          "total_engagement": 800,
+          "avg_engagement": 800.0
+        }
+      },
+      "summary": "Top 5 hashtags by avg engagement: #SummerFashion, #Trending, #NewProduct, #Promotion"
+    }
+  },
+  "account_info": {
+    "maccosmetics": {
+      "followers": 0,
+      "following": 0,
+      "profile_image": "unavailable",
+      "bio": "unavailable"
+    },
+    "anastasiabeverlyhills": {
+      "followers": 0,
+      "following": 0,
+      "profile_image": "unavailable",
+      "bio": "unavailable"
+    },
+    "fentybeauty": {
+      "followers": 0,
+      "following": 0,
+      "profile_image": "unavailable",
+      "bio": "unavailable"
+    }
+  },
+  "competitor_analysis": {
+    "anastasiabeverlyhills": "Without post data, it's impossible to provide specific analysis. However, generally, ABH has a strong history of brow-focused content. This is a potential area for MAC to either counter or differentiate from. Given the brand's name, brow tutorials, brow product showcases, and before-and-after brow transformations are likely core to their content strategy. Secondly, collaborative content with makeup artists and influencers has likely been a key strategy. MAC can counter this by engaging with a broader range of artists, including emerging talents. Thirdly, ABH likely leverages user-generated content (UGC) heavily, showcasing diverse looks created by their customers. MAC should implement a UGC strategy, actively encouraging and highlighting customer content to build community and trust.",
+    "fentybeauty": "Without post data, specific analysis is impossible. However, Fenty Beauty likely prioritizes inclusivity and diversity in its campaigns and product showcases. This is a critical area for MAC to match or exceed. This would likely manifest as features with diverse skin tones, body types, and gender identities. Secondly, Given Rihanna's involvement, celebrity endorsements and collaborations are likely a key part of Fenty Beauty's strategy. MAC should consider strategic partnerships with relevant celebrities or influencers aligned with their brand. Thirdly, Fenty Beauty likely leverages short-form video content (e.g., TikTok, Reels) to showcase product application and highlight the brand's values. MAC should prioritize creating engaging, shareable video content optimized for these platforms."
+  },
+  "strategies": "Given the absence of actual post data, the strategies are built on general competitor knowledge within the beauty industry. MAC needs to aggressively pursue a UGC campaign, soliciting and reposting user-generated content showcasing diverse looks created with MAC products. This directly combats the assumed UGC strategy of ABH and Fenty. Simultaneously, MAC should create short, visually compelling tutorial videos focusing on trending makeup looks using primarily MAC products, addressing the video content likely favored by Fenty. To differentiate from both, MAC should launch a series of 'MAC Artist Spotlight' posts, highlighting the work of both established and emerging makeup artists using MAC products, providing them with visibility and solidifying MAC's reputation as a brand supporting artistry. This will counter the influencer collaborations of both brands but with a focus on skilled artists.",
+  "post_prediction": {
+    "visual_prompt": "A close-up shot of a diverse individual (various skin tones, gender expressions) with a bold, artistic makeup look primarily using MAC products. The look should be trendy (e.g., graphic liner, dewy skin, monochromatic color scheme) and impeccably executed. Focus on high-quality lighting to showcase the texture and color payoff of the makeup.",
+    "caption": "Unleash your inner artist! \u2728 We're obsessed with this stunning look created by @[MakeupArtistUsername] using all MAC everything. Get inspired and tag us in your own MAC creations for a chance to be featured! #MACArtistSpotlight",
+    "hashtags": [
+      "#MACMakeup",
+      "#MakeupArtist",
+      "#GraphicLiner",
+      "#DewySkin",
+      "#MonochromaticMakeup",
+      "#MakeupInspiration",
+      "#BeautyCommunity",
+      "#MACCosmetics",
+      "#MakeupTutorial",
+      "#BeautyHacks"
+    ],
+    "call_to_action": "Ready to create your own masterpiece? Shop the featured products and discover more artistry inspiration at the link in bio! Show us your looks! #MACArtistSpotlight"
+  },
+  "additional_insights": {
+    "competitor_metrics": {},
+    "content_categories": []
+  },
+  "batch_recommendations": {
+    "Spring Makeup Essentials": [
+      {
+        "caption": "Bloom into Spring with these must-have makeup essentials! \ud83c\udf38 Get the dewy, fresh-faced look that's trending. Pro Tip: Layering is key for that effortless glow!",
+        "hashtags": [
+          "#SpringMakeup",
+          "#DewySkin",
+          "#FreshFace"
+        ],
+        "visual_concept": "Flatlay of spring makeup essentials (lightweight foundation, pastel eyeshadow palette, tinted lip balm, cream blush, setting spray) arranged on a floral background.",
+        "call_to_action": "Shop the Spring Edit and get a FREE mini setting spray with your first order!",
+        "visual_prompt": "Flatlay of spring makeup essentials (lightweight foundation, pastel eyeshadow palette, tinted lip balm, cream blush, setting spray) arranged on a floral background."
+      },
+      {
+        "caption": "Spring Cleaning your makeup bag? \ud83c\udf37 Swap out your heavy formulas for lightweight, breathable textures. Think tinted moisturizers, cream blushes, and buildable bronzers for a sun-kissed glow.",
+        "hashtags": [
+          "#SpringMakeupEssentials",
+          "#LightweightMakeup",
+          "#SunKissedSkin"
+        ],
+        "visual_concept": "Split screen showing heavy winter makeup on one side and light spring makeup on the other. Focus on texture differences.",
+        "call_to_action": "Upgrade your routine! Use code SPRING20 for 20% off our entire lightweight collection.",
+        "visual_prompt": "Split screen showing heavy winter makeup on one side and light spring makeup on the other. Focus on texture differences."
+      },
+      {
+        "caption": "Unlock your Springtime radiance! \u2728 Discover our curated collection of makeup essentials designed to enhance your natural beauty. Less is more this season!",
+        "hashtags": [
+          "#SpringBeauty",
+          "#NaturalMakeup",
+          "#RadiantSkin"
+        ],
+        "visual_concept": "Short video tutorial demonstrating a quick and easy spring makeup look using minimal products. Emphasize natural lighting and a fresh-faced finish.",
+        "call_to_action": "Click the link in bio to watch the full tutorial and shop the products used!",
+        "visual_prompt": "Short video tutorial demonstrating a quick and easy spring makeup look using minimal products. Emphasize natural lighting and a fresh-faced finish."
+      }
+    ],
+    "Bold Lip Colors": [
+      {
+        "caption": "Make a statement this season with bold lip colors! \ud83d\udc8b From classic reds to vibrant berries, find your perfect power pout. #LipObsessed #BoldLips",
+        "hashtags": [
+          "#BoldLipstick",
+          "#PowerPout",
+          "#StatementLips"
+        ],
+        "visual_concept": "A collage showcasing different models with various bold lip colors and skin tones. Emphasize diversity and inclusivity.",
+        "call_to_action": "Which shade is your power color? Tell us in the comments and get a chance to win a free lipstick!",
+        "visual_prompt": "A collage showcasing different models with various bold lip colors and skin tones. Emphasize diversity and inclusivity."
+      },
+      {
+        "caption": "Level up your lip game! \ud83d\udd25 Dive into our new collection of bold lip colors formulated for long-lasting wear and intense pigment. Vegan & Cruelty-Free!",
+        "hashtags": [
+          "#VeganLipstick",
+          "#CrueltyFreeBeauty",
+          "#LipGoals"
+        ],
+        "visual_concept": "Close-up shot of a lipstick bullet being swatched on a hand, showcasing the rich pigmentation and smooth texture.",
+        "call_to_action": "Shop our NEW Bold Lip Collection and get a FREE matching lip liner with your purchase!",
+        "visual_prompt": "Close-up shot of a lipstick bullet being swatched on a hand, showcasing the rich pigmentation and smooth texture."
+      },
+      {
+        "caption": "Bold lips are ALWAYS in season. \ud83d\udc84 Discover our favorite bold lip colors for any occasion. From date night to brunch, we've got you covered. #LipInspo",
+        "hashtags": [
+          "#LipstickAddict",
+          "#DateNightMakeup",
+          "#BrunchLook"
+        ],
+        "visual_concept": "A carousel post showcasing different bold lip colors in various settings (date night, brunch, office).",
+        "call_to_action": "Swipe to find your perfect shade and tag us in your bold lip looks! #BrandName",
+        "visual_prompt": "A carousel post showcasing different bold lip colors in various settings (date night, brunch, office)."
+      }
+    ],
+    "Natural Skincare Routines": [
+      {
+        "caption": "Unlock your best skin with our simple, yet effective natural skincare routine! \ud83c\udf3f Gentle ingredients for a healthy, glowing complexion. #CleanBeauty",
+        "hashtags": [
+          "#NaturalSkincare",
+          "#CleanBeauty",
+          "#HealthySkin"
+        ],
+        "visual_concept": "Aesthetic flatlay of natural skincare products (cleanser, toner, serum, moisturizer) arranged on a wooden surface with green leaves.",
+        "call_to_action": "Discover our curated natural skincare routine and receive 15% off your first order with code: NATURAL15",
+        "visual_prompt": "Aesthetic flatlay of natural skincare products (cleanser, toner, serum, moisturizer) arranged on a wooden surface with green leaves."
+      },
+      {
+        "caption": "Sensitive skin? We've got you covered! \ud83c\udf31 Our natural skincare routine is formulated with gentle, non-irritating ingredients to soothe and nourish your skin. #SensitiveSkinCare",
+        "hashtags": [
+          "#SensitiveSkin",
+          "#SoothingSkincare",
+          "#GentleSkincare"
+        ],
+        "visual_concept": "Close-up of a person with sensitive skin applying a calming natural serum, focusing on the gentle application and texture.",
+        "call_to_action": "Shop our Sensitive Skin Starter Kit and experience the difference!",
+        "visual_prompt": "Close-up of a person with sensitive skin applying a calming natural serum, focusing on the gentle application and texture."
+      },
+      {
+        "caption": "Embrace a minimalist approach to skincare with our natural routine. \ud83d\udca7 Less is more when it comes to achieving healthy, radiant skin. #Skinimalism",
+        "hashtags": [
+          "#MinimalistSkincare",
+          "#RadiantSkin",
+          "#SimpleSkincare"
+        ],
+        "visual_concept": "Short video demonstrating a quick and easy 3-step natural skincare routine. Emphasize the simplicity and effectiveness of the routine.",
+        "call_to_action": "Watch the full routine and shop our essential natural skincare products.",
+        "visual_prompt": "Short video demonstrating a quick and easy 3-step natural skincare routine. Emphasize the simplicity and effectiveness of the routine."
+      }
+    ],
+    "Eye Palette Trends": [
+      {
+        "caption": "Obsessed with the latest eye palette trends! \u2728 From bold brights to subtle neutrals, find the perfect palette to express your unique style. #EyeMakeup",
+        "hashtags": [
+          "#EyeshadowPalette",
+          "#EyeMakeupTrends",
+          "#MakeupLover"
+        ],
+        "visual_concept": "Swatches of different eyeshadow palettes, showcasing the range of colors and textures.",
+        "call_to_action": "Tell us your favorite eye palette trend in the comments and get a chance to win a new palette!",
+        "visual_prompt": "Swatches of different eyeshadow palettes, showcasing the range of colors and textures."
+      },
+      {
+        "caption": "Unleash your inner artist with our NEW collection of eye palettes! \ud83c\udfa8 Explore endless possibilities with highly pigmented and blendable shades. #PalettePerfection",
+        "hashtags": [
+          "#PigmentedEyeshadow",
+          "#BlendableEyeshadow",
+          "#EyeshadowLooks"
+        ],
+        "visual_concept": "A stunning eye makeup look created using one of the brand's new eyeshadow palettes, highlighting the versatility of the colors.",
+        "call_to_action": "Shop our new collection and create your own masterpiece!",
+        "visual_prompt": "A stunning eye makeup look created using one of the brand's new eyeshadow palettes, highlighting the versatility of the colors."
+      },
+      {
+        "caption": "Trending now: Monochromatic eye looks! \ud83d\udc96 Discover our favorite monochromatic palettes for creating effortlessly chic and sophisticated eye makeup. #MonochromeMakeup",
+        "hashtags": [
+          "#MonochromaticEyeshadow",
+          "#ChicMakeup",
+          "#SophisticatedMakeup"
+        ],
+        "visual_concept": "Carousel post showcasing different monochromatic eye looks using various shades of pink, brown, and purple.",
+        "call_to_action": "Swipe to discover your perfect monochromatic palette and get inspired!",
+        "visual_prompt": "Carousel post showcasing different monochromatic eye looks using various shades of pink, brown, and purple."
+      }
+    ],
+    "Sustainable Beauty Products": [
+      {
+        "caption": "Beauty that's good for you and the planet! \ud83c\udf0e Explore our range of sustainable beauty products that are ethically sourced and eco-friendly. #SustainableBeauty",
+        "hashtags": [
+          "#EcoFriendlyBeauty",
+          "#EthicalBeauty",
+          "#GreenBeauty"
+        ],
+        "visual_concept": "A beautifully styled shot of sustainable beauty products (packaged in eco-friendly materials) surrounded by natural elements like plants and flowers.",
+        "call_to_action": "Shop our Sustainable Beauty Collection and make a positive impact!",
+        "visual_prompt": "A beautifully styled shot of sustainable beauty products (packaged in eco-friendly materials) surrounded by natural elements like plants and flowers."
+      },
+      {
+        "caption": "Reduce, reuse, recycle: our commitment to sustainable beauty. \u267b\ufe0f Learn how we're minimizing our environmental footprint with refillable packaging and ethically sourced ingredients. #ZeroWasteBeauty",
+        "hashtags": [
+          "#RefillableBeauty",
+          "#EthicallySourced",
+          "#EcoConscious"
+        ],
+        "visual_concept": "A video showcasing the brand's efforts towards sustainability, including refillable packaging options and responsible sourcing practices.",
+        "call_to_action": "Watch the video to learn more about our sustainability initiatives and join us on our journey to a greener future!",
+        "visual_prompt": "A video showcasing the brand's efforts towards sustainability, including refillable packaging options and responsible sourcing practices."
+      },
+      {
+        "caption": "Conscious beauty choices for a brighter future. \u2728 Discover our favorite sustainable beauty swaps for a more eco-friendly routine. #CleanBeautyRevolution",
+        "hashtags": [
+          "#ConsciousBeauty",
+          "#EcoFriendlySwaps",
+          "#SustainableLiving"
+        ],
+        "visual_concept": "A before-and-after comparison showing traditional beauty products next to their sustainable alternatives.",
+        "call_to_action": "Swipe to discover our sustainable beauty swaps and start your journey to a greener routine today!",
+        "visual_prompt": "A before-and-after comparison showing traditional beauty products next to their sustainable alternatives."
+      }
+    ]
+  },
+  "profile_analysis": {
+    "username": "maccosmetics",
+    "fullName": "Sample User",
+    "followersCount": 10000,
+    "followsCount": 500,
+    "biography": "Testing profile.",
+    "account_type": "unknown"
+  }
+}
