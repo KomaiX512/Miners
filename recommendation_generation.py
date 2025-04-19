@@ -241,22 +241,6 @@ class RecommendationGenerator:
                     recommendations[topic] = topic_recs
             
             logger.info(f"Generated recommendations for {len(valid_topics)} topics")
-
-            # Look for differentiation language in recommendations
-            if isinstance(recommendations, str):
-                diff_markers = ['different', 'unique', 'stand out', 'unlike', 'distinguish', 'separate']
-                for marker in diff_markers:
-                    sentences = re.findall(r'[^.!?]*(?<=[.!?\s])' + marker + r'[^.!?]*[.!?]', recommendations, re.IGNORECASE)
-                    factors.extend(sentences)
-
-            # Add primary username to account analysis
-            if primary_username:
-                account_analysis['username'] = primary_username
-                
-            # Store secondary usernames as competitors
-            if secondary_usernames:
-                account_analysis['competitors'] = secondary_usernames
-            
             return recommendations
         except Exception as e:
             logger.error(f"Critical error in generate_recommendations: {str(e)}")
@@ -950,11 +934,12 @@ class RecommendationGenerator:
                 posting_trends = {'summary': 'No posting trend analysis available'}  # Add default
             
             # Determine if this is a branding or non-branding account
-            # Explicitly use the is_branding flag from data if available
-            is_branding = data.get('is_branding', False)
-            
-            # If is_branding flag is not provided, determine from account_type
-            if not isinstance(is_branding, bool):
+            # Respect any explicit account_type setting from the data parameter
+            if 'account_type' in data and data['account_type']:
+                is_branding = data['account_type'].lower() == 'branding'
+                logger.info(f"Using provided account_type from data: {'branding' if is_branding else 'non-branding'}")
+            else:
+                # If not explicitly provided, determine from account_analysis
                 account_type = account_analysis.get('account_type', 'Unknown')
                 is_branding = False
                 if isinstance(account_type, str) and account_type.lower() == 'business/brand':
@@ -1035,7 +1020,7 @@ class RecommendationGenerator:
                     'recommendations': recommendations,
                     'improvement_recommendations': improvement_recs,
                     'competitors': competitors,
-                    'account_type': 'branding'
+                    'account_type': 'branding'  # Explicitly set account_type
                 })
             else:
                 # NON-BRANDING ACCOUNT FLOW
@@ -1086,7 +1071,7 @@ class RecommendationGenerator:
                     'recommendations': recommendations,
                     'news_articles': news_articles,
                     'engagement_strategies': engagement_strategies,
-                    'account_type': 'non-branding'
+                    'account_type': 'non-branding'  # Explicitly set account_type
                 })
             
             logger.info(f"Generated content plan for {'branding' if is_branding else 'non-branding'} account type")

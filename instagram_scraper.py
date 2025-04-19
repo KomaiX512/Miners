@@ -35,6 +35,8 @@ class InstagramScraper:
             aws_secret_access_key=self.r2_config['aws_secret_access_key'],  # Updated
             config=Config(signature_version='s3v4')
         )
+        self.running = False
+        self.last_check_time = None
     
     def scrape_profile(self, username, results_limit=10):
         """Scrape Instagram profile using Apify."""
@@ -598,6 +600,100 @@ class InstagramScraper:
         except Exception as e:
             logger.error(f"Error in scrape_and_upload for {username}: {str(e)}")
             return {"success": False, "message": str(e)}
+    
+    def continuous_processing_loop(self, sleep_interval=86400, check_interval=300):
+        """
+        Continuously process info.json files in an event-driven manner.
+        
+        Args:
+            sleep_interval: Time to sleep after processing all files (in seconds, default 24 hours)
+            check_interval: Time to wait between checks for new files during sleep (in seconds, default 5 minutes)
+        """
+        self.running = True
+        logger.info(f"Starting continuous processing loop with sleep interval of {sleep_interval} seconds")
+        
+        try:
+            while self.running:
+                # Process all pending info.json files
+                processed_count = 0
+                while True:
+                    processed = self.retrieve_and_process_usernames()
+                    if not processed:
+                        # No more pending files to process
+                        break
+                    processed_count += len(processed)
+                    logger.info(f"Processed {len(processed)} accounts, total in this cycle: {processed_count}")
+                
+                logger.info(f"All pending files processed. Entering sleep mode for {sleep_interval} seconds")
+                self.last_check_time = datetime.now()
+                
+                # Sleep with periodic checks for new files
+                sleep_start_time = datetime.now()
+                while (datetime.now() - sleep_start_time).total_seconds() < sleep_interval:
+                    # Check if enough time has passed since the last check
+                    if (datetime.now() - self.last_check_time).total_seconds() >= check_interval:
+                        # Check for new pending files
+                        logger.info("Checking for new files during sleep period")
+                        new_files_exist = self._check_for_new_pending_files()
+                        self.last_check_time = datetime.now()
+                        
+                        if new_files_exist:
+                            logger.info("New pending files detected during sleep, processing now")
+                            processed = self.retrieve_and_process_usernames()
+                            if processed:
+                                logger.info(f"Processed {len(processed)} new accounts during sleep period")
+                    
+                    # Sleep for a short time before checking again
+                    time.sleep(10)  # Check every 10 seconds if we need to do the full check
+                
+                logger.info("Sleep interval completed, restarting processing cycle")
+                
+                # Clean up expired content before starting new cycle
+                self.cleanup_expired_personal_content()
+                
+        except KeyboardInterrupt:
+            logger.info("Processing loop interrupted by user")
+            self.running = False
+        except Exception as e:
+            logger.error(f"Error in continuous processing loop: {str(e)}")
+            self.running = False
+            raise
+    
+    def _check_for_new_pending_files(self):
+        """Check if there are any new pending info.json files."""
+        tasks_bucket = self.r2_config['bucket_name2']
+        prefix = "AccountInfo/"
+        
+        try:
+            response = self.s3.list_objects_v2(
+                Bucket=tasks_bucket,
+                Prefix=prefix,
+                MaxKeys=10  # Just need to check if any exist, don't need all
+            )
+            
+            if 'Contents' not in response:
+                return False
+                
+            for obj in response['Contents']:
+                if obj['Key'].endswith('/info.json'):
+                    # Download the file to check its status
+                    info_key = obj['Key']
+                    file_response = self.s3.get_object(Bucket=tasks_bucket, Key=info_key)
+                    info_data = json.loads(file_response['Body'].read().decode('utf-8'))
+                    
+                    # If status is pending, we have a new file to process
+                    if info_data.get('status', 'pending') == 'pending':
+                        return True
+            
+            return False
+        except Exception as e:
+            logger.error(f"Error checking for new pending files: {str(e)}")
+            return False
+    
+    def stop_processing(self):
+        """Stop the continuous processing loop safely."""
+        logger.info("Stopping continuous processing loop")
+        self.running = False
 
 def test_instagram_scraper():
     """Test the Instagram scraper with a single account."""
@@ -634,5 +730,17 @@ if __name__ == "__main__":
     cleaned = scraper.cleanup_expired_personal_content()
     logger.info(f"Cleaned {cleaned} expired objects")
     
-    processed = scraper.retrieve_and_process_usernames()
-    logger.info(f"Processed {len(processed)} parent accounts")
+    try:
+        # Start the continuous processing loop with configurable intervals
+        # Default: 24 hours (86400 seconds) sleep between full cycles
+        # Check for new files every 5 minutes (300 seconds) during sleep
+        scraper.continuous_processing_loop(
+            sleep_interval=86400,  # 24 hours
+            check_interval=300     # 5 minutes
+        )
+    except KeyboardInterrupt:
+        logger.info("Script interrupted by user")
+    except Exception as e:
+        logger.error(f"Error in main process: {str(e)}")
+    finally:
+        logger.info("Instagram scraper process ended")

@@ -19,6 +19,8 @@ from instagram_scraper import InstagramScraper
 import re
 import asyncio
 import traceback
+import time
+import threading
 
 
 # Set up logging
@@ -27,6 +29,55 @@ logging.basicConfig(
     format=LOGGING_CONFIG['format']
 )
 logger = logging.getLogger(__name__)
+
+def run_module2():
+    """
+    Run the Module2 functionality in a separate process.
+    This launches the image generator and query handler modules.
+    """
+    try:
+        logger.info("Starting Module2 (Image Generator and Query Handler)")
+        
+        # Use subprocess to run Module2 as a completely separate process
+        # This ensures it uses its own imports and configuration
+        import subprocess
+        module2_path = os.path.join(os.path.dirname(__file__), 'Module2')
+        module2_main = os.path.join(module2_path, 'main.py')
+        
+        if os.path.exists(module2_main):
+            # Run the Module2 main.py as a separate process
+            process = subprocess.Popen(
+                [sys.executable, module2_main],
+                cwd=module2_path  # Set working directory to Module2
+            )
+            logger.info(f"Started Module2 as separate process (PID: {process.pid})")
+            return process
+        else:
+            logger.error(f"Module2 main.py not found at: {module2_main}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Error running Module2: {str(e)}")
+        logger.error(traceback.format_exc())
+        return None
+
+def start_module2_thread():
+    """Start Module2 in a separate thread."""
+    def module2_thread_func():
+        process = run_module2()
+        if process:
+            # Wait for the process in this thread
+            try:
+                process.wait()
+            except KeyboardInterrupt:
+                logger.info("Stopping Module2 process")
+                process.terminate()
+    
+    thread = threading.Thread(target=module2_thread_func)
+    thread.daemon = True  # Allow thread to be terminated when main program exits
+    thread.start()
+    logger.info("Module2 thread started")
+    return thread
 
 class ContentRecommendationSystem:
     """Class for the complete content recommendation system."""
@@ -114,7 +165,15 @@ class ContentRecommendationSystem:
 
             account_data = raw_data[0]
             logger.info(f"Instagram data keys: {list(account_data.keys())}")
-
+            
+            # DIRECTLY USE VALUES FROM INSTAGRAM SCRAPER - CRITICAL PRIORITY
+            # Extract these values first and don't override them
+            account_type = account_data.get('accountType')
+            posting_style = account_data.get('postingStyle')
+            
+            logger.info(f"EXTRACTED FROM INSTAGRAM SCRAPER - account_type: {account_type}, posting_style: {posting_style}")
+            
+            # Process posts and engagement history
             posts = []
             engagement_history = []
 
@@ -162,46 +221,17 @@ class ContentRecommendationSystem:
                 logger.info(f"Created {len(engagement_history)} synthetic engagement records")
 
             engagement_history.sort(key=lambda x: x['timestamp'])
-
-            # Extract account type and posting style if available in account_data
-            account_type = account_data.get('account_type', '')
-            posting_style = account_data.get('posting_style', '')
             
-            # Check if these values are missing but perhaps available in other fields
-            if not account_type and 'accountType' in account_data:
-                account_type = account_data.get('accountType', '')
+            # Only use default values if nothing was found, with clear warnings
+            if account_type is None:
+                account_type = 'unknown'
+                logger.warning(f"WARNING: NO ACCOUNT TYPE FOUND IN INSTAGRAM SCRAPER DATA - Using 'unknown' as fallback")
                 
-            if not posting_style and 'postingStyle' in account_data:
-                posting_style = account_data.get('postingStyle', '')
+            if posting_style is None:
+                posting_style = 'informative'
+                logger.warning(f"WARNING: NO POSTING STYLE FOUND IN INSTAGRAM SCRAPER DATA - Using 'informative' as fallback")
 
-            # Auto-detect if this is a business/brand account based on Instagram fields
-            is_business_account = False
-            
-            # Check Instagram's isBusinessAccount flag
-            if account_data.get('isBusinessAccount', False):
-                is_business_account = True
-                logger.info(f"Detected business account from isBusinessAccount flag")
-                
-            # Check for business category name
-            if account_data.get('businessCategoryName', ''):
-                is_business_account = True
-                logger.info(f"Detected business account from businessCategoryName: {account_data.get('businessCategoryName')}")
-                
-            # Check for verified status (often brands are verified)
-            if account_data.get('verified', False):
-                is_business_account = True
-                logger.info(f"Detected business account from verified status")
-                
-            # Check follower count (large accounts are often brands)
-            if account_data.get('followersCount', 0) > 100000:
-                is_business_account = True
-                logger.info(f"Detected likely business account from large follower count: {account_data.get('followersCount')}")
-            
-            # Set account type if auto-detected as business
-            if is_business_account and (not account_type or account_type == 'unknown'):
-                account_type = 'branding'
-                logger.info(f"Setting account_type to 'branding' based on Instagram business indicators")
-
+            # Construct final data structure with the preserved account_type and posting_style
             processed_data = {
                 'posts': posts,
                 'engagement_history': engagement_history,
@@ -211,16 +241,19 @@ class ContentRecommendationSystem:
                     'followersCount': account_data.get('followersCount', 0),
                     'followsCount': account_data.get('followsCount', 0),
                     'biography': account_data.get('biography', ''),
-                    'account_type': account_type or account_data.get('account_type', 'unknown'),
-                    'posting_style': posting_style or 'informative',  # Default to informative if not available
+                    'account_type': account_type,
+                    'posting_style': posting_style,
                     'isBusinessAccount': account_data.get('isBusinessAccount', False),
                     'businessCategoryName': account_data.get('businessCategoryName', ''),
                     'verified': account_data.get('verified', False)
                 },
-                'account_type': account_type or account_data.get('account_type', 'unknown'),
-                'posting_style': posting_style or 'informative',  # Add at top level for easier access
+                'account_type': account_type,
+                'posting_style': posting_style,
                 'primary_username': account_data.get('username', '')
             }
+            
+            logger.info(f"FINAL VALUES FROM INSTAGRAM SCRAPER (NOT AUTO-DETECTED) - account_type: {account_type}, posting_style: {posting_style}")
+            
             return processed_data
 
         except Exception as e:
@@ -320,16 +353,21 @@ class ContentRecommendationSystem:
                 all_posts.extend(data['competitor_posts'])
                 logger.info(f"Combined {len(data['posts'])} primary posts with {len(data['competitor_posts'])} competitor posts for analysis")
 
-            # Get account type and posting style
+            # Get account type and posting style - IMPORTANT: respect what's already set
             account_type = data.get('account_type', '')
             posting_style = data.get('posting_style', '')
             
+            # If account_type is not set in data, try to get it from profile
             if not account_type and profile.get('account_type'):
                 account_type = profile.get('account_type')
+                logger.info(f"Using account_type from profile: {account_type}")
                 
+            # If posting_style is not set in data, try to get it from profile
             if not posting_style and profile.get('posting_style'):
                 posting_style = profile.get('posting_style')
+                logger.info(f"Using posting_style from profile: {posting_style}")
                 
+            # Log the exact values being used - don't make any changes to account_type here
             logger.info(f"Content plan generation for account_type: {account_type}, posting_style: {posting_style}")
 
             content_plan = self.recommendation_generator.generate_content_plan(
@@ -356,9 +394,12 @@ class ContentRecommendationSystem:
                 content_plan['profile']['username'] = primary_username
                 logger.info(f"Added username {primary_username} to content plan profile")
                 
-            # Ensure account_type is explicitly set in content_plan
-            content_plan['account_type'] = account_type
-            logger.info(f"Set account_type to {account_type} in content plan")
+            # Don't overwrite account_type if it's already set by the recommendation generator
+            if 'account_type' not in content_plan:
+                content_plan['account_type'] = account_type
+                logger.info(f"Set account_type to {account_type} in content plan")
+            else:
+                logger.info(f"Keeping existing account_type '{content_plan['account_type']}' in content plan")
             
             # Add primary_username field for easier access
             content_plan['primary_username'] = primary_username
@@ -1038,84 +1079,70 @@ class ContentRecommendationSystem:
             return 1
     
     def run_pipeline(self, object_key=None, data=None):
-        """Run the full pipeline."""
+        """Run the content recommendation pipeline."""
         try:
+            if not object_key and not data:
+                logger.error("No object key or data provided")
+                return False
+                
+            # Define primary_username early to avoid NameError
+            primary_username = None
+            
+            # If object_key is provided, retrieve the data from R2
             if object_key:
                 data = self.process_social_data(object_key)
+                if not data:
+                    logger.error(f"Failed to process social data from {object_key}")
+                    return False
             
-            if not data:
-                logger.error("No data available for processing")
+            # Try to extract username from object_key or data - setting it early to avoid NameError
+            if object_key and '/' in object_key:
+                account_name = object_key.split('/')[0] 
+                primary_username = account_name  # Set primary_username early
+            elif data and 'primary_username' in data:
+                primary_username = data['primary_username']
+                account_name = primary_username
+            elif data and 'profile' in data and 'username' in data['profile']:
+                primary_username = data['profile']['username']
+                account_name = primary_username
+            else:
+                logger.error("Cannot determine primary username from data or object key")
                 return False
+                
+            logger.info(f"Processing pipeline for primary username: {primary_username}")
             
-            # Validate data structure
+            # Extract account type and posting style DIRECTLY from the data
+            # The process_instagram_data method already extracted these from the Instagram scraper
+            account_type = data.get('account_type', '')
+            posting_style = data.get('posting_style', '')
+            
+            # Log the values we're using from the Instagram scraper
+            logger.info(f"USING INSTAGRAM SCRAPER VALUES - account_type: {account_type}, posting_style: {posting_style}")
+            
+            # Validate data structure - but don't let it change account_type!
+            original_account_type = account_type
+            original_posting_style = posting_style
+            
             if not self.validate_data_structure(data):
                 logger.error("Invalid data structure")
                 return False
-            
-            # Extract basic information from data
-            account_type = data.get('account_type', 'unknown')
-            posting_style = data.get('posting_style', '')
-            
-            # Check for additional indicators of a branding account
-            is_business_or_brand = False
-            
-            # Check if profile has business indicators
-            if 'profile' in data:
-                profile = data['profile']
-                # Check biography for brand indicators
-                biography = profile.get('biography', '').lower()
-                brand_keywords = ['official', 'cosmetics', 'beauty', 'makeup', 'skincare', 'brand', 'shop', 'product', 'collection']
-                if any(keyword in biography for keyword in brand_keywords):
-                    is_business_or_brand = True
-                    logger.info(f"Detected branding account from biography containing brand keywords")
                 
-                # Check business category
-                if profile.get('businessCategoryName') or profile.get('is_business', False) or profile.get('isBusinessAccount', False):
-                    is_business_or_brand = True
-                    logger.info(f"Detected branding account from business category indicators")
-            
-            # Check if brand or business is mentioned in the processed metadata
-            if 'branding' in account_type.lower() or 'business' in account_type.lower() or 'brand' in account_type.lower():
-                is_business_or_brand = True
-                logger.info(f"Detected branding account from account_type: {account_type}")
-            
-            # Special case for well-known cosmetics brands
-            cosmetics_brands = [
-                'urbandecaycosmetics', 'urbandecay', 'maccosmetics', 'mac', 'fentybeauty', 'fenty', 
-                'anastasiabeverlyhills', 'toofaced', 'narsissist', 'nars', 'tarte', 'tartecosmetics',
-                'hourglasscosmetics', 'hourglassmakeup', 'ctilburymakeup', 'charlottetilbury'
-            ]
-            
-            # Get primary username
-            primary_username = None
-            if 'primary_username' in data:
-                primary_username = data.get('primary_username')
-            elif 'profile' in data and 'username' in data['profile']:
-                primary_username = data['profile']['username']
-                
-            if primary_username and any(brand in primary_username.lower() for brand in cosmetics_brands):
-                is_business_or_brand = True
-                logger.info(f"Detected branding account based on known cosmetics brand name: {primary_username}")
-                
-            # Set final account type
-            if is_business_or_brand:
-                account_type = 'branding'
-                logger.info("Account explicitly identified as branding based on multiple indicators")
-            else:
-                # Determine if this is a branding account based on explicit account_type
-                is_branding = account_type.lower() in ['branding', 'business', 'business/brand', 'brand']
-                
-                if is_branding:
-                    account_type = 'branding'
-                    logger.info("Account identified as branding")
-                else:
-                    account_type = 'non-branding'
-                    logger.info("Account identified as non-branding")
+            # IMPORTANT: Make sure validate_data_structure didn't change our account_type or posting_style
+            if data.get('account_type') != original_account_type:
+                logger.warning(f"OVERRIDE ATTEMPT DETECTED: validate_data_structure tried to change account_type from {original_account_type} to {data.get('account_type')}")
+                # Restore the original values from Instagram scraper
+                data['account_type'] = original_account_type
+                if 'profile' in data:
+                    data['profile']['account_type'] = original_account_type
                     
-            # Make sure account_type is properly set in the data
-            data['account_type'] = account_type
-            is_branding = account_type.lower() == 'branding'
+            # Set is_branding based on account_type from Instagram scraper
+            is_branding = (original_account_type.lower() == 'branding')
+            
+            # Now the rest of the pipeline will use the account_type from Instagram scraper
+            logger.info(f"Processing content with STRICT account_type: {original_account_type}, is_branding: {is_branding}")
                 
+            # This check is redundant now since we already set primary_username earlier,
+            # but we keep it for safety
             if not primary_username:
                 logger.error("No primary username found in data")
                 return False
@@ -1144,18 +1171,13 @@ class ContentRecommendationSystem:
                 return False
             logger.info("Successfully analyzed engagement data")
             
-            # Set default posting style if not specified for non-branding accounts
-            if not is_branding and not posting_style:
-                posting_style = "informative"
-                logger.info(f"Non-branding account without posting_style specified, using default")
-            
             # Generate content plan based on account type
             logger.info("Generating content plan")
             
             # If no competitor usernames, use default competitors for branding accounts
             if is_branding and not competitors:
-                default_competitors = ['anastasiabeverlyhills', 'fentybeauty', 'toofaced', 'narsissist', 'urbandecaycosmetics']
-                competitors = default_competitors[:3]  # Use first 3 default competitors
+                default_competitors = ['anastasiabeverlyhills', 'fentybeauty', 'toofaced']
+                competitors = default_competitors  # Use default competitors
                 logger.info(f"No competitor posts found, using default competitor usernames: {competitors}")
             elif not is_branding and not competitors:
                 default_competitors = ['anastasiabeverlyhills', 'fentybeauty']
@@ -1170,11 +1192,16 @@ class ContentRecommendationSystem:
             
             # Update data with necessary fields for content generation
             data['is_branding'] = is_branding
-            if posting_style:
-                data['posting_style'] = posting_style
+            
+            # ENSURE account_type and posting_style are properly set before content plan generation
+            data['account_type'] = original_account_type
+            data['posting_style'] = original_posting_style
+            if 'profile' in data:
+                data['profile']['account_type'] = original_account_type
+                data['profile']['posting_style'] = original_posting_style
             
             # Generate content plan with the recommendation generator
-            logger.info(f"Content plan generation for account_type: {account_type}, posting_style: {posting_style}")
+            logger.info(f"Content plan generation for account_type: {original_account_type}, posting_style: {original_posting_style}")
             content_plan = self.generate_content_plan(data)
             
             if not content_plan:
@@ -1281,63 +1308,104 @@ class ContentRecommendationSystem:
             return {"success": False, "message": str(e)}
 
     def validate_data_structure(self, data):
-        """Validate data structure for both primary account and competitors."""
+        """
+        Validate data structure and determine if this is a branding account.
+        Returns True if valid, False otherwise.
+        """
         try:
-            # Basic validation of top-level keys
-            if not all(key in data for key in ['posts', 'engagement_history']):
-                missing_keys = [key for key in ['posts', 'engagement_history'] if key not in data]
-                logger.warning(f"Missing required top-level keys in data: {missing_keys}")
+            # Check for required fields
+            if 'posts' not in data or not isinstance(data['posts'], list):
+                logger.error("Missing required field: 'posts'")
                 return False
 
-            # Validate posts array
-            if not data['posts'] or not isinstance(data['posts'], list):
-                logger.warning("Posts array is empty or not a list")
+            if 'profile' not in data or not isinstance(data['profile'], dict):
+                logger.error("Missing required field: 'profile'")
                 return False
 
-            # Validate engagement history
-            if not data['engagement_history'] or not isinstance(data['engagement_history'], list):
-                logger.warning("Engagement history is empty or not a list")
-                return False
-
-            # Validate post structure
-            required_post_fields = ['id', 'caption', 'engagement']
-            if not any(all(field in post for field in required_post_fields) for post in data['posts']):
-                logger.warning("No posts with all required fields")
-                return False
-
-            # Validate engagement history structure
-            required_history_fields = ['timestamp', 'engagement']
-            if not all(all(field in record for field in required_history_fields) for record in data['engagement_history']):
-                logger.warning("Engagement history missing required fields")
-                return False
-
-            # Validate profile data if present
+            # Get explicitly provided account type
+            account_type = data.get('account_type', '').lower()
+            
+            # If account_type is explicitly set, respect it and don't try to override
+            if account_type in ['branding', 'non-branding']:
+                logger.info(f"Respecting explicitly set account_type: {account_type}")
+                
+                # Just add some informational logs but don't change the type
+                if account_type == 'branding':
+                    # Just log some characteristics that align with the branding type
+                    if 'profile' in data:
+                        profile = data['profile']
+                        biography = profile.get('biography', '').lower()
+                        brand_keywords = ['official', 'cosmetics', 'beauty', 'makeup', 'skincare', 'brand', 'shop', 'product', 'collection']
+                        if any(keyword in biography for keyword in brand_keywords):
+                            logger.info(f"Note: Biography contains brand keywords, which aligns with 'branding' account_type")
+                        
+                        if profile.get('businessCategoryName') or profile.get('is_business', False) or profile.get('isBusinessAccount', False):
+                            logger.info(f"Note: Business category indicators found, which aligns with 'branding' account_type")
+                else:  # non-branding
+                    logger.info(f"Account identified as non-branding (explicitly set)")
+            else:
+                # Only perform detection if no explicit account type is provided
+                logger.info(f"No explicit account_type provided, will attempt to detect")
+                
+                # Check for additional indicators of a branding account
+                is_business_or_brand = False
+                
+                # Check if profile has business indicators
+                if 'profile' in data:
+                    profile = data['profile']
+                    # Check biography for brand indicators
+                    biography = profile.get('biography', '').lower()
+                    brand_keywords = ['official', 'cosmetics', 'beauty', 'makeup', 'skincare', 'brand', 'shop', 'product', 'collection']
+                    if any(keyword in biography for keyword in brand_keywords):
+                        is_business_or_brand = True
+                        logger.info(f"Detected branding account from biography containing brand keywords")
+                    
+                    # Check business category
+                    if profile.get('businessCategoryName') or profile.get('is_business', False) or profile.get('isBusinessAccount', False):
+                        is_business_or_brand = True
+                        logger.info(f"Detected branding account from business category indicators")
+                
+                # Check if brand or business is mentioned in the processed metadata
+                if 'branding' in account_type or 'business' in account_type or 'brand' in account_type:
+                    is_business_or_brand = True
+                    logger.info(f"Detected branding account from account_type: {account_type}")
+                
+                # Special case for well-known cosmetics brands
+                cosmetics_brands = [
+                    'urbandecaycosmetics', 'urbandecay', 'maccosmetics', 'mac', 'fentybeauty', 'fenty', 
+                    'anastasiabeverlyhills', 'toofaced', 'narsissist', 'nars', 'tarte', 'tartecosmetics',
+                    'hourglasscosmetics', 'hourglassmakeup', 'ctilburymakeup', 'charlottetilbury'
+                ]
+                
+                # Get primary username
+                primary_username = None
+                if 'primary_username' in data:
+                    primary_username = data.get('primary_username')
+                elif 'profile' in data and 'username' in data['profile']:
+                    primary_username = data['profile']['username']
+                    
+                if primary_username and any(brand in primary_username.lower() for brand in cosmetics_brands):
+                    is_business_or_brand = True
+                    logger.info(f"Detected branding account based on known cosmetics brand name: {primary_username}")
+                    
+                # Set final account type
+                if is_business_or_brand:
+                    account_type = 'branding'
+                    logger.info("Account detected as branding based on multiple indicators")
+                else:
+                    account_type = 'non-branding'
+                    logger.info("Account detected as non-branding based on lack of branding indicators")
+                
+                # Make sure account_type is properly set in the data
+                data['account_type'] = account_type
+            
+            # For consistency, ensure the account_type is the same in both places
+            data['account_type'] = account_type
             if 'profile' in data:
-                if not isinstance(data['profile'], dict):
-                    logger.warning("Profile is not a dictionary")
-                    return False
-                if 'username' not in data['profile']:
-                    logger.warning("Profile missing username field")
-                    return False
-
-            # Validate competitor posts if present
-            if 'competitor_posts' in data:
-                if not isinstance(data['competitor_posts'], list):
-                    logger.warning("Competitor posts is not a list")
-                    return False
-                if data['competitor_posts']:
-                    # Check at least one competitor post has required fields
-                    comp_has_valid = False
-                    for post in data['competitor_posts']:
-                        if all(field in post for field in required_post_fields + ['username']):
-                            comp_has_valid = True
-                            break
-                    if not comp_has_valid:
-                        logger.warning("No valid competitor posts found")
-                        return False
-
-            logger.info("Data structure validation passed")
+                data['profile']['account_type'] = account_type
+                
             return True
+            
         except Exception as e:
             logger.error(f"Error validating data structure: {str(e)}")
             return False
@@ -1714,6 +1782,50 @@ class ContentRecommendationSystem:
             logger.error(f"Error extracting counter strategies: {str(e)}")
             return ["Error analyzing counter strategies"]
 
+    def continuous_processing_loop(self, sleep_interval=300):
+        """
+        Continuously check for processed Instagram data and run the content pipeline.
+        
+        Args:
+            sleep_interval: Time to sleep between checks (in seconds, default 5 minutes)
+        """
+        from instagram_scraper import InstagramScraper
+        import time
+        
+        logger.info(f"Starting continuous content processing loop with check interval of {sleep_interval} seconds")
+        instagram_scraper = InstagramScraper()
+        
+        try:
+            while True:
+                logger.info("Checking for processed Instagram data...")
+                processed_usernames = instagram_scraper.retrieve_and_process_usernames()
+                
+                if processed_usernames:
+                    logger.info(f"Found {len(processed_usernames)} processed usernames to analyze")
+                    # Process each username through the full pipeline
+                    for username in processed_usernames:
+                        logger.info(f"Starting content pipeline for {username}")
+                        # Construct the object key based on the username
+                        object_key = f"{username}/{username}.json"
+                        result = self.run_pipeline(object_key=object_key)
+                        if result and isinstance(result, dict) and result.get("success"):
+                            logger.info(f"Successfully completed content pipeline for {username}")
+                        else:
+                            logger.error(f"Failed to complete content pipeline for {username}")
+                else:
+                    logger.info("No processed Instagram data found")
+                
+                logger.info(f"Sleeping for {sleep_interval} seconds before next check")
+                time.sleep(sleep_interval)
+                
+        except KeyboardInterrupt:
+            logger.info("Content processing loop interrupted by user")
+        except Exception as e:
+            logger.error(f"Error in continuous content processing loop: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            raise
+
 def create_content_plan():
     """Create content plan without using sample data."""
     try:
@@ -1736,28 +1848,12 @@ def main():
         r2_test = content_recommendation_system.r2_storage.list_objects()
         logger.info("R2 storage is accessible")
         
-        # Process queue
-        logger.info("Starting sequential queue processing")
-        instagram_scraper = InstagramScraper()
-        processed_usernames = instagram_scraper.retrieve_and_process_usernames()
-        logger.info(f"Retrieved from queue: {processed_usernames}")
+        # Start Module2 in a separate thread
+        module2_thread = start_module2_thread()
         
-        if not processed_usernames:
-            logger.info("No pending usernames in queue to process")
-            return 0
-        
-        # Process each username through the full pipeline
-        for username in processed_usernames:
-            logger.info(f"Starting full pipeline for {username}")
-            # Construct the object key based on the username
-            object_key = f"{username}/{username}.json"
-            result = content_recommendation_system.run_pipeline(object_key=object_key)
-            if result and isinstance(result, dict) and result.get("success"):
-                logger.info(f"Successfully completed pipeline for {username}")
-            else:
-                logger.error(f"Failed to complete pipeline for {username}")
-        
-        logger.info(f"Total usernames processed in this run: {len(processed_usernames)}")
+        # Start continuous processing loop
+        logger.info("Starting continuous processing loop")
+        content_recommendation_system.continuous_processing_loop(sleep_interval=300)  # Check every 5 minutes
         
     except Exception as e:
         logger.error(f"Error in main function: {str(e)}")
@@ -1784,11 +1880,99 @@ if __name__ == "__main__":
             else:
                 print(f"Failed to process {username}: {result.get('message', 'Unknown error')}")
                 sys.exit(1)
+        elif sys.argv[1] == "run_automated":
+            # Run both Instagram scraper and content processor in automated mode
+            try:
+                # Create both system instances
+                content_system = ContentRecommendationSystem()
+                instagram_scraper = InstagramScraper()
+                
+                # Start Module2 in a separate thread
+                module2_thread = start_module2_thread()
+                
+                # Start Instagram scraper in a separate thread
+                logger.info("Starting Instagram scraper in automated mode")
+                scraper_thread = threading.Thread(
+                    target=instagram_scraper.continuous_processing_loop,
+                    kwargs={
+                        'sleep_interval': 86400,  # 24 hours between full cycles
+                        'check_interval': 300     # Check for new files every 5 minutes
+                    }
+                )
+                scraper_thread.daemon = True  # Allow the thread to be terminated when main program exits
+                scraper_thread.start()
+                
+                # Run content processor in main thread
+                logger.info("Starting content processor in automated mode")
+                content_system.continuous_processing_loop(sleep_interval=300)  # Check every 5 minutes
+                
+            except KeyboardInterrupt:
+                logger.info("Automated process interrupted by user")
+                sys.exit(0)
+            except Exception as e:
+                logger.error(f"Error in automated mode: {str(e)}")
+                logger.error(traceback.format_exc())
+                sys.exit(1)
+        elif sys.argv[1] == "module2_only":
+            # Run only Module2 functionality
+            try:
+                logger.info("Running only Module2 functionality")
+                process = run_module2()
+                if process:
+                    try:
+                        # Wait for the process to finish
+                        process.wait()
+                    except KeyboardInterrupt:
+                        logger.info("Module2 interrupted by user")
+                        process.terminate()
+                sys.exit(0)
+            except Exception as e:
+                logger.error(f"Error running Module2: {str(e)}")
+                logger.error(traceback.format_exc())
+                sys.exit(1)
+        elif sys.argv[1] == "run_all":
+            # Run all systems simultaneously (Instagram scraper, content processor, and Module2)
+            try:
+                # Create system instances
+                content_system = ContentRecommendationSystem()
+                instagram_scraper = InstagramScraper()
+                
+                logger.info("Starting ALL systems simultaneously (Instagram scraper, content processor, and Module2)")
+                
+                # Start Module2 in a separate thread
+                module2_thread = start_module2_thread()
+                
+                # Start Instagram scraper in a separate thread
+                logger.info("Starting Instagram scraper")
+                scraper_thread = threading.Thread(
+                    target=instagram_scraper.continuous_processing_loop,
+                    kwargs={
+                        'sleep_interval': 86400,  # 24 hours between full cycles
+                        'check_interval': 300     # Check for new files every 5 minutes
+                    }
+                )
+                scraper_thread.daemon = True
+                scraper_thread.start()
+                
+                # Run content processor in main thread
+                logger.info("Starting content processor")
+                content_system.continuous_processing_loop(sleep_interval=300)  # Check every 5 minutes
+                
+            except KeyboardInterrupt:
+                logger.info("All systems interrupted by user")
+                sys.exit(0)
+            except Exception as e:
+                logger.error(f"Error running all systems: {str(e)}")
+                logger.error(traceback.format_exc())
+                sys.exit(1)
         else:
             print("Usage:")
-            print("  python main.py                    # Process queue")
+            print("  python main.py                    # Process queue once and run Module2")
+            print("  python main.py run_automated      # Run continuous automated processing with Module2")
+            print("  python main.py run_all            # Run all systems simultaneously")
+            print("  python main.py module2_only       # Run only Module2 functionality")
             print("  python main.py process_username <username>  # Process specific Instagram username")
             sys.exit(1)
     else:
-        # Regular main function execution
+        # Regular main function execution (one-time processing)
         sys.exit(main())
