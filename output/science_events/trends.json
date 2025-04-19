@@ -1,0 +1,18 @@
+{
+  "most_active_day": "Thursday",
+  "most_active_hour": 10,
+  "hour_formatted": "10 AM",
+  "posts_per_day": 0.6666666666666666,
+  "day_distribution": {
+    "Thursday": 1,
+    "Saturday": 1
+  },
+  "hour_distribution": {
+    "10": 1,
+    "12": 1
+  },
+  "high_activity_months": {
+    "April": 2
+  },
+  "summary": "Posts most frequently on Thursdays at around 10 AM. Average posting frequency is 0.7 posts per day. Higher posting activity during: April."
+}

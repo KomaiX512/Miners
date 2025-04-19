@@ -7,7 +7,8 @@ R2_CONFIG = {
     'aws_secret_access_key': '791d5eeddcd8ed5bf3f41bfaebbd37e58af7dcb12275b1422747605d7dc75bc4',
     'bucket_name': 'structuredb',
     'personal_bucket_name': 'miner',  # Personal bucket for miner validation
-    'bucket_name2': 'tasks'
+    'bucket_name2': 'tasks',
+    'NEWSDATA_API_KEY': 'pub_81555ab19b0046a7b3d947cddc59fe99c9146'
 }
 
 
@@ -46,3 +47,11 @@ LOGGING_CONFIG = {
     'level': 'INFO',
     'format': '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 }
+
+# Redis Configuration
+REDIS_CONFIG = {
+    'host': 'localhost',
+    'port': 6379,
+    'db': 0
+}
+
