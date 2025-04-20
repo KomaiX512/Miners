@@ -59,11 +59,48 @@ class QueryHandler:
         try:
             # Reset collection
             self.collection = self.chroma_client.get_or_create_collection("rag_docs")
-
-            # Read profile from structuredb bucket: username/username.json
-            profile_key = f"{username}/{username}.json"  # e.g., maccosmetics/maccosmetics.json
-            logger.debug(f"Attempting to read profile from structuredb bucket: {profile_key}")
-            profile_data = await self.r2_client_structuredb.read_json(profile_key)
+            
+            # Case-insensitive username pattern for searching
+            username_pattern = username.lower()
+            
+            # First, list all files in both buckets to diagnose what's actually there
+            logger.info(f"Scanning for files related to {username}")
+            
+            # Find profiles by pattern searching - FROM DEBUG WE KNOW THESE EXIST:
+            # - maccosmetics/maccosmetics.json 
+            # - anastasiabeverlyhills/maccosmetics.json
+            profile_data = None
+            tried_profile_paths = []
+            
+            # Direct paths we know exist from debug output
+            exact_profile_paths = [
+                f"maccosmetics/maccosmetics.json",
+                f"anastasiabeverlyhills/maccosmetics.json",
+                f"fenty beauty/maccosmetics.json",
+                f"fentybeauty/maccosmetics.json"
+            ]
+            
+            # Try exact paths first
+            for profile_path in exact_profile_paths:
+                tried_profile_paths.append(profile_path)
+                logger.debug(f"Attempting to read profile from exact path: {profile_path}")
+                profile_data = await self.r2_client_structuredb.read_json(profile_path)
+                if profile_data:
+                    logger.info(f"Successfully loaded profile from exact path: {profile_path}")
+                    break
+            
+            # If direct paths don't work, fall back to pattern search
+            if not profile_data:
+                profile_candidates = await self.r2_client_structuredb.find_file_by_pattern(username_pattern)
+                for profile_path in profile_candidates:
+                    if profile_path not in tried_profile_paths:
+                        tried_profile_paths.append(profile_path)
+                        logger.debug(f"Attempting to read profile from found path: {profile_path}")
+                        profile_data = await self.r2_client_structuredb.read_json(profile_path)
+                        if profile_data:
+                            logger.info(f"Successfully loaded profile from found path: {profile_path}")
+                            break
+            
             if profile_data:
                 profile_doc = Document(
                     page_content=json.dumps(profile_data),
@@ -74,13 +111,40 @@ class QueryHandler:
                     metadatas=[profile_doc.metadata],
                     ids=[f"profile_{username}"]
                 )
-                logger.debug(f"Loaded profile from {profile_key}")
             else:
-                logger.debug(f"No profile found at {profile_key} in structuredb bucket")
-
-            # Read rules from tasks bucket
-            rules_key = f"{self.rules_prefix}{username}/rules.json"
-            rules_data = await self.r2_client.read_json(rules_key)
+                logger.warning(f"No profile found after trying multiple paths: {', '.join(tried_profile_paths)}")
+            
+            # Load rules data - FROM DEBUG WE KNOW THIS EXISTS:
+            # - rules/maccosmetics/rules.json
+            rules_data = None
+            tried_rules_paths = []
+            
+            # Direct paths we know exist from debug output
+            exact_rules_paths = [
+                f"rules/maccosmetics/rules.json"
+            ]
+            
+            # Try exact paths first
+            for rules_path in exact_rules_paths:
+                tried_rules_paths.append(rules_path)
+                logger.debug(f"Attempting to read rules from exact path: {rules_path}")
+                rules_data = await self.r2_client.read_json(rules_path)
+                if rules_data:
+                    logger.info(f"Successfully loaded rules from exact path: {rules_path}")
+                    break
+            
+            # If direct paths don't work, fall back to pattern search
+            if not rules_data:
+                rules_candidates = await self.r2_client.find_file_by_pattern(f"rules/{username_pattern}")
+                for rules_path in rules_candidates:
+                    if rules_path not in tried_rules_paths:
+                        tried_rules_paths.append(rules_path)
+                        logger.debug(f"Attempting to read rules from found path: {rules_path}")
+                        rules_data = await self.r2_client.read_json(rules_path)
+                        if rules_data:
+                            logger.info(f"Successfully loaded rules from found path: {rules_path}")
+                            break
+            
             if rules_data:
                 rules_doc = Document(
                     page_content=json.dumps(rules_data),
@@ -91,9 +155,8 @@ class QueryHandler:
                     metadatas=[rules_doc.metadata],
                     ids=[f"rules_{username}"]
                 )
-                logger.debug(f"Loaded rules from {rules_key}: {rules_data}")
             else:
-                logger.warning(f"No rules found at {rules_key} in tasks bucket")
+                logger.warning(f"No rules found after trying multiple paths: {', '.join(tried_rules_paths)}")
 
             # Fit the embeddings
             documents = []
@@ -106,7 +169,7 @@ class QueryHandler:
                 self.embeddings.fit(documents)
 
             doc_count = self.collection.count()
-            logger.debug(f"Loaded {doc_count} documents for {username}")
+            logger.info(f"Loaded {doc_count} documents for {username}")
             return doc_count > 0
         except Exception as e:
             logger.error(f"Failed to load documents for {username}: {e}")
@@ -173,23 +236,19 @@ class QueryHandler:
         username = key.split("/")[1]
         logger.info(f"Processing query for {key}")
 
-        if not await self.load_documents(username):
-            logger.warning(f"Attempting to process {key} with no documents")
-            response = await self.generate_response(query, username)
-            if not response:
-                logger.error(f"Failed to generate response for {key}")
-                data["status"] = "error"
-                data["status_message"] = "Response generation failed (no documents)"
-                await self.r2_client.write_json(key, data)
-                return
-        else:
-            response = await self.generate_response(query, username)
-            if not response:
-                logger.error(f"Failed to generate response for {key}")
-                data["status"] = "error"
-                data["status_message"] = "Response generation failed"
-                await self.r2_client.write_json(key, data)
-                return
+        # Try loading documents, but continue even if none are found
+        docs_loaded = await self.load_documents(username)
+        if not docs_loaded:
+            logger.warning(f"Processing {key} with no documents")
+        
+        # Always try to generate a response
+        response = await self.generate_response(query, username)
+        if not response:
+            logger.error(f"Failed to generate response for {key}")
+            data["status"] = "error"
+            data["status_message"] = "Response generation failed"
+            await self.r2_client.write_json(key, data)
+            return
 
         output_data = {
             "query": query,

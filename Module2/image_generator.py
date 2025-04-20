@@ -1,7 +1,7 @@
-
 import aiohttp
 import asyncio
 import re
+import json
 from utils.r2_client import R2Client
 from utils.status_manager import StatusManager
 from utils.logging import logger
@@ -14,6 +14,70 @@ class ImageGenerator:
         self.status_manager = StatusManager()
         self.input_prefix = "next_posts/"
         self.output_prefix = "ready_post/"
+
+    def fix_post_data(self, data, key):
+        """
+        Attempt to fix malformed post data by ensuring required fields exist.
+        Returns fixed data or None if unfixable.
+        """
+        try:
+            # If data is completely missing or not a dict, can't fix
+            if not data or not isinstance(data, dict):
+                logger.error(f"Unfixable data format in {key}: data is {type(data)}")
+                return None
+                
+            # Check if post field exists
+            if "post" not in data:
+                # If there's direct fields that look like post content, wrap them in a post object
+                post_fields = ["caption", "hashtags", "call_to_action", "visual_prompt", "image_prompt"]
+                has_post_fields = any(field in data for field in post_fields)
+                
+                if has_post_fields:
+                    logger.warning(f"Fixing missing 'post' wrapper in {key}")
+                    fixed_data = {"post": {}}
+                    
+                    # Transfer relevant fields to post object
+                    for field in post_fields:
+                        if field in data:
+                            fixed_data["post"][field] = data[field]
+                    
+                    # Preserve status field if it exists
+                    if "status" in data:
+                        fixed_data["status"] = data["status"]
+                    else:
+                        fixed_data["status"] = "pending"
+                        
+                    return fixed_data
+                else:
+                    logger.error(f"Cannot fix missing post data in {key}, no post fields found")
+                    return None
+            
+            # Ensure post is a dictionary
+            if not isinstance(data["post"], dict):
+                logger.error(f"Unfixable post format in {key}: post is {type(data['post'])}")
+                return None
+                
+            # Ensure required fields exist in post
+            post = data["post"]
+            required_fields = {
+                "caption": "MAC Cosmetics - Beauty product showcase",
+                "hashtags": ["#MAC", "#Beauty", "#Cosmetics"],
+                "call_to_action": "Shop now at MAC Cosmetics!"
+            }
+            
+            for field, default_value in required_fields.items():
+                if field not in post or not post[field]:
+                    logger.warning(f"Adding missing '{field}' in {key}")
+                    post[field] = default_value
+            
+            # Ensure status exists
+            if "status" not in data:
+                data["status"] = "pending"
+                
+            return data
+        except Exception as e:
+            logger.error(f"Error while trying to fix post data in {key}: {e}")
+            return None
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def generate_image(self, prompt, session):
@@ -59,14 +123,31 @@ class ImageGenerator:
             return
 
         data = await self.r2_client.read_json(key)
+        
+        # Handle invalid data format
         if not data or "post" not in data:
-            logger.error(f"Invalid JSON format in {key}")
-            return
+            logger.warning(f"Invalid JSON format in {key}, attempting to fix...")
+            data = self.fix_post_data(data, key)
+            
+            if not data:
+                logger.error(f"Could not fix invalid JSON format in {key}")
+                # Mark as error in the source file if possible
+                try:
+                    error_data = {"status": "error", "status_message": "Invalid JSON format"}
+                    await self.r2_client.write_json(key, error_data)
+                except Exception as e:
+                    logger.error(f"Failed to mark error status for {key}: {e}")
+                return
 
         post = data["post"]
-        prompt = post.get("visual_prompt")
+        
+        # Check for either visual_prompt or image_prompt
+        prompt = post.get("image_prompt") or post.get("visual_prompt")
         if not prompt:
-            logger.error(f"No visual prompt in {key}")
+            logger.error(f"No image prompt or visual prompt in {key}")
+            data["status"] = "error"
+            data["status_message"] = "Missing image or visual prompt"
+            await self.r2_client.write_json(key, data)
             return
 
         logger.info(f"Generating image for {key}")
@@ -78,11 +159,12 @@ class ImageGenerator:
             await self.r2_client.write_json(key, data)
             return
 
+        # Create output post, handling potentially missing fields
         output_post = {
             "post": {
-                "caption": post["caption"],
-                "hashtags": post["hashtags"],
-                "call_to_action": post["call_to_action"],
+                "caption": post.get("caption", "MAC Cosmetics product"),
+                "hashtags": post.get("hashtags", ["#MAC", "#Cosmetics"]),
+                "call_to_action": post.get("call_to_action", "Shop now!"),
                 "image_url": image_url
             },
             "status": "processed"

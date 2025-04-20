@@ -143,6 +143,35 @@ class InstagramScraper:
             logger.error(f"Error checking content match: {str(e)}")
             return False
     
+    def delete_previous_profile_data(self, username, bucket_name):
+        """Delete previous profile data for a username in the specified bucket."""
+        try:
+            # List all objects with the username prefix
+            prefix = f"{username}/"
+            response = self.s3.list_objects_v2(
+                Bucket=bucket_name,
+                Prefix=prefix
+            )
+            
+            if 'Contents' in response:
+                # Create a list of objects to delete
+                objects_to_delete = [{'Key': obj['Key']} for obj in response['Contents']]
+                
+                if objects_to_delete:
+                    # Delete the objects
+                    self.s3.delete_objects(
+                        Bucket=bucket_name,
+                        Delete={'Objects': objects_to_delete}
+                    )
+                    logger.info(f"Deleted previous profile data for {username} in bucket {bucket_name}: {len(objects_to_delete)} objects")
+                return True
+            else:
+                logger.info(f"No previous profile data found for {username} in bucket {bucket_name}")
+                return False
+        except Exception as e:
+            logger.error(f"Error deleting previous profile data for {username} in bucket {bucket_name}: {str(e)}")
+            return False
+    
     def upload_directory_to_both_buckets(self, local_directory, r2_prefix):
         """Upload directory to main and personal buckets with conditions."""
         if not os.path.exists(local_directory):
@@ -151,48 +180,32 @@ class InstagramScraper:
         
         main_bucket = self.r2_config['bucket_name']
         personal_bucket = self.r2_config['personal_bucket_name']
-        main_exists = self.check_directory_exists(r2_prefix, main_bucket)
-        main_uploaded = False
         
-        if not main_exists:
-            try:
-                self.s3.put_object(Bucket=main_bucket, Key=f"{r2_prefix}/")
-                all_files_match = True
-                for filename in os.listdir(local_directory):
-                    local_file_path = os.path.join(local_directory, filename)
-                    if os.path.isdir(local_file_path):
-                        continue
-                    object_key = f"{r2_prefix}/{filename}"
-                    content_matches = self.check_content_matches(local_file_path, main_bucket, object_key)
-                    if not content_matches:
-                        self.s3.upload_file(
-                            local_file_path,
-                            main_bucket,
-                            object_key,
-                            ExtraArgs={'ContentType': 'application/json'}
-                        )
-                        logger.info(f"Uploaded file to main bucket: {object_key}")
-                        all_files_match = False
-                main_uploaded = not all_files_match
-            except Exception as e:
-                logger.error(f"Failed to upload directory to main bucket: {str(e)}")
-        else:
-            content_differs = False
+        # Delete previous profile data before uploading
+        self.delete_previous_profile_data(r2_prefix, main_bucket)
+        self.delete_previous_profile_data(r2_prefix, personal_bucket)
+        
+        # Create directory marker
+        try:
+            self.s3.put_object(Bucket=main_bucket, Key=f"{r2_prefix}/")
+            
             for filename in os.listdir(local_directory):
                 local_file_path = os.path.join(local_directory, filename)
                 if os.path.isdir(local_file_path):
                     continue
                 object_key = f"{r2_prefix}/{filename}"
-                if not self.check_content_matches(local_file_path, main_bucket, object_key):
-                    self.s3.upload_file(
-                        local_file_path,
-                        main_bucket,
-                        object_key,
-                        ExtraArgs={'ContentType': 'application/json'}
-                    )
-                    logger.info(f"Content differs, uploaded file to main bucket: {object_key}")
-                    content_differs = True
-            main_uploaded = content_differs
+                self.s3.upload_file(
+                    local_file_path,
+                    main_bucket,
+                    object_key,
+                    ExtraArgs={'ContentType': 'application/json'}
+                )
+                logger.info(f"Uploaded file to main bucket: {object_key}")
+            
+            main_uploaded = True
+        except Exception as e:
+            logger.error(f"Failed to upload directory to main bucket: {str(e)}")
+            main_uploaded = False
         
         personal_uploaded = False
         try:
@@ -371,6 +384,7 @@ class InstagramScraper:
                 continue
             logger.info(f"Successfully processed competitor: {competitor}")
         
+        # The upload_directory_to_both_buckets function now handles deletion of previous data
         upload_result = self.upload_directory_to_both_buckets(local_dir, parent_username)
         
         try:
@@ -575,6 +589,7 @@ class InstagramScraper:
             if not parent_path:
                 return {"success": False, "message": f"Failed to save data locally: {username}"}
             
+            # The upload_directory_to_both_buckets function now handles deletion of previous data
             upload_result = self.upload_directory_to_both_buckets(local_dir, username)
             
             try:
