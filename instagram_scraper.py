@@ -276,6 +276,11 @@ class InstagramScraper:
                 logger.warning("Invalid profile data for extraction")
                 return None
             profile = profile_data[0]
+            
+            # Log all available fields in the profile for debugging
+            logger.debug(f"Available profile fields: {', '.join(profile.keys())}")
+            
+            # Extract full profile info with all available fields
             short_info = {
                 "username": profile.get("username", ""),
                 "fullName": profile.get("fullName", ""),
@@ -286,9 +291,15 @@ class InstagramScraper:
                 "profilePicUrlHD": profile.get("profilePicUrlHD", ""),
                 "private": profile.get("private", False),
                 "verified": profile.get("verified", False),
+                "postsCount": profile.get("postsCount", 0),
+                "externalUrl": profile.get("externalUrl", ""),
                 "extractedAt": datetime.now().isoformat()
             }
+            
+            # Log extraction results for verification
             logger.info(f"Successfully extracted short profile info for {short_info['username']}")
+            logger.debug(f"Extracted fields: {json.dumps({k: v if k not in ['profilePicUrl', 'profilePicUrlHD'] else f'URL length: {len(str(v))}' for k, v in short_info.items()})}")
+            
             return short_info
         except Exception as e:
             logger.error(f"Error extracting short profile info: {str(e)}")
@@ -316,18 +327,35 @@ class InstagramScraper:
                 
             profile_key = f"ProfileInfo/{username}.json"
             
-            # Check if file already exists to avoid redundancy
-            if self._check_object_exists(tasks_bucket, profile_key):
-                logger.info(f"Profile info for {username} already exists at {profile_key}, skipping upload")
-                return True
+            # Check if file already exists - if it does, we'll replace it instead of skipping
+            exists = self._check_object_exists(tasks_bucket, profile_key)
+            if exists:
+                logger.info(f"Profile info for {username} already exists at {profile_key}, replacing with updated data")
+            
+            # Ensure profile URLs are included
+            if 'profilePicUrl' not in profile_info:
+                profile_info['profilePicUrl'] = ""
+                logger.warning(f"profilePicUrl missing in profile info for {username}, setting to empty string")
+            if 'profilePicUrlHD' not in profile_info:
+                profile_info['profilePicUrlHD'] = ""
+                logger.warning(f"profilePicUrlHD missing in profile info for {username}, setting to empty string")
                 
+            # Log the profile info being uploaded for debugging
+            logger.debug(f"Uploading profile info for {username}: {json.dumps({k: v if k not in ['profilePicUrl', 'profilePicUrlHD'] else f'URL length: {len(str(v))}' for k, v in profile_info.items()})}")
+            
+            # Add timestamp if not present
+            if 'extractedAt' not in profile_info:
+                profile_info['extractedAt'] = datetime.now().isoformat()
+            
             self.s3.put_object(
                 Bucket=tasks_bucket,
                 Key=profile_key,
                 Body=json.dumps(profile_info, indent=2),
                 ContentType='application/json'
             )
-            logger.info(f"Uploaded short profile info to tasks bucket: {profile_key}")
+            
+            action_word = "Updated" if exists else "Uploaded"
+            logger.info(f"{action_word} short profile info to tasks bucket: {profile_key}")
             return True
         except Exception as e:
             logger.error(f"Error uploading profile info to tasks bucket: {str(e)}")

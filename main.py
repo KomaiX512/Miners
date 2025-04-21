@@ -118,9 +118,6 @@ class ContentRecommendationSystem:
             # Instagram scraper puts files in AccountInfo/ (capital I)
             potential_paths = [
                 f"AccountInfo/{username}/info.json",  # Capital I (correct path from logs)
-                f"Accountinfo/{username}/info.json",  # Lowercase i (path we were using)
-                f"accountinfo/{username}/info.json",  # All lowercase
-                f"accountInfo/{username}/info.json",  # camelCase
             ]
             
             account_info = None
@@ -2034,18 +2031,20 @@ class ContentRecommendationSystem:
                 logger.error(f"Invalid profile data or username for export: {username}")
                 return False
                 
-            # Check if the profile already exists to avoid redundancy
-            if self._check_profile_exists(username):
-                logger.info(f"Profile info for {username} already exists in ProfileInfo/{username}.json, skipping export")
-                return True
+            # Check if the profile already exists
+            profile_exists = self._check_profile_exists(username)
+            if profile_exists:
+                logger.info(f"Profile info for {username} already exists in ProfileInfo/{username}.json, will replace with updated data")
                 
-            # Format profile info according to required structure
+            # Format profile info according to required structure, including all available fields
             profile_info = {
                 "username": profile_data.get("username", username),
                 "fullName": profile_data.get("fullName", ""),
                 "biography": profile_data.get("biography", ""),
                 "followersCount": profile_data.get("followersCount", 0),
                 "followsCount": profile_data.get("followsCount", 0),
+                "postsCount": profile_data.get("postsCount", 0),
+                "externalUrl": profile_data.get("externalUrl", ""),
                 "profilePicUrl": profile_data.get("profilePicUrl", ""),
                 "profilePicUrlHD": profile_data.get("profilePicUrlHD", ""),
                 "private": profile_data.get("private", False),
@@ -2053,10 +2052,22 @@ class ContentRecommendationSystem:
                 "extractedAt": datetime.now().isoformat()
             }
             
-            # Log what we're exporting
-            logger.info(f"Exporting profile info for {username} to ProfileInfo/{username}.json")
+            # Log what we're exporting, including URL sizes for debugging
+            url_size = len(str(profile_info["profilePicUrl"]))
+            url_hd_size = len(str(profile_info["profilePicUrlHD"]))
+            logger.info(f"Exporting profile info for {username} to ProfileInfo/{username}.json (URL size: {url_size}, HD URL size: {url_hd_size})")
+            
+            # Verify profile URLs are present and log any issues
+            if not profile_info["profilePicUrl"]:
+                logger.warning(f"profilePicUrl is empty for {username}")
+            if not profile_info["profilePicUrlHD"]:
+                logger.warning(f"profilePicUrlHD is empty for {username}")
             
             profile_key = f"ProfileInfo/{username}.json"
+            
+            # Log fields for debugging
+            logger.debug(f"Profile fields for {username}: {', '.join(profile_data.keys())}")
+            logger.debug(f"Exporting fields: {', '.join(profile_info.keys())}")
             
             # Export to R2 bucket
             result = self.r2_storage.put_object(
@@ -2066,7 +2077,8 @@ class ContentRecommendationSystem:
             )
             
             if result:
-                logger.info(f"Successfully exported profile info for {username} to {profile_key}")
+                action = "Updated" if profile_exists else "Created"
+                logger.info(f"Successfully {action} profile info for {username} in {profile_key}")
                 return True
             else:
                 logger.error(f"Failed to export profile info for {username}")
