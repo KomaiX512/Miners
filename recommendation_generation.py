@@ -122,13 +122,14 @@ class RecommendationGenerator:
             logger.error(f"Error generating trending topics: {str(e)}")
             return []
     
-    def generate_recommendations(self, topics, n_per_topic=3):
+    def generate_recommendations(self, topics, n_per_topic=3, is_branding=True):
         """
         Generate content recommendations for multiple topics.
         
         Args:
             topics: List of topics to generate recommendations for
             n_per_topic: Number of recommendations per topic
+            is_branding: Whether this is for a branding account
             
         Returns:
             Dictionary with recommendations by topic
@@ -168,7 +169,7 @@ class RecommendationGenerator:
             # Generate a single response for all topics
             try:
                 # First try with the full API parameters
-                batch_response = self.rag.generate_batch_recommendations(combined_prompt, valid_topics)
+                batch_response = self.rag.generate_batch_recommendations(combined_prompt, valid_topics, is_branding=is_branding)
             except Exception as e:
                 logger.warning(f"Error in batch recommendations with original API: {str(e)}")
                 # Create a fallback response structure
@@ -181,7 +182,8 @@ class RecommendationGenerator:
                             rec = self.rag.generate_recommendation(
                                 primary_username=primary_username,
                                 secondary_usernames=secondary_usernames,
-                                query=f"recommendation for {topic}"
+                                query=f"recommendation for {topic}",
+                                is_branding=is_branding
                             )
                             if isinstance(rec, dict) and 'next_post' in rec:
                                 rec = rec['next_post']  # Extract next_post if that's the structure
@@ -204,7 +206,8 @@ class RecommendationGenerator:
                             additional_rec = self.rag.generate_recommendation(
                                 primary_username=primary_username,
                                 secondary_usernames=secondary_usernames,
-                                query=f"recommendation for {topic}"
+                                query=f"recommendation for {topic}",
+                                is_branding=is_branding
                             )
                             if isinstance(additional_rec, dict) and 'next_post' in additional_rec:
                                 additional_rec = additional_rec['next_post']
@@ -227,7 +230,8 @@ class RecommendationGenerator:
                             rec = self.rag.generate_recommendation(
                                 primary_username=primary_username,
                                 secondary_usernames=secondary_usernames,
-                                query=f"recommendation for {topic}"
+                                query=f"recommendation for {topic}",
+                                is_branding=is_branding
                             )
                             if isinstance(rec, dict) and 'next_post' in rec:
                                 rec = rec['next_post']
@@ -569,23 +573,49 @@ class RecommendationGenerator:
     
     def generate_next_post_prediction(self, posts, account_analysis=None):
         """
-        Generate predictions for the next post.
+        Generate a next post prediction based on posting history.
         
         Args:
             posts: List of post dictionaries
-            account_analysis: Optional dictionary with account analysis results
+            account_analysis: Optional account analysis dictionary
             
         Returns:
             Dictionary with next post prediction
         """
         try:
-            # Extract username information
-            primary_username = account_analysis.get('username', 'user')
-            secondary_usernames = account_analysis.get('competitors', [])
+            # If no posts, return a generic response
+            if not posts:
+                return {
+                    'caption': "Check out our latest updates!",
+                    'hashtags': ["#New", "#Update"],
+                    'call_to_action': "Visit our profile for more",
+                    'image_prompt': "A high-quality, professional image that matches the caption and hashtags."
+                }
             
-            # Extract recent captions and hashtags for context
-            recent_captions = [post.get('caption', '') for post in posts[-5:] if 'caption' in post]
+            # Extract username information from posts
+            primary_username = None
+            for post in posts:
+                if 'username' in post:
+                    primary_username = post['username']
+                    break
             
+            # Default if no username found
+            if not primary_username:
+                primary_username = 'user'
+            
+            # Extract competitor usernames if available
+            secondary_usernames = []
+            if account_analysis and 'competitors' in account_analysis:
+                if isinstance(account_analysis['competitors'], list):
+                    secondary_usernames = account_analysis['competitors'][:5]  # Limit to first 5
+            
+            # Extract recent captions
+            recent_captions = []
+            for post in sorted(posts, key=lambda x: x.get('timestamp', ''), reverse=True)[:10]:
+                if 'caption' in post:
+                    recent_captions.append(post['caption'])
+            
+            # Extract hashtags
             all_hashtags = []
             for post in posts:
                 if 'hashtags' in post:
@@ -608,15 +638,23 @@ class RecommendationGenerator:
             
             context += "\nCommonly used hashtags: " + ", ".join(common_hashtags)
             
+            # Determine if this is a branding account
+            is_branding = False
             if account_analysis:
                 if isinstance(account_analysis, dict) and 'account_type' in account_analysis:
-                    context += f"\nAccount type: {account_analysis['account_type']}"
-                
+                    account_type = account_analysis['account_type']
+                    context += f"\nAccount type: {account_type}"
+                    
+                    if isinstance(account_type, str):
+                        if account_type.lower() == 'business/brand' or 'business' in account_type.lower():
+                            is_branding = True
+            
             # Use RAG to generate the prediction with all required parameters
             prediction = self.rag.generate_recommendation(
                 primary_username=primary_username,
                 secondary_usernames=secondary_usernames,
-                query=query + " " + context
+                query=query + " " + context,
+                is_branding=is_branding
             )
             
             # Extract the next_post field if it exists
@@ -630,24 +668,6 @@ class RecommendationGenerator:
                     next_post['image_prompt'] = "A high-quality, professional image that matches the caption and hashtags."
             
             return next_post
-            
-            # Check if prediction is already in the right format
-            if isinstance(prediction, dict) and 'caption' in prediction:
-                # Add image_prompt if missing
-                if 'image_prompt' not in prediction and 'visual_prompt' in prediction:
-                    prediction['image_prompt'] = prediction['visual_prompt']
-                elif 'image_prompt' not in prediction and 'visual_prompt' not in prediction:
-                    prediction['image_prompt'] = "A high-quality, professional image that matches the caption and hashtags."
-                
-                return prediction
-            
-            # Ensure all required fields are present in the fallback
-            return {
-                'caption': "Check out our latest updates!",
-                'hashtags': ["#New", "#Update"],
-                'call_to_action': "Visit our profile for more",
-                'image_prompt': "A high-quality, professional image that matches the caption and hashtags."
-            }
             
         except Exception as e:
             logger.error(f"Error generating next post prediction: {str(e)}")
@@ -725,11 +745,12 @@ class RecommendationGenerator:
             # Use RAG to identify competitors with required parameters
             query = f"identify competitors for {primary_username}: {context}"
             
-            # Use RAG to generate competitors
+            # Use RAG to generate competitors (always use branding prompt for competitor analysis)
             response = self.rag.generate_recommendation(
                 primary_username=primary_username,
                 secondary_usernames=secondary_usernames,
-                query=query
+                query=query,
+                is_branding=True  # Always use branding prompt for competitor analysis
             )
             
             # Extract competitors from response
@@ -793,26 +814,26 @@ class RecommendationGenerator:
 
             # Safely extract account type with fallbacks
             account_type = account_analysis.get('account_type', 'Unknown')
-            if not isinstance(account_type, str):  # Handle unexpected types
-                account_type = str(account_type)
+            
+            # Determine if this is a branding account
+            is_branding = False
+            if isinstance(account_type, str):
+                if account_type.lower() == 'business/brand' or 'business' in account_type.lower():
+                    is_branding = True
 
-            # Extract relevant information from account analysis
-            context = ""
+            # Build query for RAG
+            query = "generate improvement recommendations for social media"
+            context = f"Account type: {account_type}\n"
             
-            if isinstance(account_analysis, dict):
-                if 'account_type' in account_analysis:
-                    context += f"Account type: {account_analysis['account_type']}\n"
-                if 'analysis' in account_analysis:
-                    context += f"Account analysis: {account_analysis['analysis']}\n"
-            
-            # Use RAG to generate recommendations with required parameters
-            prompt = f"improvement recommendations for {account_type} account: {context}"
-            
-            # Use RAG to generate recommendations
+            if 'analysis' in account_analysis:
+                context += f"Analysis: {account_analysis['analysis']}\n"
+                
+            # Create improvement recommendations with all required parameters
             response = self.rag.generate_recommendation(
                 primary_username=primary_username,
                 secondary_usernames=secondary_usernames,
-                query=prompt
+                query=query + " " + context,
+                is_branding=is_branding
             )
             
             # Extract recommendations from response
@@ -973,7 +994,8 @@ class RecommendationGenerator:
                 rag_output = self.rag.generate_recommendation(
                     primary_username=primary_username,
                     secondary_usernames=secondary_usernames,
-                    query=query
+                    query=query,
+                    is_branding=True  # Explicitly specify branding account
                 )
                 
                 # Extract primary and competitor analysis from RAG output
@@ -1057,22 +1079,47 @@ class RecommendationGenerator:
                 rag_output = self.rag.generate_recommendation(
                     primary_username=primary_username,
                     secondary_usernames=secondary_usernames,
-                    query=query
+                    query=query,
+                    is_branding=False  # Explicitly specify non-branding account
                 )
                 
-                # Extract primary analysis and recommendations from RAG output
-                primary_analysis = rag_output.get('primary_analysis', 'No primary analysis available')
-                recommendations = rag_output.get('recommendations', 'No recommendations available')
+                # Extract appropriate fields based on the non-branding output structure
+                account_analysis = rag_output.get('account_analysis', 'No account analysis available')
+                content_recommendations = rag_output.get('content_recommendations', 'No content recommendations available')
+                
+                # Use the RAG output's next_post if available
+                if 'next_post' in rag_output and isinstance(rag_output['next_post'], dict):
+                    # Merge the news-based post with the RAG-based one, preferring RAG for caption/hashtags
+                    # but keeping news information
+                    next_post = rag_output['next_post']
+                    if 'source_article' in next_post_with_news:
+                        next_post['source_article'] = next_post_with_news.get('source_article')
+                else:
+                    # Use the news-based post if RAG didn't provide one
+                    next_post = next_post_with_news
                 
                 # Add non-branding specific elements to content plan
                 content_plan.update({
-                    'next_post_prediction': next_post_with_news,
-                    'primary_analysis': primary_analysis,
-                    'recommendations': recommendations,
+                    'next_post_prediction': next_post,
+                    'account_analysis': account_analysis,
+                    'content_recommendations': content_recommendations,
                     'news_articles': news_articles,
                     'engagement_strategies': engagement_strategies,
                     'account_type': 'non-branding'  # Explicitly set account_type
                 })
+            
+            # Generate additional content recommendations based on trending topics
+            trending_topics = content_plan.get('trending_topics', [])
+            if trending_topics:
+                trend_topics = [topic.get('topic', '') for topic in trending_topics if 'topic' in topic]
+                if trend_topics:
+                    logger.info(f"Generating recommendations for trending topics: {trend_topics}")
+                    trending_recommendations = self.generate_recommendations(
+                        trend_topics, 
+                        n_per_topic=1, 
+                        is_branding=is_branding
+                    )
+                    content_plan['trending_recommendations'] = trending_recommendations
             
             logger.info(f"Generated content plan for {'branding' if is_branding else 'non-branding'} account type")
             return content_plan
@@ -1291,19 +1338,20 @@ class RecommendationGenerator:
                 "image_prompt": "A modern, professional image related to the topic"
             }
     
-    def generate_batch_recommendations(self, topics, n_per_topic=3):
+    def generate_batch_recommendations(self, topics, n_per_topic=3, is_branding=True):
         """
         Generate batch recommendations for multiple topics.
         
         Args:
             topics: List of topics to generate recommendations for
             n_per_topic: Number of recommendations per topic
+            is_branding: Whether this is for a branding account
             
         Returns:
             Dictionary with recommendations by topic
         """
         try:
-            return self.generate_recommendations(topics, n_per_topic)
+            return self.generate_recommendations(topics, n_per_topic, is_branding=is_branding)
         except Exception as e:
             logger.error(f"Error generating batch recommendations: {str(e)}")
             return {}

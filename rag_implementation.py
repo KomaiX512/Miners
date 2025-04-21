@@ -142,7 +142,78 @@ class RagImplementation:
                 "caption": "Strategically crafted caption that should matches with our own primary accounts captions patterns and styles.",
                 "hashtags": ["#strategic", "#hashtags"],
                 "call_to_action": "Compelling CTA that outperforms competitors",
-                "visual_prompt": "Detailed Graphical visual concept that positions against competitor aesthetics but consistent with the our primary account posts theme and its color themes. Shape meaningful concept in Graphical Viusals image prompt"
+                "visual_prompt": "Detailed Graphical visual concept that positions against competitor aesthetics but consistent with the our primary account posts theme and its color themes. Shape meaningful concept in Graphical Viusals image prompt. And it shouldbe relevant with what caption ahs been written."
+            }}
+        }}
+        """
+        return prompt
+    
+    def _construct_non_branding_prompt(self, primary_username, query):
+        """Construct a prompt for non-branding accounts focused on personal posting history."""
+        primary_data = self.vector_db.query_similar(query, n_results=10, filter_username=primary_username)
+        
+        # Safely handle empty or missing results
+        primary_context = ""
+        if primary_data and 'documents' in primary_data and len(primary_data['documents']) > 0:
+            try:
+                primary_context = "\n".join([f"- {doc} (Engagement: {meta['engagement']}, Timestamp: {meta['timestamp']})"
+                                   for doc, meta in zip(primary_data['documents'][0], primary_data['metadatas'][0])])
+            except Exception as e:
+                logger.warning(f"Error creating primary context: {str(e)}")
+                primary_context = "No recent posts available."
+        else:
+            primary_context = "No recent posts available."
+        
+        prompt = f"""
+        You are a creative social media content specialist for personal and non-brand accounts. Your task is to analyze the posting history of {primary_username} and generate an authentic, personalized content recommendation that matches their unique style and themes.
+
+        **Account**: {primary_username}
+        **Topic Focus**: {query}
+        **Current Date**: April 11, 2025
+
+        The following data represents the account's previous posts, including engagement metrics:
+
+        **ACCOUNT POSTING HISTORY**: {primary_username}
+        {primary_context}
+
+        Your task is to provide a content recommendation with these sections:
+
+        1. **Account Analysis** [PERSONAL INSIGHTS]
+           - Analyze posting patterns, themes, and topics that appear frequently
+           - Identify the unique voice and style used in captions
+           - Determine the typical tone (casual, formal, humorous, inspirational, etc.)
+           - Note any recurring visual elements mentioned in posts
+
+        2. **Content Recommendations** [PERSONALIZED STRATEGY]
+           - Suggest content ideas that align perfectly with the account's established themes
+           - Recommend topics that would resonate with their audience based on past engagement
+           - Suggest posting frequency and timing based on observed patterns
+           - Identify hashtag strategies that have worked well in the past
+
+        3. **Next Post Creation** [AUTHENTIC CONTENT]
+           - Design a next post that feels like a natural extension of their content history
+           - Include:
+             * A caption that matches their writing style and tone perfectly
+             * Hashtags that they typically use, plus a few strategic new ones
+             * A call to action that fits their usual engagement approach
+             * A visual concept that aligns with their aesthetic preferences
+
+        Format your response as a valid JSON object with these three main keys. Ensure all analysis directly references specific examples from the post history provided.
+
+        Your response must:
+        - Maintain the account holder's authentic voice - it should sound like them, not like marketing
+        - Reference concrete examples from the post data, not generic advice
+        - Not fabricate information - only use what can be inferred from the data
+        - Format all output as properly escaped JSON with the following structure:
+
+        {{
+            "account_analysis": "Detailed analysis of the account's posting history, themes, and style",
+            "content_recommendations": "Personalized content strategy suggestions based on posting history",
+            "next_post": {{
+                "caption": "A caption written in the account's authentic voice and style",
+                "hashtags": ["#UsualHashtag", "#TheirStyle"],
+                "call_to_action": "Engagement prompt that matches their typical approach",
+                "visual_prompt": "Visual concept that aligns with their aesthetic preferences"
             }}
         }}
         """
@@ -178,14 +249,18 @@ class RagImplementation:
                 }
             }
     
-    def generate_recommendation(self, primary_username, secondary_usernames, query, n_context=3):
+    def generate_recommendation(self, primary_username, secondary_usernames, query, n_context=3, is_branding=True):
         """Generate a comprehensive content recommendation and strategy."""
         try:
             if not self.client:
                 logger.error("Gemini API not initialized.")
                 return self._generate_fallback_response(query)
             
-            prompt = self._construct_enhanced_prompt(primary_username, secondary_usernames, query)
+            # Select the appropriate prompt based on account type
+            if is_branding:
+                prompt = self._construct_enhanced_prompt(primary_username, secondary_usernames, query)
+            else:
+                prompt = self._construct_non_branding_prompt(primary_username, query)
             
             try:
                 response = self.client.models.generate_content(model=self.model, contents=prompt)
@@ -549,7 +624,7 @@ class RagImplementation:
             logger.error(f"Error extracting recommendation: {str(e)}")
             return self._generate_fallback_response(query)
     
-    def generate_batch_recommendations(self, prompt, topics):
+    def generate_batch_recommendations(self, prompt, topics, is_branding=True):
         """Generate recommendations for multiple topics in a single API call."""
         try:
             all_context = {}
@@ -562,7 +637,7 @@ class RagImplementation:
                 ]
                 logger.info(f"Context prepared for topic: {topic}")
             
-            enhanced_prompt = self._enhance_batch_prompt(prompt, all_context)
+            enhanced_prompt = self._enhance_batch_prompt(prompt, all_context, is_branding)
             response = self.client.models.generate_content(model=self.model, contents=enhanced_prompt)
             response_text = response.text.strip()
             
@@ -576,11 +651,16 @@ class RagImplementation:
             logger.error(f"Error in batch recommendations: {str(e)}")
             return {}
     
-    def _enhance_batch_prompt(self, prompt, context_by_topic):
+    def _enhance_batch_prompt(self, prompt, context_by_topic, is_branding=True):
         """Enhance the batch prompt with context for each topic."""
         context_section = "\n".join([f"Context for '{topic}':\n{' '.join(docs)}" 
                                    for topic, docs in context_by_topic.items()])
-        return f"{prompt}\n\nUse the following context:\n{context_section}\n\nFormat as JSON with topics as keys."
+        
+        # Adjust prompt based on account type
+        if is_branding:
+            return f"{prompt}\n\nUse the following context:\n{context_section}\n\nFor each topic, include competitive analysis and brand positioning. Format as JSON with topics as keys."
+        else:
+            return f"{prompt}\n\nUse the following context:\n{context_section}\n\nFor each topic, focus on personal style consistency and authentic voice. Format as JSON with topics as keys."
 
 def test_rag_implementation():
     """Test the enhanced RAG implementation with multi-user data."""
@@ -588,7 +668,8 @@ def test_rag_implementation():
         vector_db = VectorDatabaseManager()
         vector_db.clear_collection()
         
-        sample_posts = [
+        # Sample branding account posts
+        branding_posts = [
             {'id': '1', 'caption': 'Bold summer looks! #SummerMakeup', 'hashtags': ['#SummerMakeup'], 
              'engagement': 150, 'likes': 120, 'comments': 30, 'timestamp': '2025-04-01T10:00:00Z', 
              'username': 'maccosmetics'},
@@ -600,33 +681,89 @@ def test_rag_implementation():
              'username': 'anastasiabeverlyhills'},
             {'id': '4', 'caption': 'Glowy skin secrets! #Skincare', 'hashtags': ['#Skincare'], 
              'engagement': 220, 'likes': 190, 'comments': 30, 'timestamp': '2025-04-04T15:00:00Z', 
-             'username': 'fentybeauty'}
+             'username': 'fentybeauty'},
         ]
-        vector_db.add_posts(sample_posts, 'maccosmetics')
+        
+        # Sample personal account posts
+        personal_posts = [
+            {'id': '5', 'caption': 'My summer adventure begins! #SummerVibes', 'hashtags': ['#SummerVibes'], 
+             'engagement': 120, 'likes': 100, 'comments': 20, 'timestamp': '2025-04-01T11:00:00Z', 
+             'username': 'personal_user'},
+            {'id': '6', 'caption': 'Beach day with friends! #BeachDay', 'hashtags': ['#BeachDay'], 
+             'engagement': 140, 'likes': 110, 'comments': 30, 'timestamp': '2025-04-02T13:00:00Z', 
+             'username': 'personal_user'},
+            {'id': '7', 'caption': 'Sunset views from my hike today. So peaceful! #Nature #Hiking', 
+             'hashtags': ['#Nature', '#Hiking'], 'engagement': 160, 'likes': 130, 'comments': 30, 
+             'timestamp': '2025-04-03T18:00:00Z', 'username': 'personal_user'},
+            {'id': '8', 'caption': 'Making memories on my vacation. Can\'t believe how beautiful this place is! #Travel #Vacation', 
+             'hashtags': ['#Travel', '#Vacation'], 'engagement': 180, 'likes': 150, 'comments': 30, 
+             'timestamp': '2025-04-04T09:00:00Z', 'username': 'personal_user'},
+            {'id': '9', 'caption': 'Found this amazing local cafe. The coffee is incredible! #CoffeeTime #LocalGem', 
+             'hashtags': ['#CoffeeTime', '#LocalGem'], 'engagement': 130, 'likes': 100, 'comments': 30, 
+             'timestamp': '2025-04-05T10:00:00Z', 'username': 'personal_user'},
+        ]
+        
+        # Add posts to vector database
+        vector_db.add_posts(branding_posts, 'maccosmetics')
+        vector_db.add_posts(personal_posts, 'personal_user')
         
         rag = RagImplementation(vector_db=vector_db)
+        
+        # Test 1: Branding account test
+        logger.info("Testing branding account recommendation...")
         primary_username = "maccosmetics"
         secondary_usernames = ["anastasiabeverlyhills", "fentybeauty"]
         query = "summer makeup trends"
         
-        recommendation = rag.generate_recommendation(primary_username, secondary_usernames, query)
+        branding_recommendation = rag.generate_recommendation(
+            primary_username=primary_username,
+            secondary_usernames=secondary_usernames,
+            query=query,
+            is_branding=True
+        )
         
-        required_blocks = ["primary_analysis", "competitor_analysis", "recommendations", "next_post"]
-        next_post_fields = ["caption", "hashtags", "call_to_action", "visual_prompt"]
+        branding_required_blocks = ["primary_analysis", "competitor_analysis", "recommendations", "next_post"]
+        branding_next_post_fields = ["caption", "hashtags", "call_to_action", "visual_prompt"]
         
-        missing_blocks = [block for block in required_blocks if block not in recommendation]
-        missing_fields = [field for field in next_post_fields if field not in recommendation.get("next_post", {})]
+        branding_missing_blocks = [block for block in branding_required_blocks if block not in branding_recommendation]
+        branding_missing_fields = [field for field in branding_next_post_fields if field not in branding_recommendation.get("next_post", {})]
         
-        # Fail the test if we hit the fallback due to an error
-        if "due to API issues" in recommendation["primary_analysis"] or missing_blocks or missing_fields:
-            logger.error(f"Test failed: Missing blocks: {missing_blocks}, Missing fields: {missing_fields}, Used fallback: {recommendation['primary_analysis']}")
+        # Test 2: Non-branding account test
+        logger.info("Testing non-branding account recommendation...")
+        personal_username = "personal_user"
+        query = "summer vacation ideas"
+        
+        non_branding_recommendation = rag.generate_recommendation(
+            primary_username=personal_username,
+            secondary_usernames=[],
+            query=query,
+            is_branding=False
+        )
+        
+        non_branding_required_blocks = ["account_analysis", "content_recommendations", "next_post"]
+        non_branding_next_post_fields = ["caption", "hashtags", "call_to_action", "visual_prompt"]
+        
+        non_branding_missing_blocks = [block for block in non_branding_required_blocks if block not in non_branding_recommendation]
+        non_branding_missing_fields = [field for field in non_branding_next_post_fields if field not in non_branding_recommendation.get("next_post", {})]
+        
+        # Fail the test if we hit the fallback due to an error in either test
+        if ("due to API issues" in branding_recommendation.get("primary_analysis", "") or 
+            branding_missing_blocks or branding_missing_fields or
+            "due to API issues" in non_branding_recommendation.get("account_analysis", "") or 
+            non_branding_missing_blocks or non_branding_missing_fields):
+            
+            logger.error(f"Branding test: Missing blocks: {branding_missing_blocks}, Missing fields: {branding_missing_fields}")
+            logger.error(f"Non-branding test: Missing blocks: {non_branding_missing_blocks}, Missing fields: {non_branding_missing_fields}")
             return False
         
-        logger.info("Test successful: All blocks and fields present.")
-        logger.info(f"Recommendation:\n{json.dumps(recommendation, indent=2)}")
+        logger.info("Test successful: All blocks and fields present for both account types.")
+        logger.info(f"Branding recommendation structure: {list(branding_recommendation.keys())}")
+        logger.info(f"Non-branding recommendation structure: {list(non_branding_recommendation.keys())}")
         return True
     except Exception as e:
         logger.error(f"Test failed: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
         return False
 
 if __name__ == "__main__":

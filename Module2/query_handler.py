@@ -11,6 +11,9 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 import google.generativeai as genai
 from sklearn.feature_extraction.text import TfidfVectorizer
 import numpy as np
+import asyncio
+from fastapi import FastAPI, BackgroundTasks, Request
+import uvicorn
 
 class SimpleEmbeddings:
     def __init__(self):
@@ -54,6 +57,49 @@ class QueryHandler:
                 "top_k": GEMINI_CONFIG["top_k"]
             }
         )
+        self.app = FastAPI()
+        self.setup_routes()
+        
+    def setup_routes(self):
+        @self.app.post("/process-query")
+        async def process_query_endpoint(request: Request, background_tasks: BackgroundTasks):
+            data = await request.json()
+            key = data.get("key")
+            if key and key.startswith(self.input_prefix) and key.endswith(".json") and "query_" in key:
+                background_tasks.add_task(self.process_query, key)
+                return {"status": "processing", "key": key}
+            return {"status": "error", "message": "Invalid query key"}
+            
+        @self.app.post("/scan-pending-queries")
+        async def scan_pending_queries(background_tasks: BackgroundTasks):
+            background_tasks.add_task(self.scan_for_pending_queries)
+            return {"status": "scanning"}
+    
+    async def scan_for_pending_queries(self):
+        """Scan for pending queries and process them - can be triggered periodically"""
+        try:
+            logger.info("Scanning for pending queries...")
+            objects = await self.r2_client.list_objects(self.input_prefix)
+            logger.debug(f"Found {len(objects)} objects under {self.input_prefix}")
+            tasks = []
+            processed_count = 0
+            
+            for obj in objects:
+                key = obj["Key"]
+                if key.endswith(".json") and "query_" in key:
+                    if await self.status_manager.is_pending(key):
+                        logger.debug(f"Processing pending query: {key}")
+                        tasks.append(self.process_query(key))
+                        processed_count += 1
+            
+            if tasks:
+                await asyncio.gather(*tasks)
+                logger.info(f"Processed {processed_count} pending queries")
+            else:
+                logger.debug("No pending queries found")
+                
+        except Exception as e:
+            logger.error(f"Error in scanning pending queries: {e}")
 
     async def load_documents(self, username):
         try:
@@ -270,28 +316,23 @@ class QueryHandler:
             data["status_message"] = "Failed to write output"
             await self.r2_client.write_json(key, data)
 
-    async def run(self):
-        while True:
-            try:
-                logger.info("Checking for new queries...")
-                objects = await self.r2_client.list_objects(self.input_prefix)
-                logger.debug(f"Found {len(objects)} objects under {self.input_prefix}")
-                processable_files = []
-                tasks = []
-                for obj in objects:
-                    key = obj["Key"]
-                    if key.endswith(".json") and "query_" in key:
-                        processable_files.append(key)
-                        if await self.status_manager.is_pending(key):
-                            logger.debug(f"Scheduling query for processing: {key}")
-                            tasks.append(self.process_query(key))
-                logger.debug(f"Evaluated query files: {processable_files}")
-                if tasks:
-                    for task in tasks:
-                        await task
-                else:
-                    logger.debug("No processable queries found")
-                await asyncio.sleep(10)
-            except Exception as e:
-                logger.error(f"Error in query handler loop: {e}")
-                await asyncio.sleep(10)
+    async def run(self, host="0.0.0.0", port=8000):
+        """Run the API server to handle query processing events"""
+        try:
+            # Do an initial scan for any pending queries
+            await self.scan_for_pending_queries()
+            
+            # Start the FastAPI server
+            config = uvicorn.Config(app=self.app, host=host, port=port)
+            server = uvicorn.Server(config)
+            await server.serve()
+        except Exception as e:
+            logger.error(f"Failed to start query handler service: {e}")
+
+# Add a standalone function to run the handler
+async def run_handler():
+    handler = QueryHandler()
+    await handler.run()
+
+if __name__ == "__main__":
+    asyncio.run(run_handler())
