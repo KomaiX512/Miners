@@ -294,6 +294,14 @@ class InstagramScraper:
             logger.error(f"Error extracting short profile info: {str(e)}")
             return None
     
+    def _check_object_exists(self, bucket, key):
+        """Check if an object already exists in the bucket."""
+        try:
+            self.s3.head_object(Bucket=bucket, Key=key)
+            return True
+        except Exception:
+            return False
+
     def upload_short_profile_to_tasks(self, profile_info):
         """Upload short profile info to tasks bucket."""
         if not profile_info or not isinstance(profile_info, dict):
@@ -304,8 +312,15 @@ class InstagramScraper:
             username = profile_info.get("username", "")
             if not username:
                 logger.warning("Username missing in profile info")
-            return False
+                return False
+                
             profile_key = f"ProfileInfo/{username}.json"
+            
+            # Check if file already exists to avoid redundancy
+            if self._check_object_exists(tasks_bucket, profile_key):
+                logger.info(f"Profile info for {username} already exists at {profile_key}, skipping upload")
+                return True
+                
             self.s3.put_object(
                 Bucket=tasks_bucket,
                 Key=profile_key,

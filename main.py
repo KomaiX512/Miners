@@ -21,6 +21,8 @@ import asyncio
 import traceback
 import time
 import threading
+from botocore.client import Config
+import boto3
 
 
 # Set up logging
@@ -1238,11 +1240,39 @@ class ContentRecommendationSystem:
             
             # If object_key is provided, retrieve the data from R2
             if object_key:
+                # Get the raw data first to extract competitor profile info
+                raw_data = None
+                if object_key:
+                    try:
+                        raw_data = self.data_retriever.get_json_data(object_key)
+                    except Exception as e:
+                        logger.warning(f"Could not get raw data from {object_key}: {str(e)}")
+                
+                # Process the social data
                 data = self.process_social_data(object_key)
                 if not data:
                     logger.error(f"Failed to process social data from {object_key}")
                     return False
-            
+                    
+                # Extract and export profile info from raw data if available
+                if raw_data and isinstance(raw_data, list) and len(raw_data) > 0:
+                    # Process primary profile directly from raw data
+                    primary_profile = raw_data[0]
+                    if 'username' in primary_profile:
+                        primary_username = primary_profile.get('username')
+                        profile_data = {
+                            "username": primary_profile.get("username", ""),
+                            "fullName": primary_profile.get("fullName", ""),
+                            "biography": primary_profile.get("biography", ""),
+                            "followersCount": primary_profile.get("followersCount", 0),
+                            "followsCount": primary_profile.get("followsCount", 0),
+                            "profilePicUrl": primary_profile.get("profilePicUrl", ""),
+                            "profilePicUrlHD": primary_profile.get("profilePicUrlHD", ""),
+                            "private": primary_profile.get("private", False),
+                            "verified": primary_profile.get("verified", False)
+                        }
+                        self.export_profile_info(profile_data, primary_username)
+                
             # Try to extract username from object_key or data - setting it early to avoid NameError
             if object_key and '/' in object_key:
                 account_name = object_key.split('/')[0] 
@@ -1258,6 +1288,46 @@ class ContentRecommendationSystem:
                 return False
                 
             logger.info(f"Processing pipeline for primary username: {primary_username}")
+            
+            # Export profile information to R2 bucket from processed data
+            if 'profile' in data:
+                self.export_profile_info(data['profile'], primary_username)
+                
+                # Also export competitor profiles if available
+                if 'competitor_posts' in data and isinstance(data['competitor_posts'], list):
+                    competitor_usernames = set()
+                    for post in data['competitor_posts']:
+                        if 'username' in post and post['username'] != primary_username:
+                            competitor_usernames.add(post['username'])
+                    
+                    for competitor in competitor_usernames:
+                        # Find competitor profile info from posts
+                        competitor_posts = [p for p in data['competitor_posts'] if p.get('username') == competitor]
+                        if competitor_posts:
+                            # Create minimal profile info from post data
+                            competitor_profile = {
+                                "username": competitor,
+                                "extractedAt": datetime.now().isoformat()
+                            }
+                            self.export_profile_info(competitor_profile, competitor)
+                
+                # Also export secondary usernames if defined
+                if 'secondary_usernames' in data and isinstance(data['secondary_usernames'], list):
+                    for competitor in data['secondary_usernames']:
+                        if isinstance(competitor, dict) and 'username' in competitor:
+                            competitor_username = competitor['username']
+                            if competitor_username != primary_username:
+                                competitor_profile = {
+                                    "username": competitor_username,
+                                    "extractedAt": datetime.now().isoformat()
+                                }
+                                self.export_profile_info(competitor_profile, competitor_username)
+                        elif isinstance(competitor, str) and competitor != primary_username:
+                            competitor_profile = {
+                                "username": competitor,
+                                "extractedAt": datetime.now().isoformat()
+                            }
+                            self.export_profile_info(competitor_profile, competitor)
             
             # Extract account type and posting style from the data WITHOUT ANY MODIFICATION
             account_type = data.get('account_type', '')
@@ -1397,6 +1467,46 @@ class ContentRecommendationSystem:
             print(f"Posts analyzed: {len(posts)}")
             print(f"Recommendations generated: {recommendations_count}")
             print(f"Account type: {'Branding' if is_branding else 'Non-branding'}")
+            
+            # Export profile information to R2 bucket
+            if 'profile' in data:
+                self.export_profile_info(data['profile'], primary_username)
+                
+                # Also export competitor profiles if available
+                if 'competitor_posts' in data and isinstance(data['competitor_posts'], list):
+                    competitor_usernames = set()
+                    for post in data['competitor_posts']:
+                        if 'username' in post and post['username'] != primary_username:
+                            competitor_usernames.add(post['username'])
+                    
+                    for competitor in competitor_usernames:
+                        # Find competitor profile info from posts
+                        competitor_posts = [p for p in data['competitor_posts'] if p.get('username') == competitor]
+                        if competitor_posts:
+                            # Create minimal profile info from post data
+                            competitor_profile = {
+                                "username": competitor,
+                                "extractedAt": datetime.now().isoformat()
+                            }
+                            self.export_profile_info(competitor_profile, competitor)
+                
+                # Also export secondary usernames if defined
+                if 'secondary_usernames' in data and isinstance(data['secondary_usernames'], list):
+                    for competitor in data['secondary_usernames']:
+                        if isinstance(competitor, dict) and 'username' in competitor:
+                            competitor_username = competitor['username']
+                            if competitor_username != primary_username:
+                                competitor_profile = {
+                                    "username": competitor_username,
+                                    "extractedAt": datetime.now().isoformat()
+                                }
+                                self.export_profile_info(competitor_profile, competitor_username)
+                        elif isinstance(competitor, str) and competitor != primary_username:
+                            competitor_profile = {
+                                "username": competitor,
+                                "extractedAt": datetime.now().isoformat()
+                            }
+                            self.export_profile_info(competitor_profile, competitor)
             
             return {
                 "success": True,
@@ -1884,6 +1994,86 @@ class ContentRecommendationSystem:
             import traceback
             logger.error(traceback.format_exc())
             raise
+
+    def _check_profile_exists(self, username):
+        """Check if a profile already exists in the ProfileInfo directory."""
+        try:
+            from botocore.client import Config
+            import boto3
+            from config import R2_CONFIG
+            
+            # Use direct S3 access instead of data retriever
+            s3_client = boto3.client(
+                's3',
+                endpoint_url=R2_CONFIG['endpoint_url'],
+                aws_access_key_id=R2_CONFIG['aws_access_key_id'],
+                aws_secret_access_key=R2_CONFIG['aws_secret_access_key'],
+                config=Config(signature_version='s3v4')
+            )
+            
+            tasks_bucket = R2_CONFIG['bucket_name2']
+            profile_key = f"ProfileInfo/{username}.json"
+            
+            try:
+                # Try to check if the object exists using head_object
+                s3_client.head_object(Bucket=tasks_bucket, Key=profile_key)
+                logger.info(f"Profile {profile_key} already exists in bucket {tasks_bucket}")
+                return True
+            except Exception:
+                # Object doesn't exist
+                logger.info(f"Profile {profile_key} does not exist in bucket {tasks_bucket}")
+                return False
+        except Exception as e:
+            logger.warning(f"Error checking if profile exists: {str(e)}")
+            return False
+
+    def export_profile_info(self, profile_data, username):
+        """Export profile information to tasks/ProfileInfo/<username>.json."""
+        try:
+            if not profile_data or not username:
+                logger.error(f"Invalid profile data or username for export: {username}")
+                return False
+                
+            # Check if the profile already exists to avoid redundancy
+            if self._check_profile_exists(username):
+                logger.info(f"Profile info for {username} already exists in ProfileInfo/{username}.json, skipping export")
+                return True
+                
+            # Format profile info according to required structure
+            profile_info = {
+                "username": profile_data.get("username", username),
+                "fullName": profile_data.get("fullName", ""),
+                "biography": profile_data.get("biography", ""),
+                "followersCount": profile_data.get("followersCount", 0),
+                "followsCount": profile_data.get("followsCount", 0),
+                "profilePicUrl": profile_data.get("profilePicUrl", ""),
+                "profilePicUrlHD": profile_data.get("profilePicUrlHD", ""),
+                "private": profile_data.get("private", False),
+                "verified": profile_data.get("verified", False),
+                "extractedAt": datetime.now().isoformat()
+            }
+            
+            # Log what we're exporting
+            logger.info(f"Exporting profile info for {username} to ProfileInfo/{username}.json")
+            
+            profile_key = f"ProfileInfo/{username}.json"
+            
+            # Export to R2 bucket
+            result = self.r2_storage.put_object(
+                key=profile_key,
+                content=profile_info,
+                bucket='tasks'
+            )
+            
+            if result:
+                logger.info(f"Successfully exported profile info for {username} to {profile_key}")
+                return True
+            else:
+                logger.error(f"Failed to export profile info for {username}")
+                return False
+        except Exception as e:
+            logger.error(f"Error exporting profile info for {username}: {str(e)}")
+            return False
 
 def create_content_plan():
     """Create content plan without using sample data."""
