@@ -280,21 +280,75 @@ class InstagramScraper:
             # Log all available fields in the profile for debugging
             logger.debug(f"Available profile fields: {', '.join(profile.keys())}")
             
+            # Extra validation for critical fields
+            follower_count = profile.get("followersCount", 0)
+            follows_count = profile.get("followsCount", 0)
+            posts_count = profile.get("postsCount", 0)
+            
+            # Check alternative field names if the standard names aren't populated
+            if follower_count == 0 and "followers" in profile:
+                follower_count = profile.get("followers", 0)
+                logger.info(f"Using alternative field 'followers': {follower_count}")
+                
+            if follows_count == 0 and "following" in profile:
+                follows_count = profile.get("following", 0)
+                logger.info(f"Using alternative field 'following': {follows_count}")
+                
+            if posts_count == 0 and "mediaCount" in profile:
+                posts_count = profile.get("mediaCount", 0)
+                logger.info(f"Using alternative field 'mediaCount': {posts_count}")
+            
+            # Log the values for verification
+            logger.info(f"Extracted follower count: {follower_count}")
+            logger.info(f"Extracted follows count: {follows_count}")
+            logger.info(f"Extracted posts count: {posts_count}")
+            
             # Extract full profile info with all available fields
             short_info = {
                 "username": profile.get("username", ""),
                 "fullName": profile.get("fullName", ""),
                 "biography": profile.get("biography", ""),
-                "followersCount": profile.get("followersCount", 0),
-                "followsCount": profile.get("followsCount", 0),
-                "profilePicUrl": profile.get("profilePicUrl", ""),
-                "profilePicUrlHD": profile.get("profilePicUrlHD", ""),
+                "followersCount": follower_count,
+                "followsCount": follows_count,
+                "postsCount": posts_count,
+                "externalUrl": profile.get("externalUrl", ""),
                 "private": profile.get("private", False),
                 "verified": profile.get("verified", False),
-                "postsCount": profile.get("postsCount", 0),
-                "externalUrl": profile.get("externalUrl", ""),
                 "extractedAt": datetime.now().isoformat()
             }
+            
+            # Add business fields if available
+            if "businessCategoryName" in profile:
+                short_info["businessCategoryName"] = profile.get("businessCategoryName", "")
+                
+            if "isBusinessAccount" in profile:
+                short_info["isBusinessAccount"] = profile.get("isBusinessAccount", False)
+            
+            # Handle profile picture URLs carefully with extra debugging
+            profile_pic_url = profile.get("profilePicUrl")
+            profile_pic_url_hd = profile.get("profilePicUrlHD")
+            
+            # Log URL values for debugging
+            if profile_pic_url:
+                logger.info(f"Found profilePicUrl of length {len(profile_pic_url)}")
+                short_info["profilePicUrl"] = profile_pic_url
+            else:
+                logger.warning(f"profilePicUrl is missing for {short_info['username']}")
+                short_info["profilePicUrl"] = ""
+                
+            if profile_pic_url_hd:
+                logger.info(f"Found profilePicUrlHD of length {len(profile_pic_url_hd)}")
+                short_info["profilePicUrlHD"] = profile_pic_url_hd
+            else:
+                logger.warning(f"profilePicUrlHD is missing for {short_info['username']}")
+                short_info["profilePicUrlHD"] = ""
+            
+            # Verify follower/following counts one more time
+            if short_info["followersCount"] == 0:
+                logger.warning(f"Zero follower count for {short_info['username']} - this may be incorrect")
+                
+            if short_info["followsCount"] == 0:
+                logger.warning(f"Zero following count for {short_info['username']} - this may be incorrect")
             
             # Log extraction results for verification
             logger.info(f"Successfully extracted short profile info for {short_info['username']}")
@@ -327,26 +381,117 @@ class InstagramScraper:
                 
             profile_key = f"ProfileInfo/{username}.json"
             
-            # Check if file already exists - if it does, we'll replace it instead of skipping
+            # Check if the new profile info has complete data 
+            has_complete_data = (
+                (profile_info.get('followersCount', 0) > 0) and
+                (profile_info.get('followsCount', 0) > 0) and
+                (profile_info.get('profilePicUrl') or profile_info.get('profilePicUrlHD'))
+            )
+            
+            # Check if file already exists
+            existing_profile = None
             exists = self._check_object_exists(tasks_bucket, profile_key)
             if exists:
-                logger.info(f"Profile info for {username} already exists at {profile_key}, replacing with updated data")
-            
-            # Ensure profile URLs are included
-            if 'profilePicUrl' not in profile_info:
-                profile_info['profilePicUrl'] = ""
-                logger.warning(f"profilePicUrl missing in profile info for {username}, setting to empty string")
-            if 'profilePicUrlHD' not in profile_info:
-                profile_info['profilePicUrlHD'] = ""
-                logger.warning(f"profilePicUrlHD missing in profile info for {username}, setting to empty string")
-                
-            # Log the profile info being uploaded for debugging
-            logger.debug(f"Uploading profile info for {username}: {json.dumps({k: v if k not in ['profilePicUrl', 'profilePicUrlHD'] else f'URL length: {len(str(v))}' for k, v in profile_info.items()})}")
+                logger.info(f"Profile info for {username} already exists at {profile_key}")
+                try:
+                    # Retrieve existing profile data to preserve important fields
+                    response = self.s3.get_object(Bucket=tasks_bucket, Key=profile_key)
+                    existing_profile = json.loads(response['Body'].read().decode('utf-8'))
+                    logger.info(f"Successfully retrieved existing profile data for {username}")
+                    
+                    # If we have complete data, we'll completely replace the profile
+                    # This ensures we don't keep bad data when we have good data
+                    if has_complete_data:
+                        logger.info(f"New profile data for {username} is complete, will completely replace existing data")
+                        
+                        # But always preserve account_type and posting_style if they exist in the old profile
+                        # and not in the new profile
+                        if existing_profile.get('account_type') and not profile_info.get('account_type'):
+                            profile_info['account_type'] = existing_profile.get('account_type')
+                            logger.info(f"Preserved account_type: {profile_info['account_type']}")
+                            
+                        if existing_profile.get('posting_style') and not profile_info.get('posting_style'):
+                            profile_info['posting_style'] = existing_profile.get('posting_style')
+                            logger.info(f"Preserved posting_style: {profile_info['posting_style']}")
+                    else:
+                        logger.info(f"New profile data for {username} is incomplete, will merge with existing data")
+                        # In this case we'll do a selective merge
+                except Exception as e:
+                    logger.warning(f"Failed to retrieve existing profile for {username}: {str(e)}")
             
             # Add timestamp if not present
             if 'extractedAt' not in profile_info:
                 profile_info['extractedAt'] = datetime.now().isoformat()
             
+            # If we're not replacing completely, merge selectively with existing data
+            if exists and existing_profile and not has_complete_data:
+                # Check which profile has better data for each field
+                # Only use existing field if new field is missing or has a "worse" value
+                
+                # For follower counts, use the higher value if new value is 0
+                if profile_info.get('followersCount', 0) == 0 and existing_profile.get('followersCount', 0) > 0:
+                    logger.info(f"Using existing follower count: {existing_profile['followersCount']}")
+                    profile_info['followersCount'] = existing_profile.get('followersCount')
+                
+                # For following counts, use the higher value if new value is 0
+                if profile_info.get('followsCount', 0) == 0 and existing_profile.get('followsCount', 0) > 0:
+                    logger.info(f"Using existing follows count: {existing_profile['followsCount']}")
+                    profile_info['followsCount'] = existing_profile.get('followsCount')
+                
+                # For posts counts, use the higher value if new value is 0
+                if profile_info.get('postsCount', 0) == 0 and existing_profile.get('postsCount', 0) > 0:
+                    logger.info(f"Using existing posts count: {existing_profile['postsCount']}")
+                    profile_info['postsCount'] = existing_profile.get('postsCount')
+                
+                # For profile URLs, use existing if new is missing
+                if not profile_info.get('profilePicUrl') and existing_profile.get('profilePicUrl'):
+                    logger.info(f"Using existing profilePicUrl")
+                    profile_info['profilePicUrl'] = existing_profile.get('profilePicUrl')
+                    
+                if not profile_info.get('profilePicUrlHD') and existing_profile.get('profilePicUrlHD'):
+                    logger.info(f"Using existing profilePicUrlHD")
+                    profile_info['profilePicUrlHD'] = existing_profile.get('profilePicUrlHD')
+                
+                # For other basic fields, use existing if new is missing
+                for field in ['fullName', 'biography', 'externalUrl']:
+                    if not profile_info.get(field) and existing_profile.get(field):
+                        logger.info(f"Using existing {field}")
+                        profile_info[field] = existing_profile.get(field)
+                
+                # Always preserve account_type and posting_style
+                if existing_profile.get('account_type') and not profile_info.get('account_type'):
+                    profile_info['account_type'] = existing_profile.get('account_type')
+                    
+                if existing_profile.get('posting_style') and not profile_info.get('posting_style'):
+                    profile_info['posting_style'] = existing_profile.get('posting_style')
+                
+                # Include business fields if they exist in the existing profile
+                if existing_profile.get('businessCategoryName') and not profile_info.get('businessCategoryName'):
+                    profile_info['businessCategoryName'] = existing_profile.get('businessCategoryName')
+                    
+                if existing_profile.get('isBusinessAccount') is not None and profile_info.get('isBusinessAccount') is None:
+                    profile_info['isBusinessAccount'] = existing_profile.get('isBusinessAccount')
+            
+            # Ensure profile URLs exist (even if empty)
+            if 'profilePicUrl' not in profile_info:
+                logger.warning(f"profilePicUrl missing in profile info for {username}")
+                profile_info['profilePicUrl'] = ""
+                
+            if 'profilePicUrlHD' not in profile_info:
+                logger.warning(f"profilePicUrlHD missing in profile info for {username}")
+                profile_info['profilePicUrlHD'] = ""
+            
+            # Log detailed info about what we're uploading
+            logger.info(f"Uploading profile info for {username}:")
+            logger.info(f"  Follower count: {profile_info.get('followersCount', 0)}")
+            logger.info(f"  Following count: {profile_info.get('followsCount', 0)}")
+            logger.info(f"  Posts count: {profile_info.get('postsCount', 0)}")
+            logger.info(f"  Profile URL exists: {bool(profile_info.get('profilePicUrl'))}")
+            logger.info(f"  Profile URL HD exists: {bool(profile_info.get('profilePicUrlHD'))}")
+            logger.info(f"  Account type: {profile_info.get('account_type', 'Not specified')}")
+            logger.info(f"  Posting style: {profile_info.get('posting_style', 'Not specified')}")
+            
+            # Upload to S3
             self.s3.put_object(
                 Bucket=tasks_bucket,
                 Key=profile_key,
@@ -394,6 +539,8 @@ class InstagramScraper:
         if not parent_data:
             return {"success": False, "message": f"Failed to scrape parent profile: {parent_username}"}
         
+        # Extract and save parent profile info FIRST before uploading directories
+        # This ensures profile data is preserved regardless of directory operations
         parent_short_info = self.extract_short_profile_info(parent_data)
         if parent_short_info:
             # Add account type and posting style from info_metadata if available
@@ -404,29 +551,46 @@ class InstagramScraper:
                 # Log account type for debugging
                 logger.info(f"Account type for {parent_username}: {parent_short_info['account_type']}")
                 logger.info(f"Posting style for {parent_username}: {parent_short_info['posting_style']}")
-                
-            self.upload_short_profile_to_tasks(parent_short_info)
+            
+            # Save profile info to tasks bucket - this preserves profile data
+            profile_upload_result = self.upload_short_profile_to_tasks(parent_short_info)
+            if profile_upload_result:
+                logger.info(f"Successfully preserved profile info for {parent_username}")
+            else:
+                logger.warning(f"Failed to preserve profile info for {parent_username}")
         
         parent_file = f"{parent_username}.json"
         parent_path = self.save_to_local_file(parent_data, local_dir, parent_file)
         if not parent_path:
             return {"success": False, "message": f"Failed to save parent data locally: {parent_username}"}
         
+        # Also process and save competitor info before directory operations
+        processed_competitors = []
         for competitor in competitor_usernames[:5]:
             competitor_data = self.scrape_profile(competitor, results_limit)
             if not competitor_data:
                 logger.warning(f"Failed to scrape competitor profile: {competitor}")
                 continue
+            
+            # Extract and save competitor profile info
             competitor_short_info = self.extract_short_profile_info(competitor_data)
             if competitor_short_info:
-                self.upload_short_profile_to_tasks(competitor_short_info)
+                comp_profile_result = self.upload_short_profile_to_tasks(competitor_short_info)
+                if comp_profile_result:
+                    logger.info(f"Successfully preserved profile info for competitor: {competitor}")
+                else:
+                    logger.warning(f"Failed to preserve profile info for competitor: {competitor}")
+            
             competitor_file = f"{competitor}.json"
             competitor_path = self.save_to_local_file(competitor_data, local_dir, competitor_file)
             if not competitor_path:
                 logger.warning(f"Failed to save competitor data locally: {competitor}")
                 continue
+            
+            processed_competitors.append(competitor)
             logger.info(f"Successfully processed competitor: {competitor}")
         
+        # Now that profile data is preserved, proceed with directory operations
         # The upload_directory_to_both_buckets function now handles deletion of previous data
         upload_result = self.upload_directory_to_both_buckets(local_dir, parent_username)
         
@@ -445,7 +609,8 @@ class InstagramScraper:
             "success": upload_result["success"],
             "message": f"Successfully processed account batch for: {parent_username}" if upload_result["success"] else f"Failed to upload directory to R2: {parent_username}",
             "main_uploaded": upload_result["main_uploaded"],
-            "personal_uploaded": upload_result["personal_uploaded"]
+            "personal_uploaded": upload_result["personal_uploaded"],
+            "processed_competitors": processed_competitors
         }
     
     def verify_structure(self, parent_username):
@@ -623,6 +788,28 @@ class InstagramScraper:
             if not parent_data:
                 return {"success": False, "message": f"Failed to scrape profile: {username}"}
             
+            # Extract and save profile info FIRST to ensure it's preserved
+            parent_short_info = self.extract_short_profile_info(parent_data)
+            if parent_short_info:
+                logger.info(f"Extracted short profile info for {username}")
+                
+                # Add account info from metadata if available
+                if info_metadata:
+                    if 'accountType' in info_metadata:
+                        parent_short_info['account_type'] = info_metadata.get('accountType', '')
+                    if 'postingStyle' in info_metadata:
+                        parent_short_info['posting_style'] = info_metadata.get('postingStyle', '')
+                
+                # Upload profile info to tasks bucket
+                profile_result = self.upload_short_profile_to_tasks(parent_short_info)
+                if profile_result:
+                    logger.info(f"Successfully preserved profile info for {username}")
+                else:
+                    logger.warning(f"Failed to preserve profile info for {username}")
+            else:
+                logger.warning(f"Failed to extract short profile info for {username}")
+            
+            # Now proceed with directory operations
             local_dir = self.create_local_directory(username)
             if not local_dir:
                 return {"success": False, "message": f"Failed to create local directory for {username}"}
@@ -641,10 +828,8 @@ class InstagramScraper:
             except Exception as e:
                 logger.warning(f"Failed to remove local directory {local_dir}: {str(e)}")
             
+            # Store additional metadata if available
             if upload_result["success"] and info_metadata:
-                parent_short_info = self.extract_short_profile_info(parent_data)
-                if parent_short_info:
-                    self.upload_short_profile_to_tasks(parent_short_info)
                 self.store_info_metadata(info_metadata)
             
             self.cleanup_expired_personal_content()

@@ -112,3 +112,40 @@ class R2Client:
             except Exception as e:
                 logger.error(f"Unexpected error when writing to {key}: {str(e)}")
                 return False
+                
+    async def write_binary(self, key, data, content_type='image/jpeg'):
+        """
+        Upload binary data to R2 storage.
+        
+        Args:
+            key (str): The key (filename) to use in R2
+            data (bytes): Binary data to upload
+            content_type (str, optional): MIME type of the data. Defaults to 'image/jpeg'
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        async with self.session.create_client(
+            "s3",
+            endpoint_url=self.config["endpoint_url"],
+            aws_access_key_id=self.config["aws_access_key_id"],
+            aws_secret_access_key=self.config["aws_secret_access_key"],
+            region_name="auto"
+        ) as client:
+            try:
+                await client.put_object(
+                    Bucket=self.bucket_name,
+                    Key=key,
+                    Body=data,
+                    ContentType=content_type
+                )
+                logger.info(f"Successfully wrote binary data to {key}")
+                return True
+            except ClientError as e:
+                error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+                error_message = e.response.get('Error', {}).get('Message', str(e))
+                logger.error(f"Failed to write binary data to {key}: {error_code} - {error_message}")
+                return False
+            except Exception as e:
+                logger.error(f"Unexpected error when writing binary data to {key}: {str(e)}")
+                return False

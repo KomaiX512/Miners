@@ -2,6 +2,8 @@ import aiohttp
 import asyncio
 import re
 import json
+import base64
+import io
 from utils.r2_client import R2Client
 from utils.status_manager import StatusManager
 from utils.logging import logger
@@ -118,6 +120,26 @@ class ImageGenerator:
             logger.error(f"Failed to generate image: {e}")
             return None
 
+    async def download_image(self, image_url, session):
+        """Download image from URL and return it as bytes."""
+        try:
+            async with session.get(image_url) as response:
+                if response.status != 200:
+                    logger.error(f"Failed to download image: {response.status}")
+                    return None
+                return await response.read()
+        except Exception as e:
+            logger.error(f"Error downloading image: {e}")
+            return None
+
+    async def save_image(self, image_data, key):
+        """Save image data to R2 storage."""
+        try:
+            return await self.r2_client.write_binary(key, image_data)
+        except Exception as e:
+            logger.error(f"Error saving image to R2: {e}")
+            return False
+
     async def process_post(self, key, session):
         if not await self.status_manager.is_pending(key):
             return
@@ -159,26 +181,55 @@ class ImageGenerator:
             await self.r2_client.write_json(key, data)
             return
 
+        # Download the image from the temporary URL
+        logger.info(f"Downloading image from URL for {key}")
+        image_data = await self.download_image(image_url, session)
+        if not image_data:
+            logger.error(f"Failed to download image for {key}")
+            data["status"] = "error"
+            data["status_message"] = "Image download failed"
+            await self.r2_client.write_json(key, data)
+            return
+
+        # Set up paths for storing files
+        username = key.split("/")[1]
+        output_dir = f"{self.output_prefix}{username}/"
+        objects = await self.r2_client.list_objects(output_dir)
+        post_number = len([o for o in objects if "ready_post_" in o["Key"]]) + 1
+        
+        # Create file paths for both JSON and image
+        json_key = f"{output_dir}ready_post_{post_number}.json"
+        image_key = f"{output_dir}image_{post_number}.jpg"
+        
+        # Save the image file
+        logger.info(f"Saving image to {image_key}")
+        if not await self.save_image(image_data, image_key):
+            logger.error(f"Failed to save image to {image_key}")
+            data["status"] = "error"
+            data["status_message"] = "Failed to save image file"
+            await self.r2_client.write_json(key, data)
+            return
+
         # Create output post, handling potentially missing fields
         output_post = {
             "post": {
                 "caption": post.get("caption", "MAC Cosmetics product"),
                 "hashtags": post.get("hashtags", ["#MAC", "#Cosmetics"]),
                 "call_to_action": post.get("call_to_action", "Shop now!"),
-                "image_url": image_url
+                "image_url": image_key  # Reference to our permanent image file
             },
             "status": "processed"
         }
 
-        username = key.split("/")[1]
-        output_dir = f"{self.output_prefix}{username}/"
-        objects = await self.r2_client.list_objects(output_dir)
-        post_number = len([o for o in objects if "ready_post_" in o["Key"]]) + 1
-        output_key = f"{output_dir}ready_post_{post_number}.json"
-
-        if await self.r2_client.write_json(output_key, output_post):
+        # Save the JSON file
+        if await self.r2_client.write_json(json_key, output_post):
             await self.status_manager.mark_processed(key)
-            logger.info(f"Successfully processed {key} to {output_key}")
+            logger.info(f"Successfully processed {key} to {json_key} with image at {image_key}")
+        else:
+            logger.error(f"Failed to write JSON to {json_key}")
+            data["status"] = "error"
+            data["status_message"] = "Failed to write output JSON"
+            await self.r2_client.write_json(key, data)
 
     async def run(self):
         async with aiohttp.ClientSession() as session:

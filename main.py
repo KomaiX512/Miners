@@ -1970,14 +1970,46 @@ class ContentRecommendationSystem:
                     logger.info(f"Found {len(processed_usernames)} processed usernames to analyze")
                     # Process each username through the full pipeline
                     for username in processed_usernames:
-                        logger.info(f"Starting content pipeline for {username}")
-                        # Construct the object key based on the username
-                        object_key = f"{username}/{username}.json"
-                        result = self.run_pipeline(object_key=object_key)
-                        if result and isinstance(result, dict) and result.get("success"):
-                            logger.info(f"Successfully completed content pipeline for {username}")
-                        else:
-                            logger.error(f"Failed to complete content pipeline for {username}")
+                        try:
+                            logger.info(f"Starting content pipeline for {username}")
+                            
+                            # First, check for and retrieve ProcessedInfo data
+                            processed_info = self._check_processed_info(username)
+                            if processed_info:
+                                logger.info(f"Retrieved processed info for {username} with account type: {processed_info.get('accountType')}")
+                            else:
+                                logger.warning(f"No processed info found for {username}, pipeline may have incomplete data")
+                            
+                            # Check if profile exists and retrieve it
+                            profile_exists = self._check_profile_exists(username)
+                            if profile_exists:
+                                logger.info(f"Profile exists for {username}, retrieving it for reference")
+                                profile_data = self._retrieve_profile_info(username)
+                                if profile_data:
+                                    logger.info(f"Retrieved profile data for {username} with URLs: {bool(profile_data.get('profilePicUrl'))}")
+                            
+                            # Construct the object key based on the username
+                            object_key = f"{username}/{username}.json"
+                            
+                            # Run the pipeline with the profile data
+                            result = self.run_pipeline(object_key=object_key)
+                            if result and isinstance(result, dict) and result.get("success"):
+                                logger.info(f"Successfully completed content pipeline for {username}")
+                                
+                                # After pipeline completes, verify profile data was preserved
+                                profile_data_after = self._retrieve_profile_info(username)
+                                if profile_data_after:
+                                    if not profile_data_after.get('profilePicUrl') and not profile_data_after.get('profilePicUrlHD'):
+                                        logger.warning(f"Profile URLs missing for {username} after pipeline, attempting to recover")
+                                        
+                                        # Try to refresh profile data if URLs are missing
+                                        self._refresh_profile_data(username)
+                            else:
+                                logger.error(f"Failed to complete content pipeline for {username}")
+                        except Exception as e:
+                            logger.error(f"Error processing {username}: {str(e)}")
+                            import traceback
+                            logger.error(traceback.format_exc())
                 else:
                     logger.info("No processed Instagram data found")
                 
@@ -1991,6 +2023,54 @@ class ContentRecommendationSystem:
             import traceback
             logger.error(traceback.format_exc())
             raise
+            
+    def _refresh_profile_data(self, username):
+        """
+        Refresh profile data for a username by rescanning existing data sources.
+        Used to recover missing profile URLs.
+        """
+        try:
+            logger.info(f"Attempting to refresh profile data for {username}")
+            
+            # First try to get data from the main bucket
+            object_key = f"{username}/{username}.json"
+            raw_data = self.data_retriever.get_json_data(object_key)
+            
+            if raw_data and isinstance(raw_data, list) and raw_data:
+                logger.info(f"Found raw profile data for {username}, extracting profile info")
+                profile_data = {
+                    "username": username,
+                    "fullName": raw_data[0].get("fullName", ""),
+                    "biography": raw_data[0].get("biography", ""),
+                    "followersCount": raw_data[0].get("followersCount", 0),
+                    "followsCount": raw_data[0].get("followsCount", 0),
+                    "profilePicUrl": raw_data[0].get("profilePicUrl", ""),
+                    "profilePicUrlHD": raw_data[0].get("profilePicUrlHD", ""),
+                }
+                
+                # Export the profile data back to the ProfileInfo directory
+                if profile_data.get("profilePicUrl") or profile_data.get("profilePicUrlHD"):
+                    logger.info(f"Exporting refreshed profile data with URLs for {username}")
+                    self.export_profile_info(profile_data, username)
+                    return True
+            
+            # If that fails, try using the scraper to refresh the profile
+            from instagram_scraper import InstagramScraper
+            scraper = InstagramScraper()
+            profile_data = scraper.scrape_profile(username, 1)
+            
+            if profile_data:
+                profile_info = scraper.extract_short_profile_info(profile_data)
+                if profile_info and (profile_info.get("profilePicUrl") or profile_info.get("profilePicUrlHD")):
+                    logger.info(f"Successfully refreshed profile for {username} using scraper")
+                    scraper.upload_short_profile_to_tasks(profile_info)
+                    return True
+            
+            logger.warning(f"Failed to refresh profile data for {username}")
+            return False
+        except Exception as e:
+            logger.error(f"Error refreshing profile data for {username}: {str(e)}")
+            return False
 
     def _check_profile_exists(self, username):
         """Check if a profile already exists in the ProfileInfo directory."""
@@ -2034,7 +2114,9 @@ class ContentRecommendationSystem:
             # Check if the profile already exists
             profile_exists = self._check_profile_exists(username)
             if profile_exists:
-                logger.info(f"Profile info for {username} already exists in ProfileInfo/{username}.json, will replace with updated data")
+                logger.info(f"Profile info for {username} already exists in ProfileInfo/{username}.json, will retrieve existing data")
+                # Retrieve existing profile to preserve any data not in the new profile_data
+                existing_profile = self._retrieve_profile_info(username)
                 
             # Format profile info according to required structure, including all available fields
             profile_info = {
@@ -2051,6 +2133,27 @@ class ContentRecommendationSystem:
                 "verified": profile_data.get("verified", False),
                 "extractedAt": datetime.now().isoformat()
             }
+            
+            # If we have existing profile data, preserve important fields that might be missing in new data
+            if profile_exists and existing_profile:
+                # Preserve profile URLs if not in the new profile data
+                if not profile_info["profilePicUrl"] and existing_profile.get("profilePicUrl"):
+                    logger.info(f"Preserving existing profilePicUrl for {username}")
+                    profile_info["profilePicUrl"] = existing_profile.get("profilePicUrl")
+                    
+                if not profile_info["profilePicUrlHD"] and existing_profile.get("profilePicUrlHD"):
+                    logger.info(f"Preserving existing profilePicUrlHD for {username}")
+                    profile_info["profilePicUrlHD"] = existing_profile.get("profilePicUrlHD")
+                
+                # Preserve other fields that might be missing in the new data
+                if not profile_info["fullName"] and existing_profile.get("fullName"):
+                    profile_info["fullName"] = existing_profile.get("fullName")
+                    
+                if not profile_info["biography"] and existing_profile.get("biography"):
+                    profile_info["biography"] = existing_profile.get("biography")
+                    
+                if not profile_info["externalUrl"] and existing_profile.get("externalUrl"):
+                    profile_info["externalUrl"] = existing_profile.get("externalUrl")
             
             # Log what we're exporting, including URL sizes for debugging
             url_size = len(str(profile_info["profilePicUrl"]))
@@ -2086,6 +2189,37 @@ class ContentRecommendationSystem:
         except Exception as e:
             logger.error(f"Error exporting profile info for {username}: {str(e)}")
             return False
+            
+    def _retrieve_profile_info(self, username):
+        """Retrieve profile information from tasks/ProfileInfo/<username>.json."""
+        try:
+            from botocore.client import Config
+            import boto3
+            from config import R2_CONFIG
+            
+            # Use direct S3 access
+            s3_client = boto3.client(
+                's3',
+                endpoint_url=R2_CONFIG['endpoint_url'],
+                aws_access_key_id=R2_CONFIG['aws_access_key_id'],
+                aws_secret_access_key=R2_CONFIG['aws_secret_access_key'],
+                config=Config(signature_version='s3v4')
+            )
+            
+            tasks_bucket = R2_CONFIG['bucket_name2']
+            profile_key = f"ProfileInfo/{username}.json"
+            
+            try:
+                response = s3_client.get_object(Bucket=tasks_bucket, Key=profile_key)
+                profile_data = json.loads(response['Body'].read().decode('utf-8'))
+                logger.info(f"Successfully retrieved existing profile info for {username}")
+                return profile_data
+            except Exception as e:
+                logger.warning(f"Error retrieving profile info for {username}: {str(e)}")
+                return None
+        except Exception as e:
+            logger.warning(f"Error setting up client to retrieve profile info: {str(e)}")
+            return None
 
 def create_content_plan():
     """Create content plan without using sample data."""
