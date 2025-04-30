@@ -401,6 +401,41 @@ class TimeSeriesAnalyzer:
             logger.error(f"Error in analysis pipeline: {str(e)}")
             return None
 
+    def export_prophet_analysis(self, analysis_result, primary_username):
+        """
+        Export Prophet/time series analysis report to R2.
+        """
+        import io, json
+
+        # Ensure directory exists
+        self._ensure_directory_exists(f"prophet_analysis/{primary_username}/")
+
+        # Get next file number
+        file_num = self._get_next_file_number("prophet_analysis", primary_username, "analysis")
+        export_path = f"prophet_analysis/{primary_username}/analysis_{file_num}.json"
+
+        # Prepare export data (convert DataFrames to records)
+        export_data = {}
+        for key, value in analysis_result.items():
+            if hasattr(value, "to_dict"):
+                export_data[key] = value.to_dict(orient="records")
+            elif key == "model":
+                export_data[key] = "Prophet model (not serializable)"
+            else:
+                export_data[key] = value
+
+        # Upload to R2
+        result = self.r2_storage.upload_file(
+            key=export_path,
+            file_obj=io.BytesIO(json.dumps(export_data, indent=2, default=str).encode("utf-8")),
+            bucket="tasks"
+        )
+        if result:
+            logger.info(f"Prophet analysis export successful to {export_path}")
+        else:
+            logger.error(f"Failed to export prophet analysis to {export_path}")
+        return result
+
 
 def test_time_series_analysis_multi_user():
     """Test time series analysis with primary and secondary username data."""
@@ -459,6 +494,18 @@ def test_time_series_analysis_multi_user():
     except Exception as e:
         logger.error(f"Multi-user test failed: {str(e)}")
         return False
+
+
+def test_export_prophet_analysis():
+    # Use the test from time_series_analysis.py to generate results
+    from time_series_analysis import test_time_series_analysis_multi_user, TimeSeriesAnalyzer
+    analyzer = TimeSeriesAnalyzer()
+    # Generate test data as in test_time_series_analysis_multi_user
+    # ...
+    results = analyzer.analyze_data(sample_posts, primary_username="maccosmetics")
+    system = ContentRecommendationSystem()
+    system.export_prophet_analysis(results, "maccosmetics")
+    print("Prophet analysis export test complete.")
 
 
 if __name__ == "__main__":

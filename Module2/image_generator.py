@@ -238,17 +238,34 @@ class ImageGenerator:
                     logger.info("Checking for new posts...")
                     objects = await self.r2_client.list_objects(self.input_prefix)
                     logger.debug(f"Found {len(objects)} objects under {self.input_prefix}")
-                    tasks = []
-                    processable_files = []
+                    
+                    # Separate files into urgent and regular posts
+                    urgent_files = []
+                    regular_files = []
+                    
                     for obj in objects:
                         key = obj["Key"]
-                        if key.endswith(".json") and "post_" in key:
-                            processable_files.append(key)
-                            if await self.status_manager.is_pending(key):
-                                logger.debug(f"Scheduling file for processing: {key}")
-                                tasks.append(self.process_post(key, session))
-                    logger.debug(f"Evaluated files: {processable_files}")
+                        if key.endswith(".json"):
+                            if "urgent_" in key:
+                                urgent_files.append(key)
+                            elif "post_" in key:
+                                regular_files.append(key)
+                    
+                    # Process all files, with urgent files first
+                    prioritized_files = urgent_files + regular_files
+                    logger.debug(f"Processing order: {len(urgent_files)} urgent files, {len(regular_files)} regular files")
+                    
+                    tasks = []
+                    for key in prioritized_files:
+                        if await self.status_manager.is_pending(key):
+                            if "urgent_" in key:
+                                logger.info(f"Scheduling URGENT file for processing: {key}")
+                            else:
+                                logger.debug(f"Scheduling regular file for processing: {key}")
+                            tasks.append(self.process_post(key, session))
+                    
                     if tasks:
+                        # Process one file at a time to maintain priority order
                         for task in tasks:
                             await task
                     else:

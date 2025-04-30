@@ -42,7 +42,7 @@ class QueryHandler:
         self.r2_client_structuredb = R2Client(config=STRUCTUREDB_R2_CONFIG)  # Structuredb bucket
         self.status_manager = StatusManager()
         self.input_prefix = "queries/"
-        self.output_prefix = "queries/"
+        self.output_prefix = "next_posts/"  # Changed from "queries/" to "next_posts/"
         self.rules_prefix = "rules/"
         self.embeddings = SimpleEmbeddings()
         self.chroma_client = chromadb.Client()
@@ -222,7 +222,8 @@ class QueryHandler:
             return False
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-    async def generate_response(self, query, username):
+    async def generate_post_content(self, query, username):
+        """Generate social media post content based on the query and user profile"""
         try:
             doc_count = self.collection.count()
             k = min(2, doc_count) if doc_count > 0 else 0
@@ -243,31 +244,116 @@ class QueryHandler:
                         context += doc_content + "\n"
                 logger.debug(f"Retrieved for query '{query}': rules={rules}, context={context}")
 
-            if rules:
-                rule_check_prompt = (
-                    f"Query: {query}\n"
-                    f"Rules: {rules}\n"
-                    f"Does this query violate any rules? If yes, respond with 'Better not to say on this'. "
-                    f"Otherwise, return 'Proceed'."
-                )
-                rule_response = await self.model.generate_content_async(rule_check_prompt)
-                logger.debug(f"Rule check for '{query}': {rule_response.text}")
-                if rule_response.text.strip() == "Better not to say on this":
-                    return "Better not to say on this"
+            # Define a fallback response in case of timeout or other errors
+            fallback_response = {
+                "caption": f"Check out our latest products! {query}",
+                "hashtags": ["#MACCosmetics", "#Beauty", "#MakeupLover", "#NewCollection", "#MustHave"],
+                "call_to_action": "Shop now and tell us what you think in the comments!",
+                "visual_prompt": f"A professional, high-quality image showcasing {query} with the brand's signature aesthetic. Clean background, perfect lighting, and stylish arrangement."
+            }
 
+            if rules:
+                try:
+                    rule_check_prompt = (
+                        f"Query: {query}\n"
+                        f"Rules: {rules}\n"
+                        f"Does this query violate any rules? If yes, respond with 'Better not to say on this'. "
+                        f"Otherwise, return 'Proceed'."
+                    )
+                    rule_response = await asyncio.wait_for(
+                        self.model.generate_content_async(rule_check_prompt),
+                        timeout=30  # 30 second timeout for rule check
+                    )
+                    logger.debug(f"Rule check for '{query}': {rule_response.text}")
+                    if rule_response.text.strip() == "Better not to say on this":
+                        return None
+                except asyncio.TimeoutError:
+                    logger.warning(f"Rule check timed out for query '{query}', proceeding with caution")
+                except Exception as e:
+                    logger.warning(f"Rule check failed for query '{query}': {e}, proceeding with caution")
+
+            # Enhanced prompt for generating high-quality, contextual social media post content
             prompt = (
-                f"Query: {query}\n"
-                f"Context: {context}\n"
-                f"Rules: {rules}\n"
-                f"Generate a friendly, concise response to the query, respecting rules. "
-                f"If no specific answer is possible, say something positive like 'Hey, I'm doing great, thanks for asking!' "
-                f"Avoid saying 'not allowed' unless rules explicitly block the topic."
+                f"You are a premium social media content creator for a top brand. Your task is to create a perfect social media post based on the following instruction and context.\n\n"
+                f"INSTRUCTION: {query}\n\n"
+                f"PROFILE DATA & CONTEXT: {context}\n\n"
+                f"BRAND RULES: {rules}\n\n"
+                f"Create social media post content that perfectly matches the brand's style, voice, and theme. "
+                f"The content should be authentic, engaging, and completely aligned with existing posts from this account. "
+                f"Maintain consistency with the account's aesthetics and messaging patterns. "
+                f"Include appropriate tone, language style, and visual descriptions that would resonate with their audience.\n\n"
+                f"Respond ONLY with a JSON object containing these exact fields:\n"
+                f"1. 'caption': An engaging and authentic caption perfectly matching the brand voice (1-3 sentences)\n"
+                f"2. 'hashtags': An array of 5-7 relevant, brand-aligned hashtags (include the # symbol)\n"
+                f"3. 'call_to_action': A compelling call-to-action that would drive engagement\n"
+                f"4. 'visual_prompt': A detailed description for creating an image that perfectly matches the brand aesthetic\n\n"
+                f"The JSON should be properly formatted with no additional text. Example format:\n"
+                f"{{\n"
+                f"  \"caption\": \"...\",\n"
+                f"  \"hashtags\": [\"#tag1\", \"#tag2\", \"#tag3\", \"#tag4\", \"#tag5\"],\n"
+                f"  \"call_to_action\": \"...\",\n"
+                f"  \"visual_prompt\": \"...\"\n"
+                f"}}"
             )
-            response = await self.model.generate_content_async(prompt)
-            return response.text.strip()
+            
+            try:
+                # Use asyncio.wait_for to implement a timeout
+                response = await asyncio.wait_for(
+                    self.model.generate_content_async(prompt),
+                    timeout=60  # 60 second timeout for content generation
+                )
+                response_text = response.text.strip()
+                
+                # Extract JSON part if there's any surrounding text
+                if response_text.startswith("{") and response_text.endswith("}"):
+                    try:
+                        # Already in JSON format
+                        content = json.loads(response_text)
+                        return content
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Failed to parse response as JSON: {e}")
+                        logger.info(f"Falling back to default response due to JSON parse error")
+                        return fallback_response
+                else:
+                    # Try to extract JSON from text
+                    try:
+                        json_start = response_text.find("{")
+                        json_end = response_text.rfind("}") + 1
+                        if json_start >= 0 and json_end > json_start:
+                            json_str = response_text[json_start:json_end]
+                            content = json.loads(json_str)
+                            return content
+                        else:
+                            logger.error(f"Could not find JSON in response text")
+                            logger.info(f"Falling back to default response due to missing JSON")
+                            return fallback_response
+                    except (json.JSONDecodeError, ValueError) as e:
+                        logger.error(f"Failed to extract JSON from response: {e}")
+                        logger.info(f"Falling back to default response due to JSON extraction error")
+                        return fallback_response
+            except asyncio.TimeoutError:
+                logger.error(f"Request timed out while generating content for query '{query}'")
+                logger.info(f"Using fallback response due to timeout")
+                return fallback_response
+            except Exception as e:
+                logger.error(f"Error generating content for query '{query}': {e}")
+                logger.info(f"Using fallback response due to error: {str(e)}")
+                return fallback_response
+            
+            # This should never be reached, but as a final fallback
+            logger.warning(f"Unexpected code path in generate_post_content for '{query}'")
+            return fallback_response
+            
         except Exception as e:
-            logger.error(f"Failed to generate response for query '{query}': {e}")
-            return "Sorry, something went wrong!"
+            logger.error(f"Failed to generate post content for query '{query}': {e}")
+            logger.info(f"Using fallback response due to unexpected error")
+            # Return fallback response instead of None
+            return {
+                "caption": f"Check out our latest products! {query}",
+                "hashtags": ["#MACCosmetics", "#Beauty", "#MakeupLover", "#NewCollection", "#MustHave"],
+                "call_to_action": "Shop now and tell us what you think in the comments!",
+                "visual_prompt": f"A professional, high-quality image showcasing {query} with the brand's signature aesthetic. Clean background, perfect lighting, and stylish arrangement."
+            }
 
     async def process_query(self, key):
         if not await self.status_manager.is_pending(key):
@@ -287,27 +373,32 @@ class QueryHandler:
         if not docs_loaded:
             logger.warning(f"Processing {key} with no documents")
         
-        # Always try to generate a response
-        response = await self.generate_response(query, username)
-        if not response:
-            logger.error(f"Failed to generate response for {key}")
+        # Generate post content
+        post_content = await self.generate_post_content(query, username)
+        if not post_content:
+            logger.error(f"Failed to generate post content for {key}")
             data["status"] = "error"
-            data["status_message"] = "Response generation failed"
+            data["status_message"] = "Post content generation failed"
             await self.r2_client.write_json(key, data)
             return
 
-        output_data = {
-            "query": query,
-            "response": response,
-            "status": "processed"
-        }
+        # Add status to the output
+        post_content["status"] = "processed"
 
+        # Create output directory path
         output_dir = f"{self.output_prefix}{username}/"
-        objects = await self.r2_client.list_objects(output_dir)
-        response_number = len([o for o in objects if "response_" in o["Key"]]) + 1
-        output_key = f"{output_dir}response_{response_number}.json"
+        
+        # Get sequential post number
+        try:
+            objects = await self.r2_client.list_objects(output_dir)
+            urgent_number = len([o for o in objects if "urgent_" in o["Key"]]) + 1
+        except Exception as e:
+            logger.warning(f"Error listing objects in {output_dir}, assuming first urgent post: {e}")
+            urgent_number = 1
+            
+        output_key = f"{output_dir}urgent_{urgent_number}.json"
 
-        if await self.r2_client.write_json(output_key, output_data):
+        if await self.r2_client.write_json(output_key, post_content):
             await self.status_manager.mark_processed(key)
             logger.info(f"Successfully processed {key} to {output_key}")
         else:

@@ -23,6 +23,7 @@ import time
 import threading
 from botocore.client import Config
 import boto3
+import numpy as np
 
 
 # Set up logging
@@ -88,6 +89,9 @@ class ContentRecommendationSystem:
         logger.info("Initializing Content Recommendation System")
 
         self.data_retriever = R2DataRetriever()
+        # Add a retriever for the 'tasks' bucket for AccountInfo fetches
+        from config import R2_CONFIG
+        self.tasks_data_retriever = R2DataRetriever({**R2_CONFIG, 'bucket_name': R2_CONFIG['bucket_name2']})
         self.vector_db = VectorDatabaseManager()
         self.time_series = TimeSeriesAnalyzer()
         self.rag = RagImplementation(vector_db=self.vector_db)
@@ -125,16 +129,17 @@ class ContentRecommendationSystem:
             
             # Try each potential path until we find one that works
             for info_path in potential_paths:
-                logger.info(f"Attempting to read account info from {info_path}")
+                logger.info(f"Attempting to read account info from {info_path} (bucket: tasks)")
                 try:
-                    account_data = self.data_retriever.get_json_data(info_path)
+                    # Use the tasks bucket retriever for AccountInfo fetches
+                    account_data = self.tasks_data_retriever.get_json_data(info_path)
                     if account_data:
                         account_info = account_data
                         used_path = info_path
-                        logger.info(f"Successfully found account info at {info_path}")
+                        logger.info(f"Successfully found account info at {info_path} (bucket: tasks)")
                         break
                 except Exception as e:
-                    logger.warning(f"Could not read from {info_path}: {str(e)}")
+                    logger.warning(f"Could not read from {info_path} in tasks bucket: {str(e)}")
                     continue
                     
             if account_info:
@@ -244,29 +249,16 @@ class ContentRecommendationSystem:
 
             account_data = raw_data[0]
             logger.info(f"Instagram data keys: {list(account_data.keys())}")
-            
-            # PRIORITY 1: Use account info from info.json file (authoritative source)
-            # PRIORITY 2: Check if accountType is explicitly set in the data
-            # PRIORITY 3: Fall back to Instagram scraper data
-            
-            # First check for account_info from info.json
-            if account_info and isinstance(account_info, dict):
-                account_type = account_info.get('accountType')
-                posting_style = account_info.get('postingStyle')
-                logger.info(f"USING AUTHORITATIVE VALUES FROM info.json - account_type: {account_type}, posting_style: {posting_style}")
-            else:
-                # Check if account type is directly in raw data (special handling for maccosmetics case)
-                # Some Instagram scrapers add accountType directly in the raw data
-                if 'accountType' in account_data and account_data['accountType']:
-                    account_type = account_data.get('accountType')
-                    posting_style = account_data.get('postingStyle')
-                    logger.info(f"USING EMBEDDED VALUES FROM INSTAGRAM SCRAPER - account_type: {account_type}, posting_style: {posting_style}")
-                else:
-                    # Fall back to Instagram scraper data fields
-                    account_type = account_data.get('accountType')
-                    posting_style = account_data.get('postingStyle')
-                    logger.info(f"FALLING BACK TO INSTAGRAM SCRAPER - account_type: {account_type}, posting_style: {posting_style}")
-            
+
+            # STRICT: Only use account info from info.json file (authoritative source)
+            if not (account_info and isinstance(account_info, dict) and account_info.get('accountType') and account_info.get('postingStyle')):
+                logger.error("CRITICAL: Account info (info.json) missing or incomplete. 'accountType' and 'postingStyle' are required. Aborting processing.")
+                return None
+
+            account_type = account_info.get('accountType')
+            posting_style = account_info.get('postingStyle')
+            logger.info(f"USING AUTHORITATIVE VALUES FROM info.json - account_type: {account_type}, posting_style: {posting_style}")
+
             # Process posts and engagement history
             posts = []
             engagement_history = []
@@ -315,39 +307,10 @@ class ContentRecommendationSystem:
                 logger.info(f"Created {len(engagement_history)} synthetic engagement records")
 
             engagement_history.sort(key=lambda x: x['timestamp'])
-            
-            # CRITICAL: If we still have no account type, try to get the values from ProcessedInfo
-            if account_type is None:
-                # Try to get info from ProcessedInfo
-                username = account_data.get('username', '')
-                if username:
-                    processed_info = self._check_processed_info(username)
-                    if processed_info:
-                        account_type = processed_info.get('accountType')
-                        posting_style = processed_info.get('postingStyle')
-                        logger.info(f"Retrieved account type from ProcessedInfo/{username}.json: {account_type}")
-            
-            # Only use default values if nothing was found, with clear warnings
-            if account_type is None:
-                # Last attempt - check log-based detection for branding accounts
-                # For maccosmetics, if account name contains "cosmetics", it's likely a branding account
-                username = account_data.get('username', '').lower()
-                if 'cosmetic' in username or 'beauty' in username or 'makeup' in username:
-                    logger.warning(f"LAST RESORT: Username '{username}' suggests this is a branding account")
-                    logger.warning(f"FIXING PATH ISSUE: This is likely a branding account but info.json path is wrong")
-                    account_type = 'branding'
-                    posting_style = "I post to engage audience about products"
-                else:
-                    account_type = 'unknown'
-                    logger.warning(f"WARNING: NO ACCOUNT TYPE FOUND - Using 'unknown' as fallback")
-                
-            if posting_style is None:
-                posting_style = 'informative'
-                logger.warning(f"WARNING: NO POSTING STYLE FOUND - Using 'informative' as fallback")
 
             # Get competitors from account_info if available
             competitors = []
-            if account_info and 'competitors' in account_info and isinstance(account_info['competitors'], list):
+            if 'competitors' in account_info and isinstance(account_info['competitors'], list):
                 competitors = account_info['competitors']
                 logger.info(f"Using competitors from info.json: {competitors}")
 
@@ -374,13 +337,13 @@ class ContentRecommendationSystem:
                 'posting_style': posting_style,  # PRESERVE THIS VALUE
                 'primary_username': account_data.get('username', '')
             }
-            
+
             # Add competitors if available
             if competitors:
                 processed_data['secondary_usernames'] = competitors
-            
+
             logger.info(f"FINAL VALUES FOR PROCESSING - account_type: {account_type}, posting_style: {posting_style}")
-            
+
             return processed_data
 
         except Exception as e:
@@ -1505,6 +1468,11 @@ class ContentRecommendationSystem:
                             }
                             self.export_profile_info(competitor_profile, competitor)
             
+            # --- NEW: Export primary Prophet/profile analysis ---
+            # Use only the primary user's posts for this export
+            if 'posts' in data and 'primary_username' in data:
+                self.export_primary_prophet_analysis(data['posts'], data['primary_username'])
+            
             return {
                 "success": True,
                 "posts_analyzed": len(posts),
@@ -2105,7 +2073,7 @@ class ContentRecommendationSystem:
             return False
 
     def export_profile_info(self, profile_data, username):
-        """Export profile information to tasks/ProfileInfo/<username>.json."""
+        """Export profile information to tasks/ProfileInfo/<username>.json, robustly merging to avoid overwriting good data with zeros."""
         try:
             if not profile_data or not username:
                 logger.error(f"Invalid profile data or username for export: {username}")
@@ -2113,47 +2081,31 @@ class ContentRecommendationSystem:
                 
             # Check if the profile already exists
             profile_exists = self._check_profile_exists(username)
+            existing_profile = None
             if profile_exists:
                 logger.info(f"Profile info for {username} already exists in ProfileInfo/{username}.json, will retrieve existing data")
-                # Retrieve existing profile to preserve any data not in the new profile_data
                 existing_profile = self._retrieve_profile_info(username)
-                
-            # Format profile info according to required structure, including all available fields
+            
+            # Robust merge logic: use new value if present and nonzero, else keep old value if >0
+            def merged_count(field):
+                new_val = profile_data.get(field, 0)
+                old_val = existing_profile.get(field, 0) if existing_profile else 0
+                return new_val if new_val > 0 else old_val
+            
             profile_info = {
                 "username": profile_data.get("username", username),
-                "fullName": profile_data.get("fullName", ""),
-                "biography": profile_data.get("biography", ""),
-                "followersCount": profile_data.get("followersCount", 0),
-                "followsCount": profile_data.get("followsCount", 0),
-                "postsCount": profile_data.get("postsCount", 0),
-                "externalUrl": profile_data.get("externalUrl", ""),
-                "profilePicUrl": profile_data.get("profilePicUrl", ""),
-                "profilePicUrlHD": profile_data.get("profilePicUrlHD", ""),
-                "private": profile_data.get("private", False),
-                "verified": profile_data.get("verified", False),
+                "fullName": profile_data.get("fullName", existing_profile.get("fullName", "") if existing_profile else ""),
+                "biography": profile_data.get("biography", existing_profile.get("biography", "") if existing_profile else ""),
+                "followersCount": merged_count("followersCount"),
+                "followsCount": merged_count("followsCount"),
+                "postsCount": merged_count("postsCount"),
+                "externalUrl": profile_data.get("externalUrl", existing_profile.get("externalUrl", "") if existing_profile else ""),
+                "profilePicUrl": profile_data.get("profilePicUrl", existing_profile.get("profilePicUrl", "") if existing_profile else ""),
+                "profilePicUrlHD": profile_data.get("profilePicUrlHD", existing_profile.get("profilePicUrlHD", "") if existing_profile else ""),
+                "private": profile_data.get("private", existing_profile.get("private", False) if existing_profile else False),
+                "verified": profile_data.get("verified", existing_profile.get("verified", False) if existing_profile else False),
                 "extractedAt": datetime.now().isoformat()
             }
-            
-            # If we have existing profile data, preserve important fields that might be missing in new data
-            if profile_exists and existing_profile:
-                # Preserve profile URLs if not in the new profile data
-                if not profile_info["profilePicUrl"] and existing_profile.get("profilePicUrl"):
-                    logger.info(f"Preserving existing profilePicUrl for {username}")
-                    profile_info["profilePicUrl"] = existing_profile.get("profilePicUrl")
-                    
-                if not profile_info["profilePicUrlHD"] and existing_profile.get("profilePicUrlHD"):
-                    logger.info(f"Preserving existing profilePicUrlHD for {username}")
-                    profile_info["profilePicUrlHD"] = existing_profile.get("profilePicUrlHD")
-                
-                # Preserve other fields that might be missing in the new data
-                if not profile_info["fullName"] and existing_profile.get("fullName"):
-                    profile_info["fullName"] = existing_profile.get("fullName")
-                    
-                if not profile_info["biography"] and existing_profile.get("biography"):
-                    profile_info["biography"] = existing_profile.get("biography")
-                    
-                if not profile_info["externalUrl"] and existing_profile.get("externalUrl"):
-                    profile_info["externalUrl"] = existing_profile.get("externalUrl")
             
             # Log what we're exporting, including URL sizes for debugging
             url_size = len(str(profile_info["profilePicUrl"]))
@@ -2221,6 +2173,46 @@ class ContentRecommendationSystem:
             logger.warning(f"Error setting up client to retrieve profile info: {str(e)}")
             return None
 
+    def export_primary_prophet_analysis(self, posts, primary_username):
+        """
+        Export primary Prophet/profile analysis (account type, engagement, posting trends) to R2 in prophet_analysis/<username>/analysis_*.json.
+        """
+        import io, json
+        logger.info(f"Exporting primary Prophet/profile analysis for {primary_username}")
+        # Defensive: ensure posts and username are valid
+        if not posts or not primary_username:
+            logger.error("No posts or primary_username provided for prophet analysis export")
+            return False
+        # Run the three analyses
+        recgen = self.recommendation_generator
+        account_type_analysis = recgen.analyze_account_type(posts)
+        engagement_analysis = recgen.analyze_engagement(posts)
+        posting_trends = recgen.analyze_posting_trends(posts)
+        # Structure the export data
+        export_data = {
+            "primary_analysis": {
+                "account_type": account_type_analysis,
+                "engagement": engagement_analysis,
+                "posting_trends": posting_trends
+            }
+        }
+        # Ensure directory exists
+        self._ensure_directory_exists(f"prophet_analysis/{primary_username}/")
+        # Get next file number
+        file_num = self._get_next_file_number("prophet_analysis", primary_username, "analysis")
+        export_path = f"prophet_analysis/{primary_username}/analysis_{file_num}.json"
+        # Upload to R2
+        result = self.r2_storage.upload_file(
+            key=export_path,
+            file_obj=io.BytesIO(json.dumps(export_data, indent=2, default=str).encode("utf-8")),
+            bucket="tasks"
+        )
+        if result:
+            logger.info(f"Primary Prophet/profile analysis export successful to {export_path}")
+        else:
+            logger.error(f"Failed to export primary Prophet/profile analysis to {export_path}")
+        return result
+
 def create_content_plan():
     """Create content plan without using sample data."""
     try:
@@ -2257,6 +2249,26 @@ def main():
         return 1
     
     return 0
+
+def test_export_primary_prophet_analysis():
+    """Test the export_primary_prophet_analysis method with sample data."""
+    logger.info("Testing export_primary_prophet_analysis...")
+    system = ContentRecommendationSystem()
+    # Generate sample posts for maccosmetics (same as in test_time_series_analysis_multi_user)
+    import numpy as np
+    import pandas as pd
+    primary_username = "maccosmetics"
+    dates = pd.date_range(start='2025-01-01', end='2025-04-11', freq='D')
+    sample_posts = []
+    for i, date in enumerate(dates):
+        sample_posts.append({
+            'timestamp': date.strftime('%Y-%m-%dT%H:%M:%SZ'),
+            'engagement': 1000 + i * 5 + np.random.normal(0, 50),
+            'username': primary_username
+        })
+    # Call the export method
+    result = system.export_primary_prophet_analysis(sample_posts, primary_username)
+    print(f"Primary Prophet/profile analysis export test {'successful' if result else 'failed'}")
 
 if __name__ == "__main__":
     import sys
@@ -2360,6 +2372,9 @@ if __name__ == "__main__":
                 logger.error(f"Error running all systems: {str(e)}")
                 logger.error(traceback.format_exc())
                 sys.exit(1)
+        elif sys.argv[1] == "test_export_primary_prophet_analysis":
+            test_export_primary_prophet_analysis()
+            sys.exit(0)
         else:
             print("Usage:")
             print("  python main.py                    # Process queue once and run Module2")
@@ -2367,6 +2382,7 @@ if __name__ == "__main__":
             print("  python main.py run_all            # Run all systems simultaneously")
             print("  python main.py module2_only       # Run only Module2 functionality")
             print("  python main.py process_username <username>  # Process specific Instagram username")
+            print("  python main.py test_export_primary_prophet_analysis  # Test export_primary_prophet_analysis")
             sys.exit(1)
     else:
         # Regular main function execution (one-time processing)
