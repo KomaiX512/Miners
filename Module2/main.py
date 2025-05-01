@@ -1,6 +1,7 @@
 import asyncio
 from image_generator import ImageGenerator
 from query_handler import QueryHandler
+from goal_rag_handler import GoalRAGHandler
 from utils.r2_client import R2Client
 from utils.logging import logger
 from config import R2_CONFIG, STRUCTUREDB_R2_CONFIG
@@ -35,6 +36,20 @@ async def check_buckets():
     except Exception as e:
         logger.error(f"Failed to access structuredb bucket: {e}")
 
+async def run_goal_rag_handler():
+    handler = GoalRAGHandler()
+    # Start the main watcher loop in a thread
+    from threading import Thread
+    def start_watcher():
+        handler_main = getattr(handler, "main", None)
+        if handler_main:
+            handler_main()
+    t = Thread(target=start_watcher, daemon=True)
+    t.start()
+    logger.info("GoalRAGHandler watcher started in background thread.")
+    while True:
+        await asyncio.sleep(60)  # Keep the task alive
+
 async def main():
     # Perform initial verification
     await check_buckets()
@@ -44,10 +59,11 @@ async def main():
     try:
         await asyncio.gather(
             image_generator.run(),
-            query_handler.run()
+            query_handler.run(),
+            run_goal_rag_handler()
         )
     except KeyboardInterrupt:
-        logger.info("Shutting down both modules...")
+        logger.info("Shutting down all modules...")
     except Exception as e:
         logger.error(f"Fatal error: {e}")
 
