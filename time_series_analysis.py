@@ -20,12 +20,23 @@ logger = logging.getLogger(__name__)
 class TimeSeriesAnalyzer:
     """Class to handle time series analysis and forecasting for primary and secondary usernames."""
     
-    def __init__(self, config=TIME_SERIES_CONFIG):
-        """Initialize with configuration."""
+    def __init__(self, config=TIME_SERIES_CONFIG, r2_storage=None):
+        """Initialize with configuration and optional R2 storage."""
         self.config = config
         self.model = None
         self.forecast = None
         self.primary_username = None  # To track primary username
+        
+        # Initialize R2 storage if not provided
+        if r2_storage is None:
+            try:
+                from r2_storage_manager import R2StorageManager
+                self.r2_storage = R2StorageManager()
+            except ImportError:
+                logger.warning("R2StorageManager not available, export functions will not work")
+                self.r2_storage = None
+        else:
+            self.r2_storage = r2_storage
         
     def prepare_data(self, data, timestamp_col='timestamp', value_col='engagement', primary_username=None):
         """
@@ -401,40 +412,139 @@ class TimeSeriesAnalyzer:
             logger.error(f"Error in analysis pipeline: {str(e)}")
             return None
 
-    def export_prophet_analysis(self, analysis_result, primary_username):
+    def export_prophet_analysis(self, analysis_result, primary_username, platform="instagram"):
         """
-        Export Prophet/time series analysis report to R2.
+        Export Prophet/time series analysis report to R2 with platform support.
+        
+        Args:
+            analysis_result: Results from analyze_data method
+            primary_username: Username for directory naming
+            platform: Social media platform (instagram or twitter)
         """
         import io, json
 
-        # Ensure directory exists
-        self._ensure_directory_exists(f"prophet_analysis/{primary_username}/")
+        # Check if R2 storage is available
+        if not self.r2_storage:
+            logger.error("R2 storage not available, cannot export Prophet analysis")
+            return False
 
-        # Get next file number
-        file_num = self._get_next_file_number("prophet_analysis", primary_username, "analysis")
-        export_path = f"prophet_analysis/{primary_username}/analysis_{file_num}.json"
+        # Ensure platform-specific directory exists
+        self._ensure_directory_exists(f"prophet_analysis/{platform}/{primary_username}/")
 
-        # Prepare export data (convert DataFrames to records)
-        export_data = {}
-        for key, value in analysis_result.items():
-            if hasattr(value, "to_dict"):
-                export_data[key] = value.to_dict(orient="records")
-            elif key == "model":
-                export_data[key] = "Prophet model (not serializable)"
-            else:
-                export_data[key] = value
+        # Get next file number with platform-specific path
+        file_num = self._get_next_file_number(f"prophet_analysis/{platform}", primary_username, "analysis")
+        
+        # Create export structure
+        export_data = {
+            "generated_date": datetime.now().isoformat(),
+            "platform": platform,
+            "primary_username": primary_username,
+            "analysis_type": "time_series_prophet",
+            "model_performance": analysis_result.get('model_performance', {}),
+            "forecast_summary": analysis_result.get('forecast_summary', {}),
+            "trending_periods": analysis_result.get('trending_periods_list', []),
+            "primary_insights": analysis_result.get('primary_insights', {}),
+            "secondary_insights": analysis_result.get('secondary_insights', {}),
+            "data_quality": analysis_result.get('data_quality', {}),
+            "recommendations": analysis_result.get('recommendations', [])
+        }
+        
+        # Convert to JSON bytes
+        json_bytes = json.dumps(export_data, indent=2).encode('utf-8')
+        file_obj = io.BytesIO(json_bytes)
 
         # Upload to R2
-        result = self.r2_storage.upload_file(
-            key=export_path,
-            file_obj=io.BytesIO(json.dumps(export_data, indent=2, default=str).encode("utf-8")),
-            bucket="tasks"
-        )
-        if result:
-            logger.info(f"Prophet analysis export successful to {export_path}")
-        else:
-            logger.error(f"Failed to export prophet analysis to {export_path}")
-        return result
+        file_key = f"prophet_analysis/{platform}/{primary_username}/analysis_{file_num}.json"
+        
+        try:
+            result = self.r2_storage.upload_file(
+                key=file_key,
+                file_obj=file_obj,
+                bucket="tasks"
+            )
+            
+            if result:
+                logger.info(f"Time series Prophet analysis exported successfully to {file_key}")
+                return True
+            else:
+                logger.error(f"Failed to export time series Prophet analysis to {file_key}")
+                return False
+        except Exception as e:
+            logger.error(f"Error exporting time series Prophet analysis: {str(e)}")
+            return False
+
+    def _ensure_directory_exists(self, directory_path):
+        """Ensure a directory exists in R2 storage by creating a directory marker."""
+        try:
+            import io  # Add missing import
+            # Create directory marker
+            result = self.r2_storage.upload_file(
+                key=directory_path,
+                file_obj=io.BytesIO(b""),
+                bucket="tasks"
+            )
+            if result:
+                logger.debug(f"Ensured directory exists: {directory_path}")
+            return result
+        except Exception as e:
+            logger.warning(f"Could not ensure directory exists {directory_path}: {str(e)}")
+            return False
+
+    def _get_next_file_number(self, base_dir, path_segment, file_prefix):
+        """Get the next file number for sequential file naming."""
+        try:
+            # List objects in the directory to find existing files
+            prefix = f"{base_dir}/{path_segment}/"
+            
+            # Use R2 storage to list objects
+            from r2_storage_manager import R2StorageManager
+            r2_storage = R2StorageManager()
+            
+            # Get list of existing files
+            try:
+                import boto3
+                from botocore.client import Config
+                from config import R2_CONFIG
+                
+                s3_client = boto3.client(
+                    's3',
+                    endpoint_url=R2_CONFIG['endpoint_url'],
+                    aws_access_key_id=R2_CONFIG['aws_access_key_id'],
+                    aws_secret_access_key=R2_CONFIG['aws_secret_access_key'],
+                    config=Config(signature_version='s3v4')
+                )
+                
+                response = s3_client.list_objects_v2(
+                    Bucket="tasks",
+                    Prefix=prefix
+                )
+                
+                existing_files = []
+                if 'Contents' in response:
+                    existing_files = [obj['Key'] for obj in response['Contents']]
+                
+                # Find the highest number for files with the specified prefix
+                max_num = 0
+                for file_key in existing_files:
+                    filename = file_key.split('/')[-1]  # Get just the filename
+                    if filename.startswith(f"{file_prefix}_") and filename.endswith('.json'):
+                        try:
+                            # Extract number from filename like "analysis_1.json"
+                            num_part = filename[len(file_prefix)+1:-5]  # Remove prefix_ and .json
+                            file_num = int(num_part)
+                            max_num = max(max_num, file_num)
+                        except (ValueError, IndexError):
+                            continue
+                
+                return max_num + 1
+                
+            except Exception as list_e:
+                logger.warning(f"Could not list existing files for numbering: {str(list_e)}")
+                return 1
+                
+        except Exception as e:
+            logger.warning(f"Error determining next file number: {str(e)}")
+            return 1
 
 
 def test_time_series_analysis_multi_user():

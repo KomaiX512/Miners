@@ -274,3 +274,9 @@ class ImageGenerator:
                 except Exception as e:
                     logger.error(f"Error in image generator loop: {e}")
                     await asyncio.sleep(10)
+
+if __name__ == "__main__":
+    import asyncio
+    generator = ImageGenerator()
+    asyncio.run(generator.run())
+

@@ -6,6 +6,7 @@ import re
 from google import genai
 from vector_database import VectorDatabaseManager
 from config import GEMINI_CONFIG, LOGGING_CONFIG, CONTENT_TEMPLATES
+from datetime import datetime
 
 # Set up logging
 logging.basicConfig(
@@ -26,13 +27,14 @@ class RagImplementation:
     def _initialize_gemini(self):
         """Initialize the Gemini API client."""
         try:
-            self.client = genai.Client(api_key=self.config['api_key'])
+            import google.generativeai as genai
+            genai.configure(api_key=self.config['api_key'])
             self.model = self.config['model']
+            self.generative_model = genai.GenerativeModel(self.model)
             logger.info(f"Successfully initialized Gemini API with model: {self.model}")
         except Exception as e:
             logger.error(f"Failed to initialize Gemini API: {str(e)}")
-            logger.warning("Proceeding without Gemini capabilities - responses will be limited")
-            self.client = None
+            raise Exception(f"Gemini API initialization required but failed: {str(e)}")
     
     def _construct_basic_prompt(self, query, context_docs):
         """Construct a basic prompt for simple post generation."""
@@ -60,444 +62,743 @@ class RagImplementation:
         """
     
     def _construct_enhanced_prompt(self, primary_username, secondary_usernames, query):
-        """Construct a detailed prompt for comprehensive analysis and recommendations."""
-        primary_data = self.vector_db.query_similar(query, n_results=5, filter_username=primary_username)
-        secondary_data = {username: self.vector_db.query_similar(query, n_results=3, filter_username=username)
+        """Construct a highly intelligent prompt for deep profile analysis and theme-aligned recommendations."""
+        # Get comprehensive data about the primary account
+        primary_data = self.vector_db.query_similar(query, n_results=10, filter_username=primary_username)
+        
+        # Get deeper competitive intelligence
+        secondary_data = {username: self.vector_db.query_similar(query, n_results=5, filter_username=username)
                          for username in secondary_usernames}
         
-        primary_context = "\n".join([f"- {doc} (Engagement: {meta['engagement']}, Timestamp: {meta['timestamp']})"
-                                   for doc, meta in zip(primary_data['documents'][0], primary_data['metadatas'][0])])
-        secondary_context = {username: "\n".join([f"- {doc} (Engagement: {meta['engagement']}, Timestamp: {meta['timestamp']})"
-                                                for doc, meta in zip(data['documents'][0], data['metadatas'][0])])
-                            for username, data in secondary_data.items()}
+        # Extract rich context with engagement patterns
+        primary_context = ""
+        engagement_insights = ""
+        content_themes = []
+        
+        if primary_data and 'documents' in primary_data and primary_data['documents'][0]:
+            posts_with_meta = list(zip(primary_data['documents'][0], primary_data['metadatas'][0]))
+            
+            # Analyze engagement patterns
+            high_performing = [p for p in posts_with_meta if p[1]['engagement'] > 1000]
+            medium_performing = [p for p in posts_with_meta if 500 <= p[1]['engagement'] <= 1000]
+            
+            # Extract content themes from high-performing posts
+            for doc, meta in high_performing:
+                content_themes.append(f"{doc[:100]}... (Engagement: {meta['engagement']})")
+            
+            primary_context = "\n".join([f"- {doc} | Engagement: {meta['engagement']} | Posted: {meta['timestamp']}"
+                                       for doc, meta in posts_with_meta])
+            
+            if high_performing:
+                avg_high_engagement = sum(p[1]['engagement'] for p in high_performing) / len(high_performing)
+                engagement_insights = f"HIGH-PERFORMING CONTENT ANALYSIS:\nAverage engagement on top posts: {avg_high_engagement:.0f}\nSuccessful content patterns identified: {len(high_performing)} posts with 1000+ engagement\n"
+                engagement_insights += "TOP PERFORMING THEMES:\n" + "\n".join(content_themes[:3])
+        
+        # Analyze competitors with strategic intelligence
+        competitive_intel = ""
+        for username, data in secondary_data.items():
+            if data and 'documents' in data and data['documents'][0]:
+                competitor_posts = list(zip(data['documents'][0], data['metadatas'][0]))
+                competitor_best = max(competitor_posts, key=lambda x: x[1]['engagement'], default=(None, {'engagement': 0}))
+                
+                competitive_intel += f"\n{username.upper()} INTELLIGENCE:\n"
+                competitive_intel += f"Best performing post: {competitor_best[0][:80]}... (Engagement: {competitor_best[1]['engagement']})\n"
+                competitive_intel += f"Average engagement: {sum(p[1]['engagement'] for p in competitor_posts) / len(competitor_posts):.0f}\n"
         
         prompt = f"""
-        You are a professional social media intelligence analyst with expertise in competitor research for the beauty industry. Your mission is to provide {primary_username} with detailed, actionable intelligence and recommendations to outperform their competitors in the beauty market.
+        You are an elite social media strategist and account manager with deep expertise in content optimization and competitive intelligence. You have been hired specifically to analyze {primary_username}'s account and create a comprehensive strategy that leverages their unique strengths while exploiting competitor weaknesses.
 
-        **Primary Account**: {primary_username}
-        **Competitors Being Analyzed**: {', '.join(secondary_usernames)}
-        **Topic Focus**: {query}
-        **Current Date**: April 11, 2025
+        **ACCOUNT UNDER ANALYSIS**: {primary_username}
+        **TARGET COMPETITORS**: {', '.join(secondary_usernames)}
+        **STRATEGIC FOCUS**: {query}
+        **ANALYSIS DATE**: {datetime.now().strftime('%B %d, %Y')}
 
-        The following data represents actual social media content from these accounts, including engagement metrics:
+        **ACCOUNT PERFORMANCE DATA**:
+        {engagement_insights}
 
-        **PRIMARY ACCOUNT POSTS**: {primary_username}
-        {primary_context if primary_context else "No recent posts available."}
+        **COMPLETE POST HISTORY ANALYSIS**:
+        {primary_context if primary_context else "Limited post data available - focusing on strategic recommendations"}
 
-        **COMPETITOR POSTS**:
-        {chr(10).join([f"---{username}---{chr(10)}{context if context else 'No recent posts available.'}" for username, context in secondary_context.items()])}
+        **COMPETITIVE INTELLIGENCE**:
+        {competitive_intel if competitive_intel else "Competitor data being analyzed through alternative methods"}
 
-        Your task is to provide an intelligence report with four distinct sections:
+        Your mission is to provide a strategic intelligence report that demonstrates deep understanding of {primary_username}'s unique positioning and creates actionable recommendations that are specifically tailored to their content style, audience, and market position.
 
-        1. **Primary Account Analysis** [CONFIDENTIAL]
-           - Analyze posting patterns and identify content themes that perform well
-           - Assess hashtag strategy effectiveness by comparing engagement across posts
-           - Identify content gaps and missed opportunities compared to competitors
-           - Highlight unique strengths or brand positioning advantages
+        **CRITICAL ANALYSIS REQUIREMENTS**:
 
-        2. **Competitor Intelligence Report** [TOP SECRET]
-           - For each competitor, analyze:
-             * Their most successful content formats and topics (based on engagement metrics)
-             * The specific tactics they use to drive engagement (e.g., contests, aesthetics, CTAs)
-             * Their posting frequency and optimal posting times
-             * Any noticeable strategic shifts in their content approach
-             * Their unique value proposition and how they differentiate themselves
-           - Identify "spy intel" - specific competitor techniques {primary_username} could adapt
+        1. **DEEP PROFILE INTELLIGENCE** [PRIMARY ACCOUNT ANALYSIS]
+           - Identify the account's unique content DNA by analyzing posting patterns, themes, and engagement drivers
+           - Determine their authentic voice, visual style, and core messaging pillars
+           - Map their content ecosystem: what topics drive engagement, what formats work best
+           - Identify their competitive advantages and market positioning gaps
+           - Analyze audience response patterns to determine optimal content strategies
 
-        3. **Strategic Advantage Plan** [ACTIONABLE INTEL]
-           - Recommend specific content strategies to exploit weaknesses in competitor approaches
-           - Suggest unique ways to differentiate from competitors while targeting similar audiences 
-           - Provide 3-5 specific post ideas that directly counter competitor strengths
-           - For each recommendation, explicitly cite why you're suggesting it based on competitor behavior (e.g., "Competitor X is seeing 40% higher engagement when they post Y, so you should adapt this by...")
-           - Include optimal timing recommendations based on engagement patterns
+        2. **COMPETITIVE WARFARE ANALYSIS** [STRATEGIC INTELLIGENCE]
+           - For each competitor, conduct deep behavioral analysis:
+             * Reverse-engineer their most successful content strategies
+             * Identify their content vulnerabilities and strategic blind spots
+             * Map their posting rhythms, engagement tactics, and audience manipulation techniques
+             * Discover their untapped market segments that {primary_username} could capture
+             * Analyze their recent strategic shifts and predict their next moves
+           - Create a competitive advantage matrix showing exactly where {primary_username} can outmaneuver each competitor
 
-        4. **Next Post Blueprint** [IMMEDIATE ACTION REQUIRED]
-           - Design a specific post that directly capitalizes on intelligence gathered from competitor analysis
-           - Include:
-             * A detailed caption that leverages the most successful elements from competitor strategies
-             * Strategic hashtags that competitors are under-utilizing but show high potential
-             * A compelling call to action that outperforms typical CTAs used by competitors
-             * A detailed visual concept description that specifically positions against competitor visuals
+        3. **STRATEGIC EXPLOITATION PLAN** [ACTIONABLE WARFARE]
+           - Design specific content strategies that exploit competitor weaknesses while amplifying {primary_username}'s strengths
+           - Create 5 high-impact content pillars that position {primary_username} as the market leader
+           - Develop counter-strategies for each major competitor threat
+           - Recommend timing strategies that capitalize on competitor posting gaps
+           - Design audience capture techniques that pull followers from competitor accounts
 
-        Format your response as a valid JSON object with these four main keys. For competitors, use a nested object with each competitor username as a key. Ensure all analysis directly references specific examples from the posts provided.
+        4. **NEXT POST MASTERPIECE** [IMMEDIATE EXECUTION]
+           - Craft a post that perfectly embodies {primary_username}'s authentic voice while incorporating strategic intelligence
+           - The content must feel 100% authentic to their established style and themes
+           - Include strategic elements that subtly outposition competitors
+           - Provide detailed execution guidance including:
+             * Caption that matches their exact writing style and tone
+             * Hashtag strategy that exploits competitor gaps
+             * Visual concept that aligns with their aesthetic while standing out
+             * Engagement hooks designed for their specific audience psychology
 
-        The intelligence report must:
-        - Be highly specific to catagory in which primery usernames and Comeptitors are abouts. 
-        - Reference concrete examples from the post data, not general marketing advice. Competitors 
-        - Include actual metrics and specific strategies observed in the data
-        - Provide actionable recommendations that directly counter competitor advantages
-        - Format all output as properly escaped JSON with the following structure:
+        **INTELLIGENCE STANDARDS**:
+        - Every recommendation must be backed by specific data points from the post analysis
+        - No generic advice - everything must be tailored to {primary_username}'s unique situation
+        - Include specific examples from their post history to justify recommendations
+        - Provide concrete metrics and benchmarks for measuring success
+        - Reference competitor-specific tactics that can be adapted or countered
+
+        **OUTPUT REQUIREMENTS**:
+        Format as a comprehensive JSON intelligence report with the following structure:
 
         {{
-            "primary_analysis": "Detailed intelligence on primary account strengths and weaknesses",
+            "primary_analysis": "Deep dive into {primary_username}'s content DNA, engagement patterns, unique strengths, and strategic positioning opportunities based on their actual post performance data",
             "competitor_analysis": {{
-                "competitor1": "Detailed intelligence on their specific strategies and vulnerabilities, And 2 sentences About recent activities they did",
-                "competitor2": "Detailed intelligence on their specific strategies and vulnerabilities, And 2 sentences About recent activities they did",
-                "competitor3": "Detailed intelligence on their specific strategies and vulnerabilities, And 2 sentences About recent activities they did",
-                "competitor4": "Detailed intelligence on their specific strategies and vulnerabilities, And 2 sentences About recent activities they did",
-                "competitor5": "Detailed intelligence on their specific strategies and vulnerabilities, And 2 sentences About recent activities they did",
+                "{secondary_usernames[0] if secondary_usernames else 'competitor1'}": "Detailed strategic analysis of their content approach, vulnerabilities, and how {primary_username} can outmaneuver them, including specific recent activities and strategic opportunities",
+                "{secondary_usernames[1] if len(secondary_usernames) > 1 else 'competitor2'}": "Comprehensive competitive intelligence including their engagement tactics, content gaps, and exploitation opportunities for {primary_username}",
+                "{secondary_usernames[2] if len(secondary_usernames) > 2 else 'competitor3'}": "Strategic breakdown of their market position, content weaknesses, and specific tactics {primary_username} should deploy against them"
             }},
-            "recommendations": "Actionable strategic advantages to exploit, with direct reference to competitor weaknesses",
+            "recommendations": "5 highly specific, data-driven content strategies that leverage {primary_username}'s unique strengths while exploiting identified competitor vulnerabilities. Each recommendation must include specific execution details and expected impact metrics.",
             "next_post": {{
-                "caption": "Strategically crafted caption that should matches with our own primary accounts captions patterns and styles.",
-                "hashtags": ["#strategic", "#hashtags"],
-                "call_to_action": "Compelling CTA that outperforms competitors",
-                "visual_prompt": "Detailed Graphical visual concept that positions against competitor aesthetics but consistent with the our primary account posts theme and its color themes. Shape meaningful concept in Graphical Viusals image prompt. And it shouldbe relevant with what caption ahs been written."
+                "caption": "A caption written in {primary_username}'s authentic voice that incorporates strategic elements and feels completely natural to their established style and themes",
+                "hashtags": ["#strategic", "#hashtags", "#that", "#exploit", "#gaps"],
+                "call_to_action": "An engagement prompt that matches their audience psychology and drives specific actions",
+                "visual_prompt": "Detailed visual concept that perfectly aligns with {primary_username}'s aesthetic while incorporating strategic positioning elements against competitors"
             }}
         }}
+
+        Remember: This is not generic content creation - this is strategic intelligence warfare. Every element must demonstrate deep understanding of {primary_username}'s unique position and provide tactical advantages over their competition.
+        """
+        return prompt
+    
+    def _construct_twitter_enhanced_prompt(self, primary_username, secondary_usernames, query):
+        """Construct a Twitter-specific intelligent prompt for deep profile analysis and theme-aligned recommendations."""
+        # Get comprehensive Twitter data about the primary account
+        primary_data = self.vector_db.query_similar(query, n_results=10, filter_username=primary_username)
+        
+        # Get deeper competitive intelligence for Twitter
+        secondary_data = {username: self.vector_db.query_similar(query, n_results=5, filter_username=username)
+                         for username in secondary_usernames}
+        
+        # Extract rich Twitter context with engagement patterns
+        primary_context = ""
+        twitter_insights = ""
+        tweet_themes = []
+        
+        if primary_data and 'documents' in primary_data and primary_data['documents'][0]:
+            tweets_with_meta = list(zip(primary_data['documents'][0], primary_data['metadatas'][0]))
+            
+            # Analyze Twitter engagement patterns
+            viral_tweets = [t for t in tweets_with_meta if t[1]['engagement'] > 2000]
+            high_engagement = [t for t in tweets_with_meta if 500 <= t[1]['engagement'] <= 2000]
+            
+            # Extract tweet themes from high-performing content
+            for doc, meta in viral_tweets:
+                tweet_themes.append(f"{doc[:120]}... (Engagement: {meta['engagement']})")
+            
+            primary_context = "\n".join([f"- {doc} | Engagement: {meta['engagement']} | Posted: {meta['timestamp']}"
+                                       for doc, meta in tweets_with_meta])
+            
+            if viral_tweets:
+                avg_viral_engagement = sum(t[1]['engagement'] for t in viral_tweets) / len(viral_tweets)
+                twitter_insights = f"VIRAL TWITTER CONTENT ANALYSIS:\nAverage engagement on viral tweets: {avg_viral_engagement:.0f}\nViral content patterns identified: {len(viral_tweets)} tweets with 2000+ engagement\n"
+                twitter_insights += "TOP PERFORMING TWEET THEMES:\n" + "\n".join(tweet_themes[:3])
+            elif high_engagement:
+                avg_high_engagement = sum(t[1]['engagement'] for t in high_engagement) / len(high_engagement)
+                twitter_insights = f"HIGH-ENGAGEMENT TWITTER ANALYSIS:\nAverage engagement on top tweets: {avg_high_engagement:.0f}\nSuccessful tweet patterns: {len(high_engagement)} tweets with 500+ engagement\n"
+        
+        # Analyze Twitter competitors with strategic intelligence
+        competitive_twitter_intel = ""
+        for username, data in secondary_data.items():
+            if data and 'documents' in data and data['documents'][0]:
+                competitor_tweets = list(zip(data['documents'][0], data['metadatas'][0]))
+                competitor_best = max(competitor_tweets, key=lambda x: x[1]['engagement'], default=(None, {'engagement': 0}))
+                
+                competitive_twitter_intel += f"\n{username.upper()} TWITTER INTELLIGENCE:\n"
+                competitive_twitter_intel += f"Best performing tweet: {competitor_best[0][:100]}... (Engagement: {competitor_best[1]['engagement']})\n"
+                competitive_twitter_intel += f"Average tweet engagement: {sum(t[1]['engagement'] for t in competitor_tweets) / len(competitor_tweets):.0f}\n"
+                
+                # Analyze Twitter-specific metrics if available
+                retweet_data = [t[1].get('retweets', 0) for t in competitor_tweets]
+                reply_data = [t[1].get('replies', 0) for t in competitor_tweets]
+                if retweet_data:
+                    competitive_twitter_intel += f"Retweet performance: Avg {sum(retweet_data)/len(retweet_data):.0f} retweets per tweet\n"
+                if reply_data:
+                    competitive_twitter_intel += f"Reply engagement: Avg {sum(reply_data)/len(reply_data):.0f} replies per tweet\n"
+        
+        prompt = f"""
+        You are an elite Twitter strategist and account manager with deep expertise in Twitter content optimization, viral mechanics, and competitive intelligence. You have been hired specifically to analyze {primary_username}'s Twitter account and create a comprehensive strategy that leverages their unique Twitter voice while exploiting competitor weaknesses on the platform.
+
+        **TWITTER ACCOUNT UNDER ANALYSIS**: {primary_username}
+        **TARGET TWITTER COMPETITORS**: {', '.join(secondary_usernames)}
+        **STRATEGIC FOCUS**: {query}
+        **ANALYSIS DATE**: {datetime.now().strftime('%B %d, %Y')}
+
+        **TWITTER PERFORMANCE DATA**:
+        {twitter_insights}
+
+        **COMPLETE TWEET HISTORY ANALYSIS**:
+        {primary_context if primary_context else "Limited tweet data available - focusing on strategic Twitter recommendations"}
+
+        **COMPETITIVE TWITTER INTELLIGENCE**:
+        {competitive_twitter_intel if competitive_twitter_intel else "Competitor Twitter data being analyzed through alternative methods"}
+
+        Your mission is to provide a strategic Twitter intelligence report that demonstrates deep understanding of {primary_username}'s unique Twitter positioning and creates actionable recommendations that are specifically tailored to their tweeting style, Twitter audience behavior, and platform-specific engagement patterns.
+
+        **CRITICAL TWITTER ANALYSIS REQUIREMENTS**:
+
+        1. **DEEP TWITTER PROFILE INTELLIGENCE** [PRIMARY ACCOUNT ANALYSIS]
+           - Identify the account's unique Twitter DNA by analyzing tweet patterns, conversation themes, and viral triggers
+           - Determine their authentic Twitter voice, thread storytelling style, and core messaging rhythm
+           - Map their Twitter content ecosystem: what topics drive retweets, what formats generate replies
+           - Identify their Twitter competitive advantages and conversation leadership gaps
+           - Analyze audience interaction patterns to determine optimal Twitter engagement strategies
+           - Assess their use of Twitter-specific features: threads, polls, spaces, quote tweets
+
+        2. **TWITTER COMPETITIVE WARFARE ANALYSIS** [STRATEGIC INTELLIGENCE]
+           - For each competitor, conduct deep Twitter behavioral analysis:
+             * Reverse-engineer their most viral Twitter content strategies
+             * Identify their Twitter conversation vulnerabilities and engagement blind spots
+             * Map their tweeting rhythms, thread timing, and audience interaction techniques
+             * Discover their untapped Twitter communities that {primary_username} could engage
+             * Analyze their recent Twitter strategic shifts and predict their next platform moves
+           - Create a Twitter competitive advantage matrix showing exactly where {primary_username} can outmaneuver each competitor on the platform
+
+        3. **TWITTER STRATEGIC EXPLOITATION PLAN** [ACTIONABLE WARFARE]
+           - Design specific Twitter content strategies that exploit competitor weaknesses while amplifying {primary_username}'s Twitter strengths
+           - Create 5 high-impact Twitter content pillars that position {primary_username} as a thought leader on the platform
+           - Develop Twitter counter-strategies for each major competitor threat
+           - Recommend Twitter timing strategies that capitalize on competitor posting gaps and conversation lulls
+           - Design Twitter audience capture techniques that pull followers from competitor accounts through superior engagement
+
+        4. **NEXT TWEET MASTERPIECE** [IMMEDIATE EXECUTION]
+           - Craft a tweet that perfectly embodies {primary_username}'s authentic Twitter voice while incorporating strategic intelligence
+           - The content must feel 100% authentic to their established Twitter style and conversation themes
+           - Include strategic elements that subtly outposition competitors on Twitter
+           - Provide detailed Twitter execution guidance including:
+             * Tweet text that matches their exact Twitter writing style and conversational tone (within 280 characters)
+             * Hashtag strategy that exploits competitor Twitter gaps and trending opportunities
+             * Media suggestion that aligns with their Twitter aesthetic while standing out in feeds
+             * Thread expansion ideas if the topic warrants deeper exploration
+             * Engagement hooks designed for their specific Twitter audience psychology
+
+        **TWITTER INTELLIGENCE STANDARDS**:
+        - Every recommendation must be backed by specific data points from the tweet analysis
+        - No generic Twitter advice - everything must be tailored to {primary_username}'s unique Twitter situation
+        - Include specific examples from their tweet history to justify recommendations
+        - Provide concrete Twitter metrics and benchmarks for measuring success
+        - Reference competitor-specific Twitter tactics that can be adapted or countered
+        - Focus on Twitter-specific engagement: retweets, quote tweets, replies, thread engagement
+
+        **OUTPUT REQUIREMENTS**:
+        Format as a comprehensive JSON Twitter intelligence report with the following structure:
+
+        {{
+            "primary_analysis": "Deep dive into {primary_username}'s Twitter content DNA, engagement patterns, unique Twitter strengths, and strategic positioning opportunities based on their actual tweet performance data and Twitter-specific behaviors",
+            "competitor_analysis": {{
+                "{secondary_usernames[0] if secondary_usernames else 'competitor1'}": "Detailed strategic analysis of their Twitter approach, Twitter vulnerabilities, and how {primary_username} can outmaneuver them on Twitter, including specific recent Twitter activities and strategic opportunities",
+                "{secondary_usernames[1] if len(secondary_usernames) > 1 else 'competitor2'}": "Comprehensive Twitter competitive intelligence including their engagement tactics, conversation gaps, and Twitter exploitation opportunities for {primary_username}",
+                "{secondary_usernames[2] if len(secondary_usernames) > 2 else 'competitor3'}": "Strategic breakdown of their Twitter market position, content weaknesses, and specific Twitter tactics {primary_username} should deploy against them"
+            }},
+            "recommendations": "5 highly specific, data-driven Twitter content strategies that leverage {primary_username}'s unique Twitter strengths while exploiting identified competitor vulnerabilities on the platform. Each recommendation must include specific Twitter execution details and expected engagement metrics.",
+            "next_post": {{
+                "tweet_text": "A tweet written in {primary_username}'s authentic Twitter voice that incorporates strategic elements and feels completely natural to their established Twitter style and conversation themes (within 280 characters)",
+                "hashtags": ["#strategic", "#twitter", "#hashtags", "#that", "#exploit"],
+                "media_suggestion": "A media concept (image, video, GIF) that perfectly aligns with their personal Twitter aesthetic preferences and authentic style, reflecting their genuine interests and personality on the platform",
+                "follow_up_tweets": ["If a thread feels natural to their style, suggestions for follow-up tweets that maintain their authentic voice and extend the conversation organically"]
+            }}
+        }}
+
+        Remember: This is not about changing their Twitter identity - it's about amplifying their authentic Twitter voice and helping them connect more effectively with their Twitter community while staying true to their genuine personality and interests on the platform.
         """
         return prompt
     
     def _construct_non_branding_prompt(self, primary_username, query):
-        """Construct a prompt for non-branding accounts focused on personal posting history."""
-        primary_data = self.vector_db.query_similar(query, n_results=10, filter_username=primary_username)
+        """Construct an intelligent prompt for personal accounts focused on authentic voice analysis and theme alignment."""
+        # Get comprehensive data about the personal account
+        primary_data = self.vector_db.query_similar(query, n_results=15, filter_username=primary_username)
         
-        # Safely handle empty or missing results
+        # Extract detailed personal context with authenticity patterns
         primary_context = ""
-        if primary_data and 'documents' in primary_data and len(primary_data['documents']) > 0:
-            try:
-                primary_context = "\n".join([f"- {doc} (Engagement: {meta['engagement']}, Timestamp: {meta['timestamp']})"
-                                   for doc, meta in zip(primary_data['documents'][0], primary_data['metadatas'][0])])
-            except Exception as e:
-                logger.warning(f"Error creating primary context: {str(e)}")
-                primary_context = "No recent posts available."
-        else:
-            primary_context = "No recent posts available."
+        personal_insights = ""
+        authentic_themes = []
+        writing_style_analysis = ""
+        
+        if primary_data and 'documents' in primary_data and primary_data['documents'][0]:
+            posts_with_meta = list(zip(primary_data['documents'][0], primary_data['metadatas'][0]))
+            
+            # Analyze personal posting patterns for authenticity
+            high_engagement_personal = [p for p in posts_with_meta if p[1]['engagement'] > 100]  # Lower threshold for personal accounts
+            recent_posts = sorted(posts_with_meta, key=lambda x: x[1]['timestamp'], reverse=True)[:5]
+            
+            # Extract authentic themes from engaging content
+            for doc, meta in high_engagement_personal:
+                authentic_themes.append(f"{doc[:150]}... (Engagement: {meta['engagement']})")
+            
+            primary_context = "\n".join([f"- {doc} | Engagement: {meta['engagement']} | Posted: {meta['timestamp']}"
+                                       for doc, meta in posts_with_meta])
+            
+            # Analyze writing style patterns
+            if posts_with_meta:
+                total_posts = len(posts_with_meta)
+                avg_engagement = sum(p[1]['engagement'] for p in posts_with_meta) / total_posts
+                
+                # Analyze content characteristics
+                question_posts = [p for p in posts_with_meta if '?' in p[0]]
+                exclamation_posts = [p for p in posts_with_meta if '!' in p[0]]
+                casual_language = [p for p in posts_with_meta if any(word in p[0].lower() for word in ['awesome', 'amazing', 'love', 'great', 'cool'])]
+                personal_pronouns = [p for p in posts_with_meta if any(word in p[0].lower() for word in ['i ', 'my ', 'me ', 'myself'])]
+                
+                writing_style_analysis = f"PERSONAL VOICE ANALYSIS:\n"
+                writing_style_analysis += f"Total posts analyzed: {total_posts} | Average engagement: {avg_engagement:.0f}\n"
+                writing_style_analysis += f"Interactive posts (questions): {len(question_posts)} ({len(question_posts)/total_posts*100:.1f}%)\n"
+                writing_style_analysis += f"Enthusiastic posts (exclamations): {len(exclamation_posts)} ({len(exclamation_posts)/total_posts*100:.1f}%)\n"
+                writing_style_analysis += f"Casual language usage: {len(casual_language)} ({len(casual_language)/total_posts*100:.1f}%)\n"
+                writing_style_analysis += f"Personal pronoun usage: {len(personal_pronouns)} ({len(personal_pronouns)/total_posts*100:.1f}%)\n"
+                
+                if authentic_themes:
+                    personal_insights = f"AUTHENTIC CONTENT THEMES:\n" + "\n".join(authentic_themes[:4])
         
         prompt = f"""
-        You are a creative social media content specialist for personal and non-brand accounts. Your task is to analyze the posting history of {primary_username} and generate an authentic, personalized content recommendation that matches their unique style and themes.
+        You are an elite personal content strategist and authentic voice specialist with deep expertise in personal brand development and individual expression optimization. You have been hired specifically to analyze {primary_username}'s personal account and create content strategies that amplify their authentic voice while maximizing engagement within their unique community.
 
-        **Account**: {primary_username}
-        **Topic Focus**: {query}
-        **Current Date**: April 11, 2025
+        **PERSONAL ACCOUNT UNDER ANALYSIS**: {primary_username}
+        **CONTENT FOCUS**: {query}
+        **ANALYSIS DATE**: {datetime.now().strftime('%B %d, %Y')}
 
-        The following data represents the account's previous posts, including engagement metrics:
+        **PERSONAL VOICE DATA**:
+        {writing_style_analysis}
 
-        **ACCOUNT POSTING HISTORY**: {primary_username}
-        {primary_context}
+        **AUTHENTIC CONTENT INSIGHTS**:
+        {personal_insights}
 
-        Your task is to provide a content recommendation with these sections:
+        **COMPLETE POSTING HISTORY ANALYSIS**:
+        {primary_context if primary_context else "Limited post data available - focusing on authentic voice development"}
 
-        1. **Account Analysis** [PERSONAL INSIGHTS]
-           - Analyze posting patterns, themes, and topics that appear frequently
-           - Identify the unique voice and style used in captions
-           - Determine the typical tone (casual, formal, humorous, inspirational, etc.)
-           - Note any recurring visual elements mentioned in posts
+        Your mission is to provide a comprehensive personal content strategy that demonstrates deep understanding of {primary_username}'s authentic voice, personal interests, and natural communication style, while creating recommendations that feel genuinely personal and engaging.
 
-        2. **Content Recommendations** [PERSONALIZED STRATEGY]
-           - Suggest content ideas that align perfectly with the account's established themes
-           - Recommend topics that would resonate with their audience based on past engagement
-           - Suggest posting frequency and timing based on observed patterns
-           - Identify hashtag strategies that have worked well in the past
+        **CRITICAL PERSONAL ANALYSIS REQUIREMENTS**:
 
-        3. **Next Post Creation** [AUTHENTIC CONTENT]
-           - Design a next post that feels like a natural extension of their content history
-           - Include:
-             * A caption that matches their writing style and tone perfectly
-             * Hashtags that they typically use, plus a few strategic new ones
-             * A call to action that fits their usual engagement approach
-             * A visual concept that aligns with their aesthetic preferences
+        1. **AUTHENTIC VOICE INTELLIGENCE** [PERSONAL BRAND ANALYSIS]
+           - Decode the account's unique personality signature by analyzing communication patterns, emotional expressions, and topic preferences
+           - Identify their natural storytelling rhythm, conversational tone, and authentic enthusiasm triggers
+           - Map their personal content ecosystem: what subjects they're passionate about, what formats feel natural to them
+           - Determine their community engagement style: how they naturally interact with their audience
+           - Analyze their authentic moments: which posts show genuine personality and resonate most with their community
+           - Identify opportunities to amplify their unique perspective and personal experiences
 
-        Format your response as a valid JSON object with these three main keys. Ensure all analysis directly references specific examples from the post history provided.
+        2. **PERSONAL CONTENT STRATEGY** [AUTHENTIC ENGAGEMENT]
+           - Design content pillars that align perfectly with their natural interests and authentic voice
+           - Recommend topics that feel genuine to their personal journey and experiences
+           - Suggest engagement approaches that match their natural communication style
+           - Identify storytelling opportunities that showcase their unique perspective
+           - Recommend ways to share their knowledge or experiences that feel authentic and valuable
+           - Create strategies for building genuine community around their personal interests
 
-        Your response must:
-        - Maintain the account holder's authentic voice - it should sound like them, not like marketing
-        - Reference concrete examples from the post data, not generic advice
-        - Not fabricate information - only use what can be inferred from the data
-        - Format all output as properly escaped JSON with the following structure:
+        3. **NEXT POST CREATION** [AUTHENTIC EXPRESSION]
+           - Craft content that feels like a natural extension of their posting history and personality
+           - The content must perfectly match their established voice, tone, and communication style
+           - Include elements that reflect their genuine interests and current experiences
+           - Provide detailed execution guidance including:
+             * A caption written exactly as they would naturally express themselves
+             * Topics and themes that align with their authentic interests
+             * Engagement approaches that feel genuine to their personality
+             * Visual concepts that match their personal aesthetic preferences
+
+        **AUTHENTICITY STANDARDS**:
+        - Every recommendation must feel like something {primary_username} would naturally create themselves
+        - No corporate or marketing language - everything must sound personal and genuine
+        - Include specific examples from their posting history to justify authenticity
+        - Reference their natural communication patterns and personality traits
+        - Maintain their unique voice while suggesting strategic improvements
+        - Focus on amplifying what already works for them personally
+
+        **OUTPUT REQUIREMENTS**:
+        Format as a comprehensive JSON personal content strategy with the following structure:
 
         {{
-            "account_analysis": "Detailed analysis of the account's posting history, themes, and style",
-            "content_recommendations": "Personalized content strategy suggestions based on posting history",
+            "account_analysis": "Deep analysis of {primary_username}'s authentic voice, personal communication style, natural interests, and unique personality traits based on their actual posting patterns and engagement data",
+            "content_recommendations": "Personalized content strategy that amplifies their authentic voice while maximizing engagement. Include specific topic suggestions, posting approaches, and community building strategies that align with their natural interests and communication style",
             "next_post": {{
-                "caption": "A caption written in the account's authentic voice and style",
-                "hashtags": ["#UsualHashtag", "#TheirStyle"],
-                "call_to_action": "Engagement prompt that matches their typical approach",
-                "visual_prompt": "Visual concept that aligns with their aesthetic preferences"
+                "caption": "A caption written in {primary_username}'s exact natural voice that reflects their authentic style, interests, and way of communicating - it should sound exactly like something they would write themselves",
+                "hashtags": ["#personal", "#authentic", "#hashtags", "#that", "#match"],
+                "call_to_action": "An engagement prompt that feels natural to their communication style and encourages genuine community interaction",
+                "visual_prompt": "A visual concept that perfectly aligns with their personal aesthetic preferences and authentic style, reflecting their genuine interests and personality"
             }}
         }}
+
+        Remember: This is not about changing who they are - it's about amplifying their authentic voice and helping them connect more effectively with their community while staying true to their genuine personality and interests.
         """
         return prompt
     
-    def _generate_fallback_response(self, query):
-        """Generate a fallback response when Gemini is unavailable."""
-        try:
-            topic = query.lower()
-            hashtags = ['#Trending', '#MustSee', f"#{topic.replace(' ', '')}"]
-            return {
-                "primary_analysis": f"Unable to analyze {topic} due to API issues.",
-                "competitor_analysis": {},
-                "recommendations": f"Focus on {topic} with engaging visuals and strong CTAs.",
-                "next_post": {
-                    "caption": f"Unlock the latest in {topic}!",
-                    "hashtags": hashtags,
-                    "call_to_action": "Share your thoughts below!",
-                    "visual_prompt": f"A vibrant graphic showcasing {topic} trends"
-                }
-            }
-        except Exception as e:
-            logger.error(f"Error in fallback response: {str(e)}")
-            return {
-                "primary_analysis": "Analysis unavailable.",
-                "competitor_analysis": {},
-                "recommendations": "Post regularly about trending topics.",
-                "next_post": {
-                    "caption": "Stay tuned for more!",
-                    "hashtags": ["#Trending"],
-                    "call_to_action": "Check back soon!",
-                    "visual_prompt": "Generic promotional image"
-                }
-            }
+    def _construct_twitter_non_branding_prompt(self, primary_username, query):
+        """Construct a Twitter-specific intelligent prompt for personal accounts focused on authentic voice analysis and theme alignment."""
+        # Get comprehensive Twitter data about the personal account
+        primary_data = self.vector_db.query_similar(query, n_results=15, filter_username=primary_username)
+        
+        # Extract detailed personal Twitter context with authenticity patterns
+        primary_context = ""
+        twitter_voice_insights = ""
+        authentic_tweet_themes = []
+        twitter_style_analysis = ""
+        
+        if primary_data and 'documents' in primary_data and primary_data['documents'][0]:
+            tweets_with_meta = list(zip(primary_data['documents'][0], primary_data['metadatas'][0]))
+            
+            # Analyze personal Twitter patterns for authenticity
+            engaging_tweets = [t for t in tweets_with_meta if t[1]['engagement'] > 50]  # Lower threshold for personal Twitter accounts
+            recent_tweets = sorted(tweets_with_meta, key=lambda x: x[1]['timestamp'], reverse=True)[:5]
+            
+            # Extract authentic Twitter themes from engaging content
+            for doc, meta in engaging_tweets:
+                authentic_tweet_themes.append(f"{doc[:160]}... (Engagement: {meta['engagement']})")
+            
+            primary_context = "\n".join([f"- {doc} | Engagement: {meta['engagement']} | Posted: {meta['timestamp']}"
+                                       for doc, meta in tweets_with_meta])
+            
+            # Analyze Twitter writing style patterns
+            if tweets_with_meta:
+                total_tweets = len(tweets_with_meta)
+                avg_engagement = sum(t[1]['engagement'] for t in tweets_with_meta) / total_tweets
+                
+                # Analyze Twitter-specific characteristics
+                question_tweets = [t for t in tweets_with_meta if '?' in t[0]]
+                thread_tweets = [t for t in tweets_with_meta if any(indicator in t[0].lower() for indicator in ['thread', '1/', '2/', 'a thread'])]
+                reply_tweets = [t for t in tweets_with_meta if t[0].startswith('@')]
+                casual_tweets = [t for t in tweets_with_meta if any(word in t[0].lower() for word in ['lol', 'omg', 'tbh', 'ngl', 'fr'])]
+                personal_opinion_tweets = [t for t in tweets_with_meta if any(phrase in t[0].lower() for phrase in ['i think', 'imo', 'personally', 'i believe', 'hot take'])]
+                
+                # Analyze Twitter-specific metrics if available
+                total_retweets = sum(t[1].get('retweets', 0) for t in tweets_with_meta)
+                total_replies = sum(t[1].get('replies', 0) for t in tweets_with_meta)
+                total_quotes = sum(t[1].get('quotes', 0) for t in tweets_with_meta)
+                
+                twitter_style_analysis = f"PERSONAL TWITTER VOICE ANALYSIS:\n"
+                twitter_style_analysis += f"Total tweets analyzed: {total_tweets} | Average engagement: {avg_engagement:.0f}\n"
+                twitter_style_analysis += f"Interactive tweets (questions): {len(question_tweets)} ({len(question_tweets)/total_tweets*100:.1f}%)\n"
+                twitter_style_analysis += f"Thread creation: {len(thread_tweets)} ({len(thread_tweets)/total_tweets*100:.1f}%)\n"
+                twitter_style_analysis += f"Reply engagement: {len(reply_tweets)} ({len(reply_tweets)/total_tweets*100:.1f}%)\n"
+                twitter_style_analysis += f"Casual Twitter language: {len(casual_tweets)} ({len(casual_tweets)/total_tweets*100:.1f}%)\n"
+                twitter_style_analysis += f"Opinion sharing: {len(personal_opinion_tweets)} ({len(personal_opinion_tweets)/total_tweets*100:.1f}%)\n"
+                
+                if total_tweets > 0:
+                    twitter_style_analysis += f"Retweet rate: {total_retweets/total_tweets:.1f} per tweet\n"
+                    twitter_style_analysis += f"Reply rate: {total_replies/total_tweets:.1f} per tweet\n"
+                    twitter_style_analysis += f"Quote tweet rate: {total_quotes/total_tweets:.1f} per tweet\n"
+                
+                if authentic_tweet_themes:
+                    twitter_voice_insights = f"AUTHENTIC TWITTER THEMES:\n" + "\n".join(authentic_tweet_themes[:4])
+        
+        prompt = f"""
+        You are an elite personal Twitter strategist and authentic voice specialist with deep expertise in Twitter personal brand development and individual expression optimization. You have been hired specifically to analyze {primary_username}'s personal Twitter account and create content strategies that amplify their authentic Twitter voice while maximizing engagement within their unique Twitter community.
+
+        **PERSONAL TWITTER ACCOUNT UNDER ANALYSIS**: {primary_username}
+        **TWITTER CONTENT FOCUS**: {query}
+        **ANALYSIS DATE**: {datetime.now().strftime('%B %d, %Y')}
+
+        **PERSONAL TWITTER VOICE DATA**:
+        {twitter_style_analysis}
+
+        **AUTHENTIC TWITTER CONTENT INSIGHTS**:
+        {twitter_voice_insights}
+
+        **COMPLETE TWITTER HISTORY ANALYSIS**:
+        {primary_context if primary_context else "Limited tweet data available - focusing on authentic Twitter voice development"}
+
+        Your mission is to provide a comprehensive personal Twitter content strategy that demonstrates deep understanding of {primary_username}'s authentic Twitter voice, personal interests, and natural communication style on the platform, while creating recommendations that feel genuinely personal and engaging within Twitter's unique ecosystem.
+
+        **CRITICAL PERSONAL TWITTER ANALYSIS REQUIREMENTS**:
+
+        1. **AUTHENTIC TWITTER VOICE INTELLIGENCE** [PERSONAL BRAND ANALYSIS]
+           - Decode the account's unique Twitter personality signature by analyzing tweet patterns, conversational rhythms, and engagement triggers
+           - Identify their natural Twitter storytelling style, thread creation patterns, and authentic enthusiasm in tweets
+           - Map their personal Twitter content ecosystem: what subjects they naturally tweet about, what Twitter formats feel authentic to them
+           - Determine their Twitter community engagement style: how they naturally interact, reply, and participate in conversations
+           - Analyze their authentic Twitter moments: which tweets show genuine personality and resonate most with their Twitter community
+           - Identify opportunities to amplify their unique Twitter perspective and personal experiences on the platform
+
+        2. **PERSONAL TWITTER CONTENT STRATEGY** [AUTHENTIC ENGAGEMENT]
+           - Design Twitter content pillars that align perfectly with their natural interests and authentic Twitter voice
+           - Recommend Twitter topics that feel genuine to their personal journey and experiences
+           - Suggest Twitter engagement approaches that match their natural communication style on the platform
+           - Identify Twitter storytelling opportunities that showcase their unique perspective
+           - Recommend ways to share their knowledge or experiences through tweets that feel authentic and valuable
+           - Create strategies for building genuine Twitter community around their personal interests
+           - Optimize their use of Twitter-specific features (threads, polls, quote tweets) based on their natural style
+
+        3. **NEXT TWEET CREATION** [AUTHENTIC EXPRESSION]
+           - Craft Twitter content that feels like a natural extension of their tweeting history and personality
+           - The content must perfectly match their established Twitter voice, tone, and communication style
+           - Include elements that reflect their genuine interests and current Twitter experiences
+           - Provide detailed Twitter execution guidance including:
+             * A tweet written exactly as they would naturally express themselves on Twitter (within 280 characters)
+             * Twitter topics and themes that align with their authentic interests
+             * Twitter engagement approaches that feel genuine to their personality
+             * Media concepts that match their personal Twitter aesthetic preferences
+             * Thread suggestions if appropriate to their natural style
+
+        **TWITTER AUTHENTICITY STANDARDS**:
+        - Every recommendation must feel like something {primary_username} would naturally tweet themselves
+        - No corporate or marketing language - everything must sound personal and genuine for Twitter
+        - Include specific examples from their Twitter history to justify authenticity
+        - Reference their natural Twitter communication patterns and personality traits
+        - Maintain their unique Twitter voice while suggesting strategic improvements
+        - Focus on amplifying what already works for them personally on Twitter
+        - Respect Twitter's conversational nature and character limitations
+
+        **OUTPUT REQUIREMENTS**:
+        Format as a comprehensive JSON personal Twitter content strategy with the following structure:
+
+        {{
+            "account_analysis": "Deep analysis of {primary_username}'s authentic Twitter voice, personal communication style on the platform, natural interests expressed through tweets, and unique personality traits based on their actual tweeting patterns and Twitter engagement data",
+            "content_recommendations": "Personalized Twitter content strategy that amplifies their authentic voice while maximizing Twitter engagement. Include specific tweet topic suggestions, Twitter posting approaches, and Twitter community building strategies that align with their natural interests and Twitter communication style",
+            "next_tweet": {{
+                "tweet_text": "A tweet written in {primary_username}'s exact natural Twitter voice that reflects their authentic style, interests, and way of communicating on Twitter - it should sound exactly like something they would tweet themselves (within 280 characters)",
+                "hashtags": ["#personal", "#authentic", "#twitter", "#hashtags", "#that"],
+                "media_suggestion": "A media concept (image, video, GIF) that perfectly aligns with their personal Twitter aesthetic preferences and authentic style, reflecting their genuine interests and personality on the platform",
+                "follow_up_tweets": ["If a thread feels natural to their style, suggestions for follow-up tweets that maintain their authentic voice and extend the conversation organically"]
+            }}
+        }}
+
+        Remember: This is not about changing their Twitter identity - it's about amplifying their authentic Twitter voice and helping them connect more effectively with their Twitter community while staying true to their genuine personality and interests on the platform.
+        """
+        return prompt
     
-    def generate_recommendation(self, primary_username, secondary_usernames, query, n_context=3, is_branding=True):
-        """Generate a comprehensive content recommendation and strategy."""
+    def generate_recommendation(self, primary_username, secondary_usernames, query, n_context=3, is_branding=True, platform="instagram"):
+        """Generate a recommendation for the given query with contextual analysis."""
         try:
-            if not self.client:
-                logger.error("Gemini API not initialized.")
-                return self._generate_fallback_response(query)
+            logger.info(f"Generating recommendation for {platform} platform, {'' if is_branding else 'non-'}branding account")
+            logger.info(f"Primary username: {primary_username}, Secondary usernames: {secondary_usernames}")
             
-            # Select the appropriate prompt based on account type
-            if is_branding:
-                prompt = self._construct_enhanced_prompt(primary_username, secondary_usernames, query)
+            # Select the appropriate prompt based on platform and account type
+            if platform == "twitter":
+                if is_branding and secondary_usernames and len(secondary_usernames) > 0:
+                    prompt = self._construct_twitter_enhanced_prompt(primary_username, secondary_usernames, query)
+                else:
+                    prompt = self._construct_twitter_non_branding_prompt(primary_username, query)
             else:
-                prompt = self._construct_non_branding_prompt(primary_username, query)
+                if is_branding and secondary_usernames and len(secondary_usernames) > 0:
+                    prompt = self._construct_enhanced_prompt(primary_username, secondary_usernames, query)
+                else:
+                    prompt = self._construct_non_branding_prompt(primary_username, query)
             
+            # Get similar posts for context
+            similar_posts = []
+            if self.vector_db:
+                try:
+                    similar_results = self.vector_db.query_similar(query, n_results=n_context)
+                    if similar_results and 'documents' in similar_results and similar_results['documents'] and similar_results['documents'][0]:
+                        similar_posts = similar_results['documents'][0]
+                        logger.info(f"Found {len(similar_posts)} similar posts for context")
+                    else:
+                        logger.warning("No similar documents found for context")
+                except Exception as vector_error:
+                    logger.error(f"Error querying similar documents: {str(vector_error)}")
+                    raise Exception(f"Vector database query failed: {str(vector_error)}")
+                    
+            # Check if Gemini is initialized properly
+            if not hasattr(self, 'generative_model'):
+                logger.error("Gemini generative model not initialized")
+                raise Exception("Gemini generative model not initialized")
+                
             try:
-                response = self.client.models.generate_content(model=self.model, contents=prompt)
-                response_text = response.text.strip()
-            except Exception as api_e:
-                logger.error(f"Gemini API call failed: {str(api_e)}")
-                return self._generate_fallback_response(query)
-            
-            # Check if response is empty
-            if not response_text:
-                logger.error("Empty response from Gemini API")
-                return self._generate_fallback_response(query)
-            
-            # Log raw response for debugging
-            logger.debug(f"Raw Gemini response: {response_text[:500]}...")
-            
-            # Attempt JSON parsing with multiple strategies
-            recommendation = self._parse_and_repair_json(response_text, primary_username, query)
-            if recommendation:
-                return recommendation
-            
-            # If all parsing attempts fail, use text extraction
-            logger.warning(f"All JSON parsing attempts failed. Falling back to text extraction.")
-            return self._extract_recommendation_from_text(response_text, query)
-            
+                # Configure generation parameters using the available API
+                generation_config = {
+                    'temperature': self.config.get('temperature', 0.2),
+                    'top_p': self.config.get('top_p', 0.95),
+                    'top_k': self.config.get('top_k', 40),
+                    'max_output_tokens': self.config.get('max_tokens', 2000)
+                }
+                
+                # Use the generative model to generate content
+                response = self.generative_model.generate_content(
+                    contents=prompt,
+                    generation_config=generation_config
+                )
+                
+                if not response or not hasattr(response, 'text'):
+                    logger.error("Empty or invalid response from Gemini API")
+                    raise Exception("Empty or invalid response from Gemini API")
+                    
+                # Extract structured recommendation
+                recommendation_json = self._parse_json_response(response.text)
+                logger.info("Successfully generated recommendation")
+                return recommendation_json
+                
+            except Exception as gemini_error:
+                logger.error(f"Error generating recommendation with Gemini: {str(gemini_error)}")
+                raise Exception(f"Recommendation generation failed: {str(gemini_error)}")
+                
         except Exception as e:
             logger.error(f"Error generating recommendation: {str(e)}")
-            return self._generate_fallback_response(query)
+            raise Exception(f"Recommendation generation failed: {str(e)}")
     
-    def _parse_and_repair_json(self, text, primary_username, query):
-        """Parse and repair JSON from text with multiple fallback strategies."""
-        if not text or not text.strip():
-            logger.error("Empty text provided to JSON parser")
-            return None
+    def _parse_json_response(self, response_text):
+        """Parse JSON response with enhanced error handling and repair capabilities."""
+        try:
+            # Try direct parsing first
+            return json.loads(response_text)
+        except json.JSONDecodeError as e:
+            logger.warning(f"Initial JSON parsing failed: {str(e)}, attempting repairs...")
             
-        # First attempt: extract JSON within triple backticks if present
-        try:
-            json_block_match = re.search(r'```(?:json)?\s*(\{[\s\S]*?\})\s*```', text, re.DOTALL)
-            if json_block_match:
-                json_text = json_block_match.group(1).strip()
-                if json_text:
-                    try:
-                        recommendation = json.loads(json_text)
-                        logger.info(f"Successfully parsed JSON from code block for {primary_username}")
-                        return recommendation
-                    except json.JSONDecodeError as e:
-                        logger.warning(f"Failed to parse JSON from code block: {str(e)}")
-        except Exception as e:
-            logger.warning(f"Error in backtick extraction: {str(e)}")
-        
-        # Second attempt: find JSON object with regex
-        try:
-            json_match = re.search(r'\{[\s\S]*?\}', text, re.DOTALL)
-            if json_match:
-                json_text = json_match.group(0).strip()
-                if json_text:
-                    try:
-                        recommendation = json.loads(json_text)
-                        logger.info(f"Successfully parsed JSON with regex for {primary_username}")
-                        return recommendation
-                    except json.JSONDecodeError as e:
-                        logger.warning(f"Failed to parse JSON with regex: {str(e)}")
-        except Exception as e:
-            logger.warning(f"Error in JSON regex extraction: {str(e)}")
-        
-        # Third attempt: find any JSON-like structure with more flexible regex
-        try:
-            json_like_match = re.search(r'\{[\s\S]*\}', text, re.DOTALL)
-            if json_like_match:
-                json_text = json_like_match.group(0).strip()
-                if json_text:
-                    try:
-                        # Apply basic fixes before attempting to parse
-                        fixed_text = self._apply_basic_json_fixes(json_text)
-                        recommendation = json.loads(fixed_text)
-                        logger.info(f"Successfully parsed JSON with basic fixes for {primary_username}")
-                        return recommendation
-                    except json.JSONDecodeError as e:
-                        logger.warning(f"Failed to parse JSON with basic fixes: {str(e)}")
-        except Exception as e:
-            logger.warning(f"Error in flexible JSON extraction: {str(e)}")
-        
-        # Advanced JSON repair strategies
-        try:
-            # Safety check - don't try to repair an empty string
-            if not text.strip():
-                logger.error("Empty text for repair")
-                return None
+            # Enhanced JSON repair attempts
+            repair_attempts = [
+                # Remove markdown code blocks
+                lambda text: re.sub(r'```(?:json)?\s*(.*?)\s*```', r'\1', text, flags=re.DOTALL),
                 
-            fixed_text = self._apply_advanced_json_repairs(text)
-            
-            # Try parsing the fixed JSON
-            try:
-                recommendation = json.loads(fixed_text)
-                logger.info(f"Repaired and parsed JSON for {primary_username}")
-                return recommendation
-            except json.JSONDecodeError as e:
-                logger.warning(f"Advanced repair attempt failed: {str(e)}")
-            
-            # If full repair fails, try extracting and repairing just the next_post part
-            recommendation = self._extract_next_post_section(fixed_text, query)
-            if recommendation:
-                return recommendation
+                # Remove leading/trailing text before/after JSON
+                lambda text: re.search(r'\{.*\}', text, re.DOTALL).group(0) if re.search(r'\{.*\}', text, re.DOTALL) else text,
                 
-        except Exception as repair_e:
-            logger.error(f"Repair failed: {str(repair_e)}. Raw text sample: {text[:100]}...")
-        
-        return None
+                # Fix common JSON issues
+                lambda text: text.replace('`', '"').replace(''', "'").replace(''', "'").replace('"', '"').replace('"', '"'),
+                
+                # Fix trailing commas
+                lambda text: re.sub(r',(\s*[}\]])', r'\1', text),
+                
+                # Fix missing quotes around keys
+                lambda text: re.sub(r'(\w+):', r'"\1":', text),
+                
+                # Fix single quotes to double quotes
+                lambda text: text.replace("'", '"'),
+                
+                # Remove comments
+                lambda text: re.sub(r'//.*?\n', '\n', text),
+                
+                # Fix escaped quotes
+                lambda text: text.replace('\\"', '"'),
+                
+                # Extract JSON from mixed content
+                lambda text: self._extract_json_from_mixed_content(text)
+            ]
+            
+            for i, repair_func in enumerate(repair_attempts):
+                try:
+                    repaired_text = repair_func(response_text)
+                    if repaired_text and repaired_text != response_text:
+                        logger.info(f"Attempting JSON repair method {i+1}")
+                        parsed = json.loads(repaired_text)
+                        logger.info(f"Successfully repaired JSON using method {i+1}")
+                        return parsed
+                except (json.JSONDecodeError, AttributeError, TypeError):
+                    continue
+            
+            # If all repair attempts fail, create structured response from text
+            logger.warning("All JSON repair attempts failed, creating structured response from text")
+            return self._create_structured_response_from_text(response_text)
+            
+        except Exception as e:
+            logger.error(f"Unexpected error in JSON parsing: {str(e)}")
+            return self._create_fallback_response()
     
-    def _apply_basic_json_fixes(self, text):
-        """Apply basic fixes to potentially invalid JSON."""
-        if not text:
-            return "{}"
-            
-        # Replace None with null, True with true, False with false
-        text = re.sub(r'\bNone\b', 'null', text)
-        text = re.sub(r'\bTrue\b', 'true', text)
-        text = re.sub(r'\bFalse\b', 'false', text)
-        
-        # Replace single quotes with double quotes
-        text = re.sub(r'\'([^\']+)\'', r'"\1"', text)
-        
-        # Fix unquoted property names
-        text = re.sub(r'([{,]\s*)(\w+)(\s*:)', r'\1"\2"\3', text)
-        
-        return text
-    
-    def _apply_advanced_json_repairs(self, text):
-        """Apply advanced repairs to invalid JSON."""
-        if not text:
-            return "{}"
-            
-        # Make a copy of the text for repair attempts
-        fixed_text = text
-        
-        # Strategy 1: Fix missing commas between key-value pairs
-        fixed_text = re.sub(r'}(\s*"[^"]+":)', r'},\1', fixed_text)
-        
-        # Strategy 2: Fix unquoted property names (more comprehensive)
-        fixed_text = re.sub(r'([{,]\s*)(\w+)(\s*:)', r'\1"\2"\3', fixed_text)
-        
-        # Strategy 3: Fix trailing commas in arrays/objects
-        fixed_text = re.sub(r',(\s*[}\]])', r'\1', fixed_text)
-        
-        # Strategy 4: Fix missing quotes around string values
-        fixed_text = re.sub(r':\s*([^"{}\[\],\d][^,}\]]*?)(\s*[,}\]])', r': "\1"\2', fixed_text)
-        
-        # Strategy 5: Fix single quotes used instead of double quotes
-        fixed_text = re.sub(r'\'([^\']+)\'', r'"\1"', fixed_text)
-        
-        # Strategy 6: Fix JavaScript-style comments
-        fixed_text = re.sub(r'//.*?\n', r' ', fixed_text)
-        fixed_text = re.sub(r'/\*.*?\*/', r' ', fixed_text, flags=re.DOTALL)
-        
-        # Strategy 7: Fix Python literal values
-        fixed_text = re.sub(r'\bNone\b', 'null', fixed_text)
-        fixed_text = re.sub(r'\bTrue\b', 'true', fixed_text)
-        fixed_text = re.sub(r'\bFalse\b', 'false', fixed_text)
-        
-        # Strategy 8: Fix improper escaping in strings
-        fixed_text = re.sub(r'(["])([^"\\]*(?:\\.[^"\\]*)*)\\([^\\])', r'\1\2\\\\\3', fixed_text)
-        
-        # Strategy 9: Remove extraneous text outside the JSON structure
-        json_match = re.search(r'(\{[\s\S]*\})', fixed_text, re.DOTALL)
-        if json_match:
-            fixed_text = json_match.group(1)
-        
-        return fixed_text
-    
-    def _extract_next_post_section(self, text, query):
-        """Extract and repair just the next_post section."""
+    def _extract_json_from_mixed_content(self, text):
+        """Extract JSON from mixed content that may contain other text."""
         try:
-            # Find the next_post section
-            next_post_match = re.search(r'"next_post"[^{]*?({[^{}]*(?:{[^{}]*})*[^{}]*})', text, re.DOTALL)
-            if next_post_match:
-                next_post_text = next_post_match.group(1).strip()
-                if next_post_text:
-                    try:
-                        # Apply all repairs to the next_post section
-                        next_post_text = self._apply_advanced_json_repairs(next_post_text)
-                        
-                        # Handle list items in hashtags that might be malformed
-                        hashtags_match = re.search(r'"hashtags"\s*:\s*\[\s*([^\]]*)\s*\]', next_post_text, re.DOTALL)
-                        if hashtags_match:
-                            hashtags_content = hashtags_match.group(1).strip()
-                            if hashtags_content:
-                                # Properly format hashtags with double quotes and commas
-                                fixed_hashtags = []
-                                for tag in re.findall(r'[^",\s]+', hashtags_content):
-                                    fixed_hashtags.append(f'"{tag}"')
-                                fixed_hashtags_str = ", ".join(fixed_hashtags)
-                                next_post_text = re.sub(r'"hashtags"\s*:\s*\[\s*([^\]]*)\s*\]', 
-                                                   f'"hashtags": [{fixed_hashtags_str}]', 
-                                                   next_post_text)
-                        
-                        logger.debug(f"Attempting to parse next_post: {next_post_text}")
-                        next_post = json.loads(next_post_text)
-                        
-                        # Create a complete recommendation with the extracted next_post
-                        recommendation = self._generate_fallback_response(query)
-                        recommendation["next_post"] = next_post
-                        logger.info(f"Extracted and repaired next_post section")
-                        return recommendation
-                    except json.JSONDecodeError as e:
-                        logger.warning(f"Failed to repair next_post section: {str(e)}")
-                    except Exception as e:
-                        logger.warning(f"Error in next_post extraction: {str(e)}")
+            # Look for JSON-like structures
+            json_patterns = [
+                r'\{[^{}]*"next_post"[^{}]*\{[^{}]*\}[^{}]*\}',  # Look for next_post structures
+                r'\{[^{}]*"recommendations"[^{}]*\[[^\]]*\][^{}]*\}',  # Look for recommendations
+                r'\{[^{}]*"account_analysis"[^{}]*\}',  # Look for account analysis
+                r'\{.*?\}',  # Any JSON-like structure
+            ]
             
-            # Special case: If we have raw caption and hashtags, create a minimal structure
-            try:
-                caption_match = re.search(r'"caption"\s*:\s*"([^"]+)"', text, re.DOTALL)
-                hashtags_match = re.search(r'"hashtags"\s*:\s*\[\s*([^\]]*)\s*\]', text, re.DOTALL)
+            for pattern in json_patterns:
+                matches = re.findall(pattern, text, re.DOTALL)
+                for match in matches:
+                    try:
+                        return json.loads(match)
+                    except json.JSONDecodeError:
+                        continue
+            
+            return text
+        except Exception:
+            return text
+    
+    def _create_structured_response_from_text(self, response_text):
+        """Create a structured response when JSON parsing fails completely."""
+        try:
+            # Extract key information from the text
+            response = {}
+            
+            # Look for next post content
+            if 'next post' in response_text.lower() or 'tweet' in response_text.lower():
+                # Extract potential content
+                lines = response_text.split('\n')
+                tweet_text = ""
+                hashtags = []
                 
-                if caption_match:
-                    caption = caption_match.group(1).strip()
-                    hashtags = []
-                    
-                    if hashtags_match:
-                        hashtags_content = hashtags_match.group(1).strip()
-                        hashtags = re.findall(r'"([^"]+)"', hashtags_content)
-                    
-                    if not hashtags:
-                        hashtags = [f"#{word.capitalize()}" for word in query.split() if len(word) > 3]
-                        hashtags.append("#Trending")
-                    
-                    recommendation = self._generate_fallback_response(query)
-                    recommendation["next_post"]["caption"] = caption
-                    recommendation["next_post"]["hashtags"] = hashtags
-                    logger.info("Created recommendation from raw caption and hashtags")
-                    return recommendation
-            except Exception as e:
-                logger.warning(f"Failed to extract caption and hashtags: {str(e)}")
+                for line in lines:
+                    line = line.strip()
+                    if line and not line.startswith('#') and len(line) > 20:
+                        if not tweet_text:  # Take the first substantial line as content
+                            tweet_text = line
+                    elif line.startswith('#'):
+                        hashtags.append(line)
                 
+                if tweet_text:
+                    response['next_post'] = {
+                        'tweet_text': tweet_text,
+                        'hashtags': hashtags[:5] if hashtags else ['#Update', '#Content'],
+                        'media_suggestion': 'High-quality relevant image',
+                        'follow_up_tweets': []
+                    }
+            
+            # Look for recommendations
+            if 'recommend' in response_text.lower():
+                # Extract recommendation text
+                response['content_recommendations'] = response_text
+            
+            # Look for analysis
+            if 'analysis' in response_text.lower():
+                response['account_analysis'] = response_text
+            
+            # If no structured content found, provide the raw text
+            if not response:
+                response = {
+                    'content_recommendations': response_text,
+                    'account_analysis': 'Analysis based on account patterns and engagement',
+                    'next_post': {
+                        'tweet_text': 'Exciting updates coming soon!',
+                        'hashtags': ['#Update', '#ComingSoon'],
+                        'media_suggestion': 'Engaging visual content'
+                    }
+                }
+            
+            logger.info("Created structured response from unstructured text")
+            return response
+            
         except Exception as e:
-            logger.warning(f"Error extracting next_post: {str(e)}")
-        
-        return None
+            logger.error(f"Error creating structured response: {str(e)}")
+            return self._create_fallback_response()
+    
+    def _create_fallback_response(self):
+        """Create a minimal fallback response."""
+        return {
+            'content_recommendations': 'Unable to generate specific recommendations at this time.',
+            'account_analysis': 'Account analysis pending due to technical issues.',
+            'next_post': {
+                'tweet_text': 'Stay tuned for exciting updates!',
+                'hashtags': ['#StayTuned', '#Updates'],
+                'media_suggestion': 'Relevant high-quality image'
+            }
+        }
     
     def apply_template(self, recommendation, template_type):
         """Apply a template to a recommendation."""
@@ -514,142 +815,58 @@ class RagImplementation:
             return f"{recommendation.get('caption', '')} {' '.join(recommendation.get('hashtags', []))}"
     
     def _extract_recommendation_from_text(self, text, query):
-        """Extract recommendation components from unstructured text response."""
-        try:
-            # If text is empty, return a fallback response immediately
-            if not text or not text.strip():
-                logger.error("Empty text provided to extract_recommendation")
-                return self._generate_fallback_response(query)
-                
-            # Try to extract structured data using Gemini's help
-            if self.client:
-                try:
-                    format_prompt = f"""
-                    Convert this text into a valid JSON object with the structure:
-                    {{
-                        "primary_analysis": "Text",
-                        "competitor_analysis": {{}},
-                        "recommendations": "Text",
-                        "next_post": {{
-                            "caption": "Text",
-                            "hashtags": ["#tag1"],
-                            "call_to_action": "Text",
-                            "visual_prompt": "Text"
-                        }}
-                    }}
-                    
-                    Text:
-                    {text[:2000]}
-                    
-                    Return ONLY the JSON object with valid syntax. No markdown formatting, no backticks.
-                    """
-                    
-                    response = self.client.models.generate_content(model=self.model, contents=format_prompt)
-                    response_text = response.text.strip()
-                    
-                    # Check if response is empty
-                    if not response_text:
-                        logger.error("Empty response from formatting request")
-                        raise ValueError("Empty response from formatting request")
-                    
-                    # Parse with the main parser which already has all repair strategies
-                    recommendation = self._parse_and_repair_json(response_text, "extraction", query)
-                    if recommendation:
-                        logger.info("Successfully extracted structured data using Gemini")
-                        return recommendation
-                        
-                except Exception as e:
-                    logger.error(f"Error in reformatting with Gemini: {str(e)}")
-            
-            # Manual extraction as fallback
-            logger.info("Using manual text extraction as fallback")
-            
-            # Extract caption - find a sentence of reasonable length
-            caption_candidates = re.findall(r'([A-Z][^.!?]{15,100}[.!?])', text)
-            caption = caption_candidates[0] if caption_candidates else f"Discover the latest in {query}!"
-            
-            # Extract hashtags - find all hashtags or create from keywords
-            hashtags = re.findall(r'#\w+', text)
-            if not hashtags:
-                # Create hashtags from keywords in the query
-                keywords = [word for word in query.split() if len(word) > 3]
-                hashtags = [f"#{word.capitalize()}" for word in keywords] or [f"#{query.replace(' ', '')}"]
-                hashtags.extend(["#Trending", "#MustSee"])
-            
-            # Extract call to action - find sentences with action verbs
-            cta_patterns = [
-                r'([^.!?]*(?:click|tap|share|comment|follow|subscribe|check|visit|explore|discover|join|shop)[^.!?]*[.!?])',
-                r'([^.!?]*(?:what|how|who|when)[^.!?]*\?)'
-            ]
-            
-            cta = None
-            for pattern in cta_patterns:
-                cta_matches = re.findall(pattern, text, re.IGNORECASE)
-                if cta_matches:
-                    cta = cta_matches[0].strip()
-                    break
-            
-            if not cta:
-                cta = f"Share your thoughts on {query} below!"
-            
-            # Find any visual description
-            visual_prompt = None
-            visual_patterns = [
-                r'(?:visual|image|photo|picture|graphic)(?:[^.!?]*)[.!?]',
-                r'[^.!?]*(?:showing|featuring|displaying|with)[^.!?]*[.!?]'
-            ]
-            
-            for pattern in visual_patterns:
-                visual_matches = re.findall(pattern, text, re.IGNORECASE)
-                if visual_matches:
-                    visual_prompt = visual_matches[0].strip()
-                    break
-            
-            if not visual_prompt:
-                visual_prompt = f"High-quality image related to {query} with vibrant colors and professional composition."
-            
-            # Construct the best structured response we can
-            return {
-                "primary_analysis": text[:250] if text else f"Analysis of {query} content strategy.",
-                "competitor_analysis": {},
-                "recommendations": text[250:500] if len(text) > 500 else f"Focus on {query} with engaging visuals.",
-                "next_post": {
-                    "caption": caption,
-                    "hashtags": hashtags[:5],  # Limit to 5 hashtags
-                    "call_to_action": cta,
-                    "visual_prompt": visual_prompt
-                }
-            }
-        except Exception as e:
-            logger.error(f"Error extracting recommendation: {str(e)}")
-            return self._generate_fallback_response(query)
-    
+        """Extract structured recommendation data from unstructured text."""
+        # This method is deprecated - code should use proper JSON parsing instead
+        logger.warning("_extract_recommendation_from_text is deprecated")
+        raise NotImplementedError("This method has been removed to eliminate fallback systems")
+        
     def generate_batch_recommendations(self, prompt, topics, is_branding=True):
-        """Generate recommendations for multiple topics in a single API call."""
+        """Generate batch recommendations for multiple topics."""
         try:
-            all_context = {}
-            for topic in topics:
-                similar_docs = self.vector_db.query_similar(topic, n_results=3)
-                all_context[topic] = similar_docs['documents'][0] if similar_docs and similar_docs['documents'][0] else [
-                    f"Engage with {topic} content",
-                    f"{topic} posts with CTAs perform well",
-                    f"Visuals boost {topic} engagement"
-                ]
-                logger.info(f"Context prepared for topic: {topic}")
+            if not self.client:
+                logger.error("Gemini client not initialized")
+                raise Exception("Gemini client not initialized - batch recommendations cannot be generated")
+                
+            enhanced_prompt = self._enhance_batch_prompt(prompt, {}, is_branding)
             
-            enhanced_prompt = self._enhance_batch_prompt(prompt, all_context, is_branding)
-            response = self.client.models.generate_content(model=self.model, contents=enhanced_prompt)
-            response_text = response.text.strip()
+            generation_config = {
+                'max_output_tokens': self.config.get('max_tokens', 2000) * 2,  # Double for batch
+                'temperature': self.config.get('temperature', 0.2),
+                'top_p': self.config.get('top_p', 0.95),
+                'top_k': self.config.get('top_k', 40)
+            }
             
-            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
-            if json_match:
-                recommendations = json.loads(json_match.group(0))
-                logger.info(f"Generated batch recommendations for {len(topics)} topics")
-                return recommendations
-            return {}
+            model = genai.GenerativeModel(self.model, generation_config=generation_config)
+            response = model.generate_content(enhanced_prompt)
+            
+            if not response.text:
+                logger.error("Empty response from Gemini for batch recommendations")
+                raise ValueError("Empty response for batch recommendations")
+            
+            # Parse JSON response - expect an array of recommendations
+            try:
+                # First try to extract JSON from backticks
+                json_match = re.search(r'```(?:json)?\s*(\[[\s\S]*?\])\s*```', response.text, re.DOTALL)
+                if json_match:
+                    recommendations = json.loads(json_match.group(1))
+                    return recommendations
+                
+                # Try finding JSON array directly
+                json_match = re.search(r'\[\s*\{[\s\S]*\}\s*\]', response.text, re.DOTALL)
+                if json_match:
+                    recommendations = json.loads(json_match.group(0))
+                    return recommendations
+                
+                logger.error("Could not extract batch recommendations JSON")
+                raise ValueError("Failed to parse batch recommendations JSON")
+                
+            except Exception as e:
+                logger.error(f"Error parsing batch recommendations: {str(e)}")
+                raise
+                
         except Exception as e:
-            logger.error(f"Error in batch recommendations: {str(e)}")
-            return {}
+            logger.error(f"Error generating batch recommendations: {str(e)}")
+            raise
     
     def _enhance_batch_prompt(self, prompt, context_by_topic, is_branding=True):
         """Enhance the batch prompt with context for each topic."""

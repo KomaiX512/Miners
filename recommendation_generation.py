@@ -9,6 +9,7 @@ from time_series_analysis import TimeSeriesAnalyzer
 from config import CONTENT_TEMPLATES, LOGGING_CONFIG
 from datetime import datetime
 import pandas as pd
+from news_api import NewsAPIClient
 
 # Set up logging
 logging.basicConfig(
@@ -122,132 +123,66 @@ class RecommendationGenerator:
             logger.error(f"Error generating trending topics: {str(e)}")
             return []
     
-    def generate_recommendations(self, topics, n_per_topic=3, is_branding=True):
+    def generate_recommendations(self, topics, n_per_topic=3, is_branding=True, platform="instagram"):
         """
-        Generate content recommendations for multiple topics.
+        Generate recommendations for a set of topics.
         
         Args:
             topics: List of topics to generate recommendations for
             n_per_topic: Number of recommendations per topic
             is_branding: Whether this is for a branding account
+            platform: Social media platform to target (instagram or twitter)
             
         Returns:
             Dictionary with recommendations by topic
         """
         try:
-            if not topics or n_per_topic <= 0:
-                logger.warning("Invalid input for generate_recommendations")
+            if not topics:
+                logger.warning("No topics provided for recommendation generation")
                 return {}
 
-            # Validate topic types
-            if not all(isinstance(topic, (str, dict)) for topic in topics):
-                logger.error("Invalid topic format - must be strings or dictionaries")
-                return {}
+            logger.info(f"Generating {platform} recommendations for {len(topics)} topics")
 
-            # Convert dictionary topics to strings if needed
-            topic_strings = []
-            for topic in topics:
-                if isinstance(topic, dict):
-                    topic_str = topic.get('topic', '').strip() or str(topic)
-                    topic_strings.append(topic_str)
-                else:
-                    topic_strings.append(str(topic).strip())
-
-            # Remove empty topics
-            valid_topics = [t for t in topic_strings if t]
-            if not valid_topics:
-                logger.error("No valid topics provided for recommendations")
-                return {}
-            
-            # Use default primary_username and secondary_usernames if not available
-            primary_username = "user"
-            secondary_usernames = []
-            
-            # Batch all topics into a single RAG request
-            combined_prompt = self._create_batch_prompt(valid_topics)
-            
-            # Generate a single response for all topics
-            try:
-                # First try with the full API parameters
-                batch_response = self.rag.generate_batch_recommendations(combined_prompt, valid_topics, is_branding=is_branding)
-            except Exception as e:
-                logger.warning(f"Error in batch recommendations with original API: {str(e)}")
-                # Create a fallback response structure
-                batch_response = {}
-                for topic in valid_topics:
-                    try:
-                        topic_recs = []
-                        # Generate individual recommendations for each topic
-                        for i in range(n_per_topic):
-                            rec = self.rag.generate_recommendation(
-                                primary_username=primary_username,
-                                secondary_usernames=secondary_usernames,
-                                query=f"recommendation for {topic}",
-                                is_branding=is_branding
-                            )
-                            if isinstance(rec, dict) and 'next_post' in rec:
-                                rec = rec['next_post']  # Extract next_post if that's the structure
-                            topic_recs.append(rec)
-                        batch_response[topic] = topic_recs
-                    except Exception as inner_e:
-                        logger.error(f"Error generating recommendations for topic {topic}: {str(inner_e)}")
-                        batch_response[topic] = [{"caption": f"Recommendation for {topic}", "hashtags": [f"#{topic.replace(' ', '')}"]}]
-            
-            # Process the batch response into individual recommendations
-            recommendations = {}
-            
-            for topic in valid_topics:
-                if topic in batch_response:
-                    topic_recs = batch_response[topic]
-                    # Ensure we have the requested number of recommendations
-                    while len(topic_recs) < n_per_topic:
-                        # Generate additional recommendations if needed
-                        try:
-                            additional_rec = self.rag.generate_recommendation(
-                                primary_username=primary_username,
-                                secondary_usernames=secondary_usernames,
-                                query=f"recommendation for {topic}",
-                                is_branding=is_branding
-                            )
-                            if isinstance(additional_rec, dict) and 'next_post' in additional_rec:
-                                additional_rec = additional_rec['next_post']
-                            topic_recs.append(additional_rec)
-                        except Exception as e:
-                            # Add a simple fallback
-                            topic_recs.append({
-                                "caption": f"Engaging content about {topic}",
-                                "hashtags": [f"#{topic.replace(' ', '')}"]
-                            })
+            # For small number of topics, process each separately
+            if len(topics) <= 3:
+                recommendations_by_topic = {}
+                for topic in topics:
+                    # Generate primary recommendation
+                    primary_recommendation = self.rag.generate_recommendation(
+                        "user", ["competitor1", "competitor2"], 
+                        topic, 
+                        is_branding=is_branding,
+                        platform=platform
+                    )
                     
                     # Store recommendations for this topic
-                    recommendations[topic] = topic_recs[:n_per_topic]
-                else:
-                    # Generate recommendations individually if not in batch response
-                    logger.warning(f"Topic {topic} not found in batch response, generating individually")
-                    topic_recs = []
-                    for i in range(n_per_topic):
-                        try:
-                            rec = self.rag.generate_recommendation(
-                                primary_username=primary_username,
-                                secondary_usernames=secondary_usernames,
-                                query=f"recommendation for {topic}",
-                                is_branding=is_branding
+                    if primary_recommendation:
+                        topic_recommendations = [primary_recommendation]
+                        
+                        # Generate additional recommendations if needed
+                        for i in range(1, n_per_topic):
+                            variation = self.rag.generate_recommendation(
+                                "user", ["competitor1"], 
+                                f"alternative version of {topic}", 
+                                is_branding=is_branding,
+                                platform=platform
                             )
-                            if isinstance(rec, dict) and 'next_post' in rec:
-                                rec = rec['next_post']
-                            topic_recs.append(rec)
-                        except Exception as e:
-                            # Add a simple fallback
-                            topic_recs.append({
-                                "caption": f"Engaging content about {topic}",
-                                "hashtags": [f"#{topic.replace(' ', '')}"]
-                            })
-                    recommendations[topic] = topic_recs
+                            if variation:
+                                topic_recommendations.append(variation)
+                        
+                        recommendations_by_topic[topic] = topic_recommendations
+                    else:
+                        logger.warning(f"Failed to generate recommendation for topic: {topic}")
+                
+                return recommendations_by_topic
             
-            logger.info(f"Generated recommendations for {len(valid_topics)} topics")
-            return recommendations
+            # For larger sets of topics, use batch processing
+            else:
+                batch_prompt = self._create_batch_prompt(topics)
+                return self.rag.generate_batch_recommendations(batch_prompt, topics, is_branding=is_branding)
+                
         except Exception as e:
-            logger.error(f"Critical error in generate_recommendations: {str(e)}")
+            logger.error(f"Error generating recommendations: {str(e)}")
             return {}
     
     def _create_batch_prompt(self, topics):
@@ -571,112 +506,156 @@ class RecommendationGenerator:
                 'summary': f"Error during posting trend analysis: {str(e)}"
             }
     
-    def generate_next_post_prediction(self, posts, account_analysis=None):
+    def generate_next_post_prediction(self, posts, account_analysis=None, platform="instagram"):
         """
-        Generate a next post prediction based on posting history.
+        Generate highly intelligent, theme-aligned prediction for the next post based on deep analysis of historical data.
         
         Args:
             posts: List of post dictionaries
-            account_analysis: Optional account analysis dictionary
+            account_analysis: Optional pre-computed account analysis
+            platform: Social media platform (instagram or twitter)
             
         Returns:
             Dictionary with next post prediction
         """
         try:
-            # If no posts, return a generic response
             if not posts:
-                return {
-                    'caption': "Check out our latest updates!",
-                    'hashtags': ["#New", "#Update"],
-                    'call_to_action': "Visit our profile for more",
-                    'image_prompt': "A high-quality, professional image that matches the caption and hashtags."
-                }
+                logger.warning("No posts provided for next post prediction - cannot generate theme-aligned content")
+                raise Exception("No posts available for next post analysis")
             
-            # Extract username information from posts
-            primary_username = None
-            for post in posts:
-                if 'username' in post:
-                    primary_username = post['username']
-                    break
+            # Extract deep insights from posts for theme alignment
+            username = posts[0].get('username', 'user') if posts else 'user'
             
-            # Default if no username found
-            if not primary_username:
-                primary_username = 'user'
+            # Analyze posting patterns for authentic voice detection
+            if not account_analysis:
+                account_analysis = self.analyze_account_type(posts)
             
-            # Extract competitor usernames if available
-            secondary_usernames = []
-            if account_analysis and 'competitors' in account_analysis:
-                if isinstance(account_analysis['competitors'], list):
-                    secondary_usernames = account_analysis['competitors'][:5]  # Limit to first 5
+            # Extract competitors or related accounts from posts metadata if available
+            competitor_usernames = []
+            for post in posts[:5]:  # Check first 5 posts for competitor mentions
+                if 'competitors' in post:
+                    competitor_usernames.extend(post['competitors'])
+                elif 'mentions' in post:
+                    competitor_usernames.extend(post['mentions'][:3])  # Limit to avoid overloading
             
-            # Extract recent captions
-            recent_captions = []
-            for post in sorted(posts, key=lambda x: x.get('timestamp', ''), reverse=True)[:10]:
-                if 'caption' in post:
-                    recent_captions.append(post['caption'])
+            # Remove duplicates and limit to top 3 competitors
+            competitor_usernames = list(set(competitor_usernames))[:3]
             
-            # Extract hashtags
-            all_hashtags = []
-            for post in posts:
-                if 'hashtags' in post:
-                    if isinstance(post['hashtags'], list):
-                        all_hashtags.extend(post['hashtags'])
-                    elif isinstance(post['hashtags'], str):
-                        extracted = self.extract_hashtags(post['hashtags'])
-                        all_hashtags.extend(extracted)
-            
-            # Count hashtag frequency
-            from collections import Counter
-            hashtag_counts = Counter(all_hashtags)
-            common_hashtags = [tag for tag, count in hashtag_counts.most_common(10)]
-            
-            # Build query/context for recommendation
-            query = "next post prediction based on account history"
-            context = "\n".join([
-                f"Recent caption: {caption}" for caption in recent_captions
-            ])
-            
-            context += "\nCommonly used hashtags: " + ", ".join(common_hashtags)
-            
-            # Determine if this is a branding account
+            # Determine account type for strategic approach
+            account_type = account_analysis.get('account_type', 'Unknown')
             is_branding = False
-            if account_analysis:
-                if isinstance(account_analysis, dict) and 'account_type' in account_analysis:
-                    account_type = account_analysis['account_type']
-                    context += f"\nAccount type: {account_type}"
-                    
-                    if isinstance(account_type, str):
-                        if account_type.lower() == 'business/brand' or 'business' in account_type.lower():
-                            is_branding = True
             
-            # Use RAG to generate the prediction with all required parameters
-            prediction = self.rag.generate_recommendation(
-                primary_username=primary_username,
-                secondary_usernames=secondary_usernames,
-                query=query + " " + context,
-                is_branding=is_branding
-            )
+            if isinstance(account_type, str):
+                is_branding = any(term in account_type.lower() for term in ['business', 'brand', 'company', 'corporate'])
             
-            # Extract the next_post field if it exists
-            if isinstance(prediction, dict) and 'next_post' in prediction:
-                next_post = prediction['next_post']
+            # Create intelligent query based on account's content themes
+            content_themes = []
+            engagement_patterns = []
+            
+            # Extract top-performing content themes
+            sorted_posts = sorted(posts, key=lambda x: x.get('engagement', 0), reverse=True)[:5]
+            for post in sorted_posts:
+                if 'caption' in post:
+                    content_themes.append(post['caption'][:100])
+                elif 'text' in post:  # Twitter format
+                    content_themes.append(post['text'][:100])
+                engagement_patterns.append(post.get('engagement', 0))
+            
+            # Create intelligent query that captures the account's essence
+            if content_themes:
+                themes_sample = " | ".join(content_themes[:3])
+                avg_engagement = sum(engagement_patterns) / len(engagement_patterns) if engagement_patterns else 0
                 
-                # Handle the case where visual_prompt is called image_prompt
-                if 'visual_prompt' in next_post and 'image_prompt' not in next_post:
-                    next_post['image_prompt'] = next_post['visual_prompt']
-                elif 'image_prompt' not in next_post and 'visual_prompt' not in next_post:
-                    next_post['image_prompt'] = "A high-quality, professional image that matches the caption and hashtags."
+                query = f"Create next post for {username} based on their successful content themes: {themes_sample} | Average engagement: {avg_engagement:.0f} | Platform: {platform}"
+            else:
+                query = f"Create next post for {username} on {platform} platform"
             
-            return next_post
+            logger.info(f"Generating {platform} next post with theme-aligned query: {query[:100]}...")
             
+            # Use enhanced RAG for intelligent recommendation
+            if not self.rag:
+                logger.error("RAG implementation not available for next post prediction")
+                raise Exception("RAG implementation required for intelligent next post generation")
+            
+            try:
+                # Generate using enhanced RAG with full intelligence
+                recommendation = self.rag.generate_recommendation(
+                    primary_username=username,
+                    secondary_usernames=competitor_usernames,
+                    query=query,
+                    is_branding=is_branding,
+                    platform=platform
+                )
+                
+                if not recommendation or not isinstance(recommendation, dict):
+                    logger.error(f"RAG failed to generate valid recommendation for {platform}")
+                    raise Exception(f"RAG recommendation generation failed for {platform}")
+                
+                # Extract next post from RAG output based on platform
+                next_post_data = None
+                result = {}
+                
+                if platform.lower() == "twitter":
+                    if "next_post" in recommendation and "tweet_text" in recommendation["next_post"]:
+                        next_post_data = recommendation["next_post"]
+                        result = {
+                            "tweet_text": next_post_data.get("tweet_text", ""),
+                            "hashtags": next_post_data.get("hashtags", []),
+                            "media_suggestion": next_post_data.get("media_suggestion", ""),
+                            "follow_up_tweets": next_post_data.get("follow_up_tweets", [])
+                        }
+                    elif "next_tweet" in recommendation and "tweet_text" in recommendation["next_tweet"]:
+                        next_post_data = recommendation["next_tweet"]
+                        result = {
+                            "tweet_text": next_post_data.get("tweet_text", ""),
+                            "hashtags": next_post_data.get("hashtags", []),
+                            "media_suggestion": next_post_data.get("media_suggestion", ""),
+                            "follow_up_tweets": next_post_data.get("follow_up_tweets", [])
+                        }
+                    else:
+                        logger.error(f"Twitter RAG output missing expected next_post structure: {list(recommendation.keys())}")
+                        raise Exception("Twitter RAG output format unexpected")
+                else:
+                    # Instagram format
+                    if "next_post" in recommendation and "caption" in recommendation["next_post"]:
+                        next_post_data = recommendation["next_post"]
+                        result = {
+                            "caption": next_post_data.get("caption", ""),
+                            "hashtags": next_post_data.get("hashtags", []),
+                            "call_to_action": next_post_data.get("call_to_action", ""),
+                            "visual_prompt": next_post_data.get("visual_prompt", "")
+                        }
+                    else:
+                        logger.error(f"Instagram RAG output missing expected next_post structure: {list(recommendation.keys())}")
+                        raise Exception("Instagram RAG output format unexpected")
+                
+                # Add timing analysis from posting patterns if available
+                posting_patterns = self.analyze_posting_trends(posts)
+                best_time = "Afternoon (12-3 PM)"  # Default
+                
+                if posting_patterns and 'hour_formatted' in posting_patterns:
+                    best_time = f"Around {posting_patterns['hour_formatted']}"
+                elif posting_patterns and 'most_active_hour' in posting_patterns:
+                    hour = posting_patterns['most_active_hour']
+                    if hour is not None:
+                        best_time = f"{hour % 12 or 12} {'AM' if hour < 12 else 'PM'}"
+                
+                result["best_posting_time"] = best_time
+                
+                # Add strategic context for validation
+                result["strategy_basis"] = f"Generated using enhanced RAG analysis of {len(posts)} posts with {len(competitor_usernames)} competitor insights"
+                result["theme_alignment"] = f"Based on top {len(content_themes)} content themes with avg engagement {avg_engagement:.0f}" if content_themes else "Theme analysis pending"
+                
+                logger.info(f"Successfully generated intelligent {platform} next post prediction with theme alignment")
+                return result
+                
+            except Exception as rag_error:
+                logger.error(f"RAG-based next post generation failed: {str(rag_error)}")
+                raise Exception(f"Intelligent next post generation failed: {str(rag_error)}")
+                
         except Exception as e:
-            logger.error(f"Error generating next post prediction: {str(e)}")
-            return {
-                'caption': "Error generating prediction",
-                'hashtags': ["#error"],
-                'call_to_action': "Please try again later",
-                'image_prompt': "Error generating image prompt"
-            }
+            logger.error(f"Error in enhanced next post prediction: {str(e)}")
+            raise Exception(f"Next post prediction failed: {str(e)}")
     
     def identify_competitors(self, posts, profile_info=None):
         """
@@ -792,373 +771,148 @@ class RecommendationGenerator:
                 for i in range(10)
             ]
     
-    def generate_improvement_recommendations(self, account_analysis):
-        """
-        Generate personalized improvement recommendations based on account analysis.
-        
-        Args:
-            account_analysis: Dictionary with account analysis results
-            
-        Returns:
-            Dictionary with improvement recommendations
-        """
+    def generate_improvement_recommendations(self, account_analysis, platform="instagram"):
+        """Generate highly intelligent, data-driven improvement recommendations based on deep account analysis."""
         try:
-            # Ensure account_analysis is properly formatted
-            if not isinstance(account_analysis, dict):
-                logger.warning("Invalid account analysis format - using fallback")
-                return [{"recommendation": "Post more consistently"}]
-
-            # Extract username information
-            primary_username = account_analysis.get('username', 'user')
-            secondary_usernames = account_analysis.get('competitors', [])
-
-            # Safely extract account type with fallbacks
-            account_type = account_analysis.get('account_type', 'Unknown')
+            if not account_analysis:
+                logger.error("No account analysis provided - cannot generate intelligent recommendations")
+                raise ValueError("Account analysis required for generating intelligent recommendations")
             
-            # Determine if this is a branding account
+            # Extract comprehensive account intelligence
+            username = account_analysis.get('username', 'user')
+            account_type = account_analysis.get('account_type', '')
+            posting_style = account_analysis.get('posting_style', '')
+            competitors = account_analysis.get('competitors', [])
+            
+            # Build intelligent query based on actual account data
+            query_components = []
+            
+            if account_type:
+                query_components.append(f"account type: {account_type}")
+            
+            if posting_style:
+                query_components.append(f"posting style: {posting_style}")
+                
+            # Add performance insights if available
+            if 'engagement_analysis' in account_analysis:
+                engagement_data = account_analysis['engagement_analysis']
+                if isinstance(engagement_data, dict) and 'summary' in engagement_data:
+                    query_components.append(f"performance context: {engagement_data['summary'][:100]}")
+            
+            # Add content themes if available
+            if 'posting_themes' in account_analysis:
+                themes_data = account_analysis['posting_themes']
+                if isinstance(themes_data, dict):
+                    top_themes = list(themes_data.keys())[:3]
+                if top_themes:
+                    query_components.append(f"content themes: {', '.join(top_themes)}")
+                elif isinstance(themes_data, list) and themes_data:
+                    query_components.append(f"content themes: {', '.join(themes_data[:3])}")
+            
+            # Create intelligent analysis query
+            base_query = f"Generate 5 strategic improvement recommendations for {username} on {platform}"
+            
+            if query_components:
+                detailed_context = " | ".join(query_components)
+                intelligent_query = f"{base_query} based on: {detailed_context}"
+            else:
+                intelligent_query = f"{base_query} - analyze account patterns for strategic improvements"
+            
+            logger.info(f"Generating intelligent {platform} improvement recommendations with query: {intelligent_query[:150]}...")
+            
+            # Determine if this is a branding account for strategic approach
             is_branding = False
             if isinstance(account_type, str):
-                if account_type.lower() == 'business/brand' or 'business' in account_type.lower():
-                    is_branding = True
-
-            # Build query for RAG
-            query = "generate improvement recommendations for social media"
-            context = f"Account type: {account_type}\n"
+                is_branding = any(term in account_type.lower() for term in ['business', 'brand', 'company', 'corporate'])
             
-            if 'analysis' in account_analysis:
-                context += f"Analysis: {account_analysis['analysis']}\n"
-                
-            # Create improvement recommendations with all required parameters
-            response = self.rag.generate_recommendation(
-                primary_username=primary_username,
-                secondary_usernames=secondary_usernames,
-                query=query + " " + context,
-                is_branding=is_branding
-            )
+            # Check if RAG is available
+            if not self.rag:
+                logger.error("RAG implementation not available for improvement recommendations")
+                raise ValueError("RAG implementation required for generating intelligent recommendations")
             
-            # Extract recommendations from response
-            recommendations = []
-            if isinstance(response, dict) and 'recommendations' in response:
-                recommendations = response['recommendations']
-            elif isinstance(response, list):
-                recommendations = response
-            else:
-                # Create basic recommendations if the response format is unexpected
-                recommendations = [
-                    {
-                        "recommendation": "Post more consistently",
-                        "reasoning": "Regular posting helps maintain audience engagement",
-                        "implementation": "Create a content calendar and schedule posts in advance"
-                    },
-                    {
-                        "recommendation": "Engage more with followers",
-                        "reasoning": "Higher engagement leads to better reach and loyalty",
-                        "implementation": "Respond to comments and messages promptly"
-                    },
-                    {
-                        "recommendation": "Use more relevant hashtags",
-                        "reasoning": "Proper hashtags increase discoverability",
-                        "implementation": "Research trending hashtags in your niche"
-                    },
-                    {
-                        "recommendation": "Improve visual consistency",
-                        "reasoning": "Consistent aesthetics create a recognizable brand",
-                        "implementation": "Use similar filters and color schemes across posts"
-                    },
-                    {
-                        "recommendation": "Collaborate with similar accounts",
-                        "reasoning": "Collaborations expose your account to new audiences",
-                        "implementation": "Reach out to complementary accounts for partnership opportunities"
-                    }
-                ]
-            
-            # Ensure we have at least 5 recommendations
-            while len(recommendations) < 5:
-                recommendations.append({
-                    "recommendation": f"Generic recommendation {len(recommendations)+1}",
-                    "reasoning": "This will help improve your account performance",
-                    "implementation": "Follow best practices for Instagram growth"
-                })
-            
-            return recommendations[:5]  # Return exactly 5 recommendations
-            
-        except Exception as e:
-            logger.error(f"Error generating improvement recommendations: {str(e)}")
-            # Return basic recommendations
-            return [
-                {
-                    "recommendation": "Post more consistently",
-                    "reasoning": "Regular posting helps maintain audience engagement",
-                    "implementation": "Create a content calendar and schedule posts in advance"
-                },
-                {
-                    "recommendation": "Engage more with followers",
-                    "reasoning": "Higher engagement leads to better reach and loyalty",
-                    "implementation": "Respond to comments and messages promptly"
-                },
-                {
-                    "recommendation": "Use more relevant hashtags",
-                    "reasoning": "Proper hashtags increase discoverability",
-                    "implementation": "Research trending hashtags in your niche"
-                },
-                {
-                    "recommendation": "Improve visual consistency",
-                    "reasoning": "Consistent aesthetics create a recognizable brand",
-                    "implementation": "Use similar filters and color schemes across posts"
-                },
-                {
-                    "recommendation": "Collaborate with similar accounts",
-                    "reasoning": "Collaborations expose your account to new audiences",
-                    "implementation": "Reach out to complementary accounts for partnership opportunities"
-                }
-            ]
-    
-    def generate_content_plan(self, data):
-        """Generate complete content plan with all recommendations."""
-        try:
-            # Extract data from the new format if needed
-            posts = data.get('posts', [])
-            primary_username = data.get('primary_username', '')
-            secondary_usernames = data.get('secondary_usernames', [])
-            query = data.get('query', '')
-            
-            if not posts:
-                logger.error("Cannot generate content plan - no posts in data")
-                return None
-            
-            engagement_data = data.get('engagement_history', [])
-            
-            # 1. Perform account analysis
-            account_analysis = self.analyze_account_type(posts)
-            if not account_analysis:
-                logger.warning("Failed to generate account analysis")
-                account_analysis = {'account_type': 'Unknown'}  # Add default
-            
-            # Add primary username to account analysis
-            if primary_username:
-                account_analysis['username'] = primary_username
-                
-            # Store secondary usernames as competitors
-            if secondary_usernames:
-                account_analysis['competitors'] = secondary_usernames
-            
-            # 2. Analyze engagement patterns
-            engagement_analysis = self.analyze_engagement(posts)
-            if not engagement_analysis:
-                logger.warning("Failed to generate engagement analysis")
-                engagement_analysis = {'summary': 'No engagement analysis available'}  # Add default
-            
-            # 3. Analyze posting trends
-            posting_trends = self.analyze_posting_trends(posts)
-            if not posting_trends:
-                logger.warning("Failed to analyze posting trends")
-                posting_trends = {'summary': 'No posting trend analysis available'}  # Add default
-            
-            # Determine if this is a branding or non-branding account
-            # Respect any explicit account_type setting from the data parameter
-            if 'account_type' in data and data['account_type']:
-                is_branding = data['account_type'].lower() == 'branding'
-                logger.info(f"Using provided account_type from data: {'branding' if is_branding else 'non-branding'}")
-            else:
-                # If not explicitly provided, determine from account_analysis
-                account_type = account_analysis.get('account_type', 'Unknown')
-                is_branding = False
-                if isinstance(account_type, str) and account_type.lower() == 'business/brand':
-                    is_branding = True
-                elif isinstance(account_type, str) and 'business' in account_type.lower():
-                    is_branding = True
-                
-            logger.info(f"Account type identified as {'branding' if is_branding else 'non-branding'}")
-            
-            # 4. Generate content based on account type
-            content_plan = {}
-            
-            # Basic common elements for both account types
-            content_plan = {
-                'generated_date': datetime.now().isoformat(),
-                'profile_analysis': account_analysis,
-                'engagement_analysis': engagement_analysis,
-                'posting_trends': posting_trends
-            }
-            
-            # Add trending topics if available for both account types
-            if engagement_data:
-                trending = self.generate_trending_topics(engagement_data)
-                if trending:
-                    content_plan['trending_topics'] = trending
-            
-            if is_branding:
-                # BRANDING ACCOUNT FLOW
-                # For branding accounts, use the existing RAG implementation
-                # Generate RAG analysis with primary, competitor, and recommendations
-                rag_output = self.rag.generate_recommendation(
-                    primary_username=primary_username,
-                    secondary_usernames=secondary_usernames,
-                    query=query,
-                    is_branding=True  # Explicitly specify branding account
+            # Generate intelligent recommendations using enhanced RAG
+            try:
+                recommendations_output = self.rag.generate_recommendation(
+                    primary_username=username,
+                    secondary_usernames=competitors[:3] if competitors else [],
+                    query=intelligent_query,
+                    is_branding=is_branding,
+                    platform=platform
                 )
                 
-                # Extract primary and competitor analysis from RAG output
-                primary_analysis = rag_output.get('primary_analysis', 'No primary analysis available')
-                competitor_analysis = rag_output.get('competitor_analysis', {})
-                recommendations = rag_output.get('recommendations', 'No recommendations available')
+                if not recommendations_output or not isinstance(recommendations_output, dict):
+                    logger.error(f"RAG failed to generate valid improvement recommendations for {platform}")
+                    raise Exception(f"RAG improvement recommendations generation failed for {platform}")
                 
-                # Generate next post prediction for branding
-                next_post = self.generate_next_post_prediction(posts, account_analysis)
-                if not next_post:  # Add fallback if prediction fails
-                    logger.warning("Using fallback next post prediction")
-                    next_post = {
-                        "caption": "Check out our latest updates!",
-                        "hashtags": ["#New", "#Update"],
-                        "call_to_action": "Visit our profile for more",
-                        "image_prompt": "Modern lifestyle image with vibrant colors"
-                    }
-                    
-                # If rag_output has next_post with visual_prompt, use that instead
-                if isinstance(rag_output, dict) and 'next_post' in rag_output and 'visual_prompt' in rag_output['next_post']:
-                    logger.info("Using RAG visual prompt for next post")
-                    if 'visual_prompt' not in next_post:
-                        next_post['visual_prompt'] = rag_output['next_post'].get('visual_prompt')
-                    else:
-                        # If there's an image_prompt but no visual_prompt, rename it
-                        if 'image_prompt' in next_post and 'visual_prompt' not in next_post:
-                            next_post['visual_prompt'] = next_post.pop('image_prompt')
+                # Extract recommendations from RAG output
+                recommendations_data = None
                 
-                # Generate improvement recommendations
-                improvement_recs = self.generate_improvement_recommendations(account_analysis)
-                if not improvement_recs:  # Add fallback
-                    improvement_recs = [{"recommendation": "Post more consistently"}]
-                
-                # Identify competitors
-                competitors = self.identify_competitors(posts, data.get('profile'))
-                if not competitors:  # Add default
-                    competitors = {"similar_accounts": []}
-                
-                # Add branding-specific elements to content plan
-                content_plan.update({
-                    'next_post_prediction': next_post,
-                    'primary_analysis': primary_analysis,
-                    'competitor_analysis': competitor_analysis,
-                    'recommendations': recommendations,
-                    'improvement_recommendations': improvement_recs,
-                    'competitors': competitors,
-                    'account_type': 'branding'  # Explicitly set account_type
-                })
-            else:
-                # NON-BRANDING ACCOUNT FLOW
-                # For non-branding accounts, incorporate news API data
-                from news_api import NewsAPIClient
-                
-                # Get posting style from the account data if available
-                posting_style = data.get('posting_style', 'informative')
-                account_type_for_news = data.get('account_type', '')
-                
-                if not account_type_for_news and 'profile' in data:
-                    account_type_for_news = data.get('profile', {}).get('account_type', '')
-                
-                # If still no account type, use a generic one
-                if not account_type_for_news:
-                    account_type_for_news = "general"
-                
-                # Fetch relevant news articles
-                news_client = NewsAPIClient()
-                news_articles = news_client.get_news_for_account(account_type_for_news, posting_style, limit=5)
-                
-                # Generate audience engagement strategies
-                engagement_strategies = self._generate_engagement_strategies(posts, posting_style)
-                
-                # Generate next post prediction with news context
-                next_post_with_news = self._generate_news_based_post(
-                    primary_username, 
-                    account_type_for_news, 
-                    posting_style, 
-                    news_articles[:1] if news_articles else []
-                )
-                
-                # Generate RAG recommendations (no competitor analysis for non-branding)
-                rag_output = self.rag.generate_recommendation(
-                    primary_username=primary_username,
-                    secondary_usernames=secondary_usernames,
-                    query=query,
-                    is_branding=False  # Explicitly specify non-branding account
-                )
-                
-                # Extract appropriate fields based on the non-branding output structure
-                account_analysis = rag_output.get('account_analysis', 'No account analysis available')
-                content_recommendations = rag_output.get('content_recommendations', 'No content recommendations available')
-                
-                # Use the RAG output's next_post if available
-                if 'next_post' in rag_output and isinstance(rag_output['next_post'], dict):
-                    # Merge the news-based post with the RAG-based one, preferring RAG for caption/hashtags
-                    # but keeping news information
-                    next_post = rag_output['next_post']
-                    if 'source_article' in next_post_with_news:
-                        next_post['source_article'] = next_post_with_news.get('source_article')
+                if 'recommendations' in recommendations_output:
+                    recommendations_data = recommendations_output['recommendations']
+                elif 'content_recommendations' in recommendations_output:
+                    recommendations_data = recommendations_output['content_recommendations']
+                elif 'improvement_recommendations' in recommendations_output:
+                    recommendations_data = recommendations_output['improvement_recommendations']
                 else:
-                    # Use the news-based post if RAG didn't provide one
-                    next_post = next_post_with_news
+                    logger.warning(f"Unexpected RAG output structure for improvements: {list(recommendations_output.keys())}")
+                    # Try to extract any strategic content from the output
+                    for key, value in recommendations_output.items():
+                        if isinstance(value, str) and len(value) > 100:  # Likely contains recommendations
+                            recommendations_data = value
+                            break
                 
-                # Add non-branding specific elements to content plan
-                content_plan.update({
-                    'next_post_prediction': next_post,
-                    'account_analysis': account_analysis,
-                    'content_recommendations': content_recommendations,
-                    'news_articles': news_articles,
-                    'engagement_strategies': engagement_strategies,
-                    'account_type': 'non-branding'  # Explicitly set account_type
-                })
-            
-            # Generate additional content recommendations based on trending topics
-            trending_topics = content_plan.get('trending_topics', [])
-            if trending_topics:
-                trend_topics = [topic.get('topic', '') for topic in trending_topics if 'topic' in topic]
-                if trend_topics:
-                    logger.info(f"Generating recommendations for trending topics: {trend_topics}")
-                    trending_recommendations = self.generate_recommendations(
-                        trend_topics, 
-                        n_per_topic=1, 
-                        is_branding=is_branding
-                    )
-                    content_plan['trending_recommendations'] = trending_recommendations
-            
-            logger.info(f"Generated content plan for {'branding' if is_branding else 'non-branding'} account type")
-            return content_plan
+                if not recommendations_data:
+                    logger.error("No recommendations found in RAG output")
+                    raise Exception("RAG output missing recommendations content")
+                
+                # Format the recommendations with strategic context
+                result = {
+                    'recommendations': recommendations_data,
+                    'platform': platform,
+                    'username': username,
+                    'analysis_basis': f"Generated using enhanced RAG analysis for {account_type} account with {posting_style} style",
+                    'competitor_insights': f"Strategic analysis includes {len(competitors)} competitor insights" if competitors else "Analysis focused on account-specific optimization",
+                    'strategy_type': 'branding_focused' if is_branding else 'personal_authentic'
+                }
+                
+                # Add primary analysis if available for additional context
+                if 'primary_analysis' in recommendations_output:
+                    result['account_intelligence'] = recommendations_output['primary_analysis']
+                elif 'account_analysis' in recommendations_output:
+                    result['account_intelligence'] = recommendations_output['account_analysis']
+                
+                logger.info(f"Successfully generated intelligent {platform} improvement recommendations with strategic depth")
+                return result
+                
+            except Exception as rag_error:
+                logger.error(f"RAG-based improvement recommendations failed: {str(rag_error)}")
+                raise Exception(f"Intelligent improvement recommendations generation failed: {str(rag_error)}")
             
         except Exception as e:
-            logger.error(f"Error generating content plan: {str(e)}")
-            import traceback
-            logger.error(traceback.format_exc())
-            return None
+            logger.error(f"Error in enhanced improvement recommendations: {str(e)}")
+            raise Exception(f"Improvement recommendations generation failed: {str(e)}")
     
-    def _generate_engagement_strategies(self, posts, posting_style):
-        """Generate audience engagement strategies for non-branding accounts.
+    def generate_batch_recommendations(self, topics, n_per_topic=3, is_branding=True):
+        """
+        Generate batch recommendations for multiple topics.
         
         Args:
-            posts: List of post dictionaries
-            posting_style: Style of posting
+            topics: List of topics to generate recommendations for
+            n_per_topic: Number of recommendations per topic
+            is_branding: Whether this is for a branding account
             
         Returns:
-            List of engagement strategies
+            Dictionary with recommendations by topic
         """
         try:
-            # Analyze existing engagement patterns
-            top_posts = sorted(posts, key=lambda x: x.get('engagement', 0), reverse=True)[:5]
-            
-            # Extract common elements from successful posts
-            common_themes = []
-            common_hashtags = set()
-            
-            for post in top_posts:
-                # Extract hashtags
-                if 'hashtags' in post:
-                    if isinstance(post['hashtags'], list):
-                        common_hashtags.update(post['hashtags'])
-                    elif isinstance(post['hashtags'], str):
-                        extracted = self.extract_hashtags(post['hashtags'])
-                        common_hashtags.update(extracted)
-        
-            # Default strategies
-            default_strategies = [
+            return self.generate_recommendations(topics, n_per_topic, is_branding=is_branding)
+        except Exception as e:
+            logger.error(f"Error generating batch recommendations: {str(e)}")
+            return {}
+    
+    def generate_engagement_strategies(self):
+        """Generate engagement strategies for accounts."""
+        return [
                 {
                     "strategy": "Ask thought-provoking questions",
                     "implementation": "End posts with questions that prompt reflection or discussion",
@@ -1186,175 +940,82 @@ class RecommendationGenerator:
                 }
             ]
             
-            # Style-specific strategies
-            style_specific = {
-                "educational": [
-                    {
-                        "strategy": "Host Q&A sessions",
-                        "implementation": "Schedule regular live Q&A sessions to address audience questions",
-                        "example": "Join our monthly Q&A this Friday where I'll answer your questions about [topic]"
-                    },
-                    {
-                        "strategy": "Create step-by-step tutorials",
-                        "implementation": "Break down complex processes into easy-to-follow steps",
-                        "example": "Here's a 5-step guide to understanding [concept]"
-                    }
-                ],
-                "storytelling": [
-                    {
-                        "strategy": "Use narrative arcs",
-                        "implementation": "Structure content with clear beginnings, middles, and ends",
-                        "example": "When I first started [activity], I never imagined where it would lead..."
-                    },
-                    {
-                        "strategy": "Invite audience stories",
-                        "implementation": "Encourage followers to share their related experiences",
-                        "example": "What's your story with [topic]? Share in the comments!"
-                    }
-                ],
-                "informative": [
-                    {
-                        "strategy": "Share data visualizations",
-                        "implementation": "Present complex information in visual formats",
-                        "example": "This graph shows the trends in [topic] over the past decade"
-                    },
-                    {
-                        "strategy": "Debunk myths",
-                        "implementation": "Address common misconceptions in your field",
-                        "example": "Contrary to popular belief, [fact] is actually [correction]"
-                    }
-                ]
-            }
-            
-            # Combine default strategies with style-specific ones
-            strategies = default_strategies.copy()
-            
-            posting_style_lower = posting_style.lower() if posting_style else ""
-            for style, style_strategies in style_specific.items():
-                if style in posting_style_lower:
-                    strategies.extend(style_strategies)
-                    break
-            
-            # Ensure we have exactly 5 strategies
-            if len(strategies) > 5:
-                strategies = strategies[:5]
-            while len(strategies) < 5:
-                strategies.append({
-                    "strategy": f"Engage with related content",
-                    "implementation": "Comment on and share content from related accounts",
-                    "example": "Check out this great perspective from @related_account"
-                })
-            
-            return strategies
-            
-        except Exception as e:
-            logger.error(f"Error generating engagement strategies: {str(e)}")
-            return [
-                {
-                    "strategy": "Ask questions to encourage comments",
-                    "implementation": "End posts with a question related to the content",
-                    "example": "What do you think about this? Share in the comments!"
-                }
-            ] * 5  # Return 5 copies of the same basic strategy as fallback
-
-    def _generate_news_based_post(self, username, account_type, posting_style, news_articles):
-        """Generate a post based on news for non-branding accounts.
-        
-        Args:
-            username: Account username
-            account_type: Type of account
-            posting_style: Style of posting
-            news_articles: List of news articles
-            
-        Returns:
-            Dictionary with next post prediction
-        """
+    def generate_news_based_content(self, account_analysis, platform="instagram"):
+        """Generate news-based content recommendations that align with account themes."""
         try:
-            if not news_articles:
-                # Fallback if no news articles are available
-                return {
-                    "caption": f"Stay updated on the latest in {account_type.replace('_', ' ')}!",
-                    "hashtags": [f"#{account_type.replace('_', '')}", "#LatestNews", "#StayInformed"],
-                    "call_to_action": "What topics would you like to see covered next? Let us know in the comments!",
-                    "image_prompt": f"A visually engaging image related to {account_type.replace('_', ' ')} with modern design elements"
-                }
+            # Extract intelligent query based on account data for theme alignment
+            username = account_analysis.get('username', 'user')
+            account_type = account_analysis.get('account_type', '')
+            posting_style = account_analysis.get('posting_style', '')
             
-            # Use the first news article as the basis for the post
-            article = news_articles[0]
-            title = article.get('title', '')
+            # Build theme-aligned news query based on account intelligence
+            news_query_components = []
             
-            # Create a hashtag from the account type
-            account_hashtag = f"#{account_type.replace('_', '')}"
+            # Start with account-specific intelligence
+            if username.lower() in ['nasa', '@nasa']:
+                news_query_components.extend(['space', 'aerospace', 'astronomy', 'rocket', 'satellite', 'mars', 'moon', 'ISS', 'space exploration'])
+            elif 'beauty' in account_type.lower() or 'makeup' in account_type.lower():
+                news_query_components.extend(['beauty', 'cosmetics', 'skincare', 'makeup'])
+            elif 'tech' in account_type.lower() or 'technology' in account_type.lower():
+                news_query_components.extend(['technology', 'AI', 'innovation', 'software'])
+            elif 'fitness' in account_type.lower() or 'health' in account_type.lower():
+                news_query_components.extend(['fitness', 'health', 'wellness', 'nutrition'])
+            elif 'food' in account_type.lower() or 'restaurant' in account_type.lower():
+                news_query_components.extend(['food', 'culinary', 'restaurant', 'cooking'])
             
-            # Extract potential hashtags from the title
-            words = re.findall(r'\b[A-Za-z]{4,}\b', title)
-            topic_hashtags = [f"#{word}" for word in words[:3]]
+            # Add themes from account analysis if available
+            if 'posting_themes' in account_analysis:
+                themes_data = account_analysis['posting_themes']
+                if isinstance(themes_data, dict):
+                    top_themes = list(themes_data.keys())[:3]
+                    news_query_components.extend(top_themes)
+                elif isinstance(themes_data, list):
+                    news_query_components.extend(themes_data[:3])
             
-            # Add generic hashtags
-            generic_hashtags = ["#News", "#Update", "#LatestTrends"]
-            
-            # Combine all hashtags and take up to 5
-            all_hashtags = [account_hashtag] + topic_hashtags + generic_hashtags
-            unique_hashtags = []
-            for tag in all_hashtags:
-                if tag not in unique_hashtags:
-                    unique_hashtags.append(tag)
-            hashtags = unique_hashtags[:5]
-            
-            # Create caption based on posting style
-            posting_style_lower = posting_style.lower() if posting_style else ""
-            
-            if "educational" in posting_style_lower:
-                caption = f"📚 Learning opportunity: {title} Here's what you need to know about this development."
-                call_to_action = "What aspects of this topic would you like to learn more about? Let me know in the comments!"
-            elif "storytelling" in posting_style_lower:
-                caption = f"📖 Here's an interesting story: {title} This caught my attention because of its significance."
-                call_to_action = "Have you had any experiences related to this? Share your story in the comments!"
-            elif "informative" in posting_style_lower:
-                caption = f"📣 Important update: {title} Here are the key facts you should be aware of."
-                call_to_action = "What are your thoughts on this development? Share your perspective below!"
+            # Create intelligent news query
+            if news_query_components:
+                # Use the most relevant terms (limit to avoid overloading)
+                primary_terms = news_query_components[:5]
+                news_query = f"{' OR '.join(primary_terms)} (breakthrough OR discovery OR innovation OR update)"
             else:
-                caption = f"📲 Trending now: {title} I thought this was worth sharing with you all."
-                call_to_action = "What do you think about this? Drop your comments below!"
+                # Generic fallback for unknown accounts
+                news_query = "trending news OR current events OR latest developments (report OR analysis OR insights OR statistics)"
             
-            # Add the link to the original article
-            if article.get('link'):
-                caption += f" Read more at the link in bio!"
+            logger.info(f"Generated theme-aligned news query for {username}: {news_query}")
             
-            return {
-                "caption": caption,
-                "hashtags": hashtags,
-                "call_to_action": call_to_action,
-                "image_prompt": f"A high-quality image representing {title}",
-                "source_article": article
-            }
+            # Fetch news with the intelligent query
+            news_api = NewsAPIClient()
+            news_articles = news_api.fetch_news(
+                query=news_query,
+                language='en',
+                limit=5
+            )
+            
+            if not news_articles:
+                logger.warning(f"No theme-aligned news found for {username}, using broader query")
+                # Fallback to broader but still account-related query
+                fallback_query = news_query_components[0] if news_query_components else "breaking news"
+                news_articles = news_api.fetch_news(
+                    query=fallback_query,
+                    language='en',
+                    limit=5
+                )
+            
+            # Format articles for the account's style
+            if news_articles:
+                formatted_articles = []
+                for article in news_articles:
+                    formatted_article = news_api.format_article_for_social(article)
+                    formatted_articles.append(formatted_article)
+                logger.info(f"Retrieved {len(formatted_articles)} theme-aligned articles for {username}")
+                return formatted_articles
+            else:
+                logger.warning(f"No news articles found for {username}")
+                return []
             
         except Exception as e:
-            logger.error(f"Error generating news-based post: {str(e)}")
-            return {
-                "caption": "Check out this interesting development in our field!",
-                "hashtags": ["#News", "#Update", "#StayInformed"],
-                "call_to_action": "What topics would you like to see covered next?",
-                "image_prompt": "A modern, professional image related to the topic"
-            }
-    
-    def generate_batch_recommendations(self, topics, n_per_topic=3, is_branding=True):
-        """
-        Generate batch recommendations for multiple topics.
-        
-        Args:
-            topics: List of topics to generate recommendations for
-            n_per_topic: Number of recommendations per topic
-            is_branding: Whether this is for a branding account
-            
-        Returns:
-            Dictionary with recommendations by topic
-        """
-        try:
-            return self.generate_recommendations(topics, n_per_topic, is_branding=is_branding)
-        except Exception as e:
-            logger.error(f"Error generating batch recommendations: {str(e)}")
-            return {}
+            logger.error(f"Error generating theme-aligned news content: {str(e)}")
+            return []
 
 
 # Test function

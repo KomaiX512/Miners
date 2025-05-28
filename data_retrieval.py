@@ -107,20 +107,25 @@ class R2DataRetriever:
             logger.error(f"Error putting object at {key}: {str(e)}")
             return False
     
-    def get_social_media_data(self, primary_username):
+    def get_social_media_data(self, primary_username, platform="instagram"):
         """
         Get social media data for a primary username and its competitors.
         
         Args:
-            primary_username (str): The primary Instagram username (e.g., 'maccosmetics')
+            primary_username (str): The primary username (e.g., 'maccosmetics')
+            platform (str): The social media platform (instagram or twitter)
             
         Returns:
             list: Combined list of post data from primary and competitor files, or None if failed
         """
         try:
-            # Define the prefix for the primary username's directory
-            prefix = f"{primary_username}/"
-            logger.info(f"Retrieving social media data for {primary_username} with prefix '{prefix}'")
+            # Define the prefix for the primary username's directory based on platform
+            if platform.lower() == "twitter":
+                prefix = f"twitter/{primary_username}/"
+            else:
+                prefix = f"{primary_username}/"
+                
+            logger.info(f"Retrieving {platform} data for {primary_username} with prefix '{prefix}'")
             
             # List all objects under the primary username's directory
             objects = self.list_objects(prefix=prefix)
@@ -129,7 +134,7 @@ class R2DataRetriever:
                 return None
             
             combined_data = []
-            primary_key = f"{primary_username}/{primary_username}.json"
+            primary_key = f"{prefix}{primary_username}.json"
             found_primary = False
             
             # Retrieve and combine data from all relevant files
@@ -156,6 +161,18 @@ class R2DataRetriever:
         except Exception as e:
             logger.error(f"Error retrieving social media data for {primary_username}: {str(e)}")
             return None
+    
+    def get_twitter_data(self, primary_username):
+        """
+        Get Twitter data for a primary username and its competitors.
+        
+        Args:
+            primary_username (str): The primary Twitter username
+            
+        Returns:
+            list: Combined list of tweet data from primary and competitor files, or None if failed
+        """
+        return self.get_social_media_data(primary_username, platform="twitter")
 
     def upload_file(self, key, file_obj):
         """
@@ -176,6 +193,137 @@ class R2DataRetriever:
             logger.error(f"Error uploading file to {key}: {str(e)}")
             return False
 
+    def export_recommendations(self, username, recommendations, index=1, platform="instagram"):
+        """
+        Export recommendations to R2 storage with appropriate directory structure.
+        
+        Args:
+            username (str): The username to export recommendations for
+            recommendations (dict): Recommendations data
+            index (int, optional): Index for the recommendation file
+            platform (str): Social media platform (instagram or twitter)
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            if not username or not recommendations:
+                logger.warning("Invalid username or recommendations for export")
+                return False
+            
+            # Define the key (path) for the recommendations with platform support
+            key = f"recommendations/{platform.lower()}/{username}/recommendation_{index}.json"
+            
+            # Add platform information to recommendations data
+            if isinstance(recommendations, dict):
+                recommendations['platform'] = platform.lower()
+                recommendations['username'] = username
+            
+            logger.info(f"Exporting {platform} recommendations for {username} to {key}")
+            return self.put_object(key, content=recommendations)
+        except Exception as e:
+            logger.error(f"Error exporting recommendations for {username}: {str(e)}")
+            return False
+    
+    def export_competitor_analysis(self, username, analysis, platform="instagram"):
+        """
+        Export competitor analysis to R2 storage with appropriate directory structure.
+        
+        Args:
+            username (str): The username to export analysis for
+            analysis (dict): Competitor analysis data
+            platform (str): Social media platform (instagram or twitter)
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            if not username or not analysis:
+                logger.warning("Invalid username or analysis for export")
+                return False
+            
+            # Define the key (path) for the analysis with platform support
+            key = f"competitor_analysis/{platform.lower()}/{username}/analysis.json"
+            
+            # Add platform information to analysis data
+            if isinstance(analysis, dict):
+                analysis['platform'] = platform.lower()
+                analysis['username'] = username
+            
+            logger.info(f"Exporting {platform} competitor analysis for {username} to {key}")
+            return self.put_object(key, content=analysis)
+        except Exception as e:
+            logger.error(f"Error exporting competitor analysis for {username}: {str(e)}")
+            return False
+    
+    def export_engagement_strategies(self, username, strategies, platform="instagram"):
+        """
+        Export engagement strategies to R2 storage with appropriate directory structure.
+        
+        Args:
+            username (str): The username to export strategies for
+            strategies (dict): Engagement strategies data
+            platform (str): Social media platform (instagram or twitter)
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            if not username or not strategies:
+                logger.warning("Invalid username or strategies for export")
+                return False
+            
+            # Define the key (path) for the strategies with platform support
+            key = f"engagement_strategies/{platform.lower()}/{username}/strategies.json"
+            
+            # Add platform information to strategies data
+            if isinstance(strategies, dict):
+                strategies['platform'] = platform.lower()
+                strategies['username'] = username
+            elif isinstance(strategies, list):
+                # If strategies is a list, wrap it in a dict with metadata
+                strategies = {
+                    'strategies': strategies,
+                    'platform': platform.lower(),
+                    'username': username
+                }
+            
+            logger.info(f"Exporting {platform} engagement strategies for {username} to {key}")
+            return self.put_object(key, content=strategies)
+        except Exception as e:
+            logger.error(f"Error exporting engagement strategies for {username}: {str(e)}")
+            return False
+    
+    def export_next_post(self, username, post_data, platform="instagram"):
+        """
+        Export next post prediction to R2 storage with appropriate directory structure.
+        
+        Args:
+            username (str): The username to export post for
+            post_data (dict): Next post prediction data
+            platform (str): Social media platform (instagram or twitter)
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            if not username or not post_data:
+                logger.warning("Invalid username or post data for export")
+                return False
+            
+            # Define the key (path) for the next post with platform support
+            key = f"next_posts/{platform.lower()}/{username}/next_post.json"
+            
+            # Add platform information to post data
+            if isinstance(post_data, dict):
+                post_data['platform'] = platform.lower()
+                post_data['username'] = username
+            
+            logger.info(f"Exporting {platform} next post prediction for {username} to {key}")
+            return self.put_object(key, content=post_data)
+        except Exception as e:
+            logger.error(f"Error exporting next post prediction for {username}: {str(e)}")
+            return False
 
 # Function to test the data retrieval
 def test_connection():
@@ -199,7 +347,64 @@ def test_connection():
         return False
 
 
+def test_twitter_connection():
+    """Test Twitter data retrieval from R2."""
+    try:
+        retriever = R2DataRetriever()
+        # Test with a sample Twitter username
+        primary_username = "mvsrapp"
+        logger.info(f"Testing Twitter retrieval for username: {primary_username}")
+        
+        data = retriever.get_twitter_data(primary_username)
+        if data:
+            logger.info(f"Successfully retrieved {len(data)} tweets for {primary_username}")
+            return True
+        else:
+            logger.warning(f"No Twitter data retrieved for {primary_username}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Twitter test connection failed: {str(e)}")
+        return False
+
+def test_export_structure():
+    """Test the export directory structure for recommendations."""
+    try:
+        retriever = R2DataRetriever()
+        
+        # Test with sample data
+        sample_recommendation = {
+            "caption": "Sample recommendation",
+            "hashtags": ["#sample", "#test"],
+            "call_to_action": "Try this out!"
+        }
+        
+        # Test Instagram export
+        insta_result = retriever.export_recommendations("test_user", sample_recommendation, platform="instagram")
+        
+        # Test Twitter export
+        twitter_result = retriever.export_recommendations("test_user", sample_recommendation, platform="twitter")
+        
+        if insta_result and twitter_result:
+            logger.info("Successfully tested export structure for both platforms")
+            return True
+        else:
+            logger.warning("Export structure test failed")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Export structure test failed: {str(e)}")
+        return False
+
 if __name__ == "__main__":
     # Test the connection and data retrieval
     success = test_connection()
     print(f"Connection test {'successful' if success else 'failed'}")
+    
+    # Test Twitter connection
+    twitter_success = test_twitter_connection()
+    print(f"Twitter connection test {'successful' if twitter_success else 'failed'}")
+    
+    # Test export structure
+    export_success = test_export_structure()
+    print(f"Export structure test {'successful' if export_success else 'failed'}")

@@ -101,7 +101,6 @@ class ContentRecommendationSystem:
             time_series=self.time_series
         )
         self.r2_storage = R2StorageManager()
-        self.running = False  # Flag for controlling processing loops
 
     def ensure_sample_data_in_r2(self):
         """Ensure sample data exists in R2 (stub implementation)."""
@@ -149,55 +148,11 @@ class ContentRecommendationSystem:
                 return account_info
             else:
                 logger.warning(f"No Twitter account info found in any location for {username}")
-                
-                # TESTING BYPASS: Create default account info for Twitter testing (matching Instagram approach)
-                logger.warning(f"TESTING BYPASS: Creating default Twitter account info for {username}")
-                
-                # Analyze username to guess account type
-                username_lower = username.lower()
-                if any(keyword in username_lower for keyword in ['official', 'brand', 'company', 'corp', 'inc', 'llc', 'business']):
-                    account_type = 'branding'
-                    posting_style = 'promotional'
-                    logger.info(f"Detected branding account for Twitter {username} based on username analysis")
-                elif any(keyword in username_lower for keyword in ['tech', 'science', 'news', 'education', 'learn']):
-                    account_type = 'branding'
-                    posting_style = 'educational'
-                    logger.info(f"Detected educational branding account for Twitter {username} based on username analysis")
-                else:
-                    # Default to non-branding for Twitter personal accounts
-                    account_type = 'personal'
-                    posting_style = 'informative'
-                    logger.info(f"Defaulting to personal account for Twitter {username}")
-                
-                # Create mock account info for testing
-                default_account_info = {
-                    'accountType': account_type,
-                    'postingStyle': posting_style,
-                    'competitors': [],  # Empty competitors for testing
-                    'username': username,
-                    'platform': 'twitter',
-                    'testing_mode': True,  # Mark as testing mode
-                    'timestamp': datetime.now().isoformat()
-                }
-                
-                logger.warning(f"TESTING MODE: Using default Twitter account info - accountType: {account_type}, postingStyle: {posting_style}")
-                return default_account_info
+                return None
                 
         except Exception as e:
             logger.error(f"Error reading Twitter account info for {username}: {str(e)}")
-            
-            # FALLBACK: Create minimal default account info for testing
-            logger.warning(f"FALLBACK: Creating minimal default Twitter account info for {username}")
-            return {
-                'accountType': 'personal',
-                'postingStyle': 'informative',
-                'competitors': [],
-                'username': username,
-                'platform': 'twitter',
-                'testing_mode': True,
-                'fallback_mode': True,
-                'timestamp': datetime.now().isoformat()
-            }
+            return None
 
     def _read_account_info(self, username):
         """
@@ -303,7 +258,7 @@ class ContentRecommendationSystem:
                     account_info = self._read_twitter_account_info(primary_username)
                 else:
                     # For Instagram, use existing method
-                    account_info = self._read_account_info(primary_username)
+                account_info = self._read_account_info(primary_username)
 
             # Process data based on platform
             if platform == 'twitter':
@@ -327,7 +282,7 @@ class ContentRecommendationSystem:
             logger.info(f"Successfully processed {platform} data")
 
                     # Set primary_username if not already set
-            if not data.get('primary_username') and 'profile' in data:
+                    if not data.get('primary_username') and 'profile' in data:
                         if primary_username:
                             data['primary_username'] = primary_username
                             
@@ -346,7 +301,7 @@ class ContentRecommendationSystem:
                             data['competitor_posts'] = competitors_data
                             logger.info(f"Added {len(competitors_data)} competitor posts to the data")
 
-            return data
+                    return data
 
         except Exception as e:
             logger.error(f"Error processing social data from {data_key}: {str(e)}")
@@ -548,10 +503,6 @@ class ContentRecommendationSystem:
                 logger.error("No primary username found in profile")
                 return None
 
-            # Get platform information - crucial for proper processing
-            platform = data.get('platform', 'instagram').lower()
-            logger.info(f"Generating content plan for {platform} platform")
-
             # Get competitor usernames from competitor_posts if available
             if 'competitor_posts' in data and data['competitor_posts']:
                 # Extract unique usernames from competitor posts
@@ -560,33 +511,10 @@ class ContentRecommendationSystem:
                 logger.info(f"Using {len(secondary_usernames)} competitor usernames from data: {secondary_usernames}")
             else:
                 # Default fallback competitors
-                secondary_usernames = []
-                logger.info(f"No competitor posts found, will use minimal competitor analysis")
+                secondary_usernames = ["anastasiabeverlyhills", "fentybeauty"]
+                logger.info(f"No competitor posts found, using default competitor usernames: {secondary_usernames}")
 
-            # Get account type and posting style - IMPORTANT: respect what's already set
-            account_type = data.get('account_type', '')
-            posting_style = data.get('posting_style', '')
-            
-            # If account_type is not set in data, try to get it from profile
-            if not account_type and profile.get('account_type'):
-                account_type = profile.get('account_type')
-                logger.info(f"Using account_type from profile: {account_type}")
-                
-            # If posting_style is not set in data, try to get it from profile
-            if not posting_style and profile.get('posting_style'):
-                posting_style = profile.get('posting_style')
-                logger.info(f"Using posting_style from profile: {posting_style}")
-
-            # Determine if this is a branding account
-            is_branding = False
-            if account_type:
-                is_branding = any(term in account_type.lower() for term in ['business', 'brand', 'company', 'corporate'])
-            logger.info(f"Account type: {account_type}, is_branding: {is_branding}")
-
-            # Generate intelligent query based on account theme
-            query = self._generate_intelligent_query(data, primary_username, platform)
-            logger.info(f"Generated intelligent query for {primary_username}: {query}")
-
+            query = "summer makeup trends"
             if topics:
                 query = " ".join(topics) if isinstance(topics, list) else topics
             elif data.get('engagement_history'):
@@ -604,90 +532,39 @@ class ContentRecommendationSystem:
                 all_posts.extend(data['competitor_posts'])
                 logger.info(f"Combined {len(data['posts'])} primary posts with {len(data['competitor_posts'])} competitor posts for analysis")
 
-            # Log the exact values being used
-            logger.info(f"Content plan generation for account_type: {account_type}, posting_style: {posting_style}, platform: {platform}")
+            # Get account type and posting style - IMPORTANT: respect what's already set
+            account_type = data.get('account_type', '')
+            posting_style = data.get('posting_style', '')
+            
+            # If account_type is not set in data, try to get it from profile
+            if not account_type and profile.get('account_type'):
+                account_type = profile.get('account_type')
+                logger.info(f"Using account_type from profile: {account_type}")
+                
+            # If posting_style is not set in data, try to get it from profile
+            if not posting_style and profile.get('posting_style'):
+                posting_style = profile.get('posting_style')
+                logger.info(f"Using posting_style from profile: {posting_style}")
+                
+            # Log the exact values being used - don't make any changes to account_type here
+            logger.info(f"Content plan generation for account_type: {account_type}, posting_style: {posting_style}")
 
-            # Generate the main recommendation using RAG
-            main_recommendation = self.recommendation_generator.rag.generate_recommendation(
-                primary_username=primary_username,
-                secondary_usernames=secondary_usernames,
-                query=query,
-                is_branding=is_branding,
-                platform=platform
+            content_plan = self.recommendation_generator.generate_content_plan(
+                data={
+                    'posts': all_posts,
+                    'primary_username': primary_username,
+                    'secondary_usernames': secondary_usernames,
+                    'query': query,
+                    'account_type': account_type,
+                    'posting_style': posting_style,
+                    'profile': profile,
+                    'engagement_history': data.get('engagement_history', [])
+                }
             )
 
-            if not main_recommendation:
-                logger.error("Failed to generate main recommendation")
+            if not content_plan:
+                logger.error("Failed to generate content plan")
                 return None
-
-            # Generate next post prediction
-            next_post = self.recommendation_generator.generate_next_post_prediction(
-                posts=data['posts'],
-                account_analysis={'account_type': account_type, 'posting_style': posting_style, 'username': primary_username},
-                platform=platform
-            )
-
-            # Generate improvement recommendations
-            improvement_recs = self.recommendation_generator.generate_improvement_recommendations(
-                account_analysis={'account_type': account_type, 'posting_style': posting_style, 'username': primary_username, 'competitors': secondary_usernames},
-                platform=platform
-            )
-
-            # Generate engagement strategies
-            engagement_strategies = self.recommendation_generator.generate_engagement_strategies()
-
-            # Build comprehensive content plan
-            content_plan = {
-                'platform': platform,
-                'primary_username': primary_username,
-                'account_type': account_type,
-                'posting_style': posting_style,
-                'profile': profile,
-                'main_recommendation': main_recommendation,
-                'next_post_prediction': next_post,
-                'improvement_recommendations': improvement_recs,
-                'engagement_strategies': engagement_strategies,
-                'recommendations': main_recommendation.get('recommendations', []),
-                'competitor_analysis': main_recommendation.get('competitor_analysis', {}),
-                'primary_analysis': main_recommendation.get('primary_analysis', ''),
-                'account_analysis': main_recommendation.get('account_analysis', '')
-            }
-
-            # Extract next post based on platform
-            if platform == 'twitter':
-                if 'next_post' in main_recommendation and 'tweet_text' in main_recommendation['next_post']:
-                    content_plan['next_post'] = main_recommendation['next_post']
-                elif 'next_tweet' in main_recommendation:
-                    content_plan['next_post'] = main_recommendation['next_tweet']
-            else:
-                if 'next_post' in main_recommendation and 'caption' in main_recommendation['next_post']:
-                    content_plan['next_post'] = main_recommendation['next_post']
-
-            # Generate trending topics if engagement history available
-            if data.get('engagement_history'):
-                try:
-                    trending = self.recommendation_generator.generate_trending_topics(
-                        {e['timestamp']: e['engagement'] for e in data['engagement_history']},
-                        top_n=3
-                    )
-                    content_plan['trending_topics'] = trending
-                except Exception as trending_error:
-                    logger.warning(f"Failed to generate trending topics: {trending_error}")
-                    content_plan['trending_topics'] = []
-
-            # Add batch recommendations if trending topics exist
-            if 'trending_topics' in content_plan and content_plan['trending_topics']:
-                try:
-                    topics_list = [t['topic'] for t in content_plan['trending_topics']]
-                    batch_recs = self.recommendation_generator.generate_batch_recommendations(
-                        topics=topics_list,
-                        n_per_topic=n_recommendations,
-                        is_branding=is_branding
-                    )
-                    content_plan['batch_recommendations'] = batch_recs
-                except Exception as batch_error:
-                    logger.warning(f"Failed to generate batch recommendations: {batch_error}")
-                    content_plan['batch_recommendations'] = {}
 
             # Ensure username is explicitly added to content plan
             if 'profile' not in content_plan or 'username' not in content_plan.get('profile', {}):
@@ -695,99 +572,38 @@ class ContentRecommendationSystem:
                     content_plan['profile'] = {}
                 content_plan['profile']['username'] = primary_username
                 logger.info(f"Added username {primary_username} to content plan profile")
-
+                
+            # Don't overwrite account_type if it's already set by the recommendation generator
+            if 'account_type' not in content_plan:
+                content_plan['account_type'] = account_type
+                logger.info(f"Set account_type to {account_type} in content plan")
+            else:
+                logger.info(f"Keeping existing account_type '{content_plan['account_type']}' in content plan")
+            
+            # Add primary_username field for easier access
+            content_plan['primary_username'] = primary_username
+            
             # Log content plan structure for debugging
             content_plan_keys = list(content_plan.keys())
             logger.info(f"Content plan contains the following sections: {content_plan_keys}")
 
-            logger.info(f"Successfully generated comprehensive content plan for {primary_username} on {platform}")
+            content_plan['profile_analysis'] = profile
+
+            if 'trending_topics' in content_plan and content_plan['trending_topics']:
+                topics = [t['topic'] for t in content_plan['trending_topics']]
+                batch_recs = self.recommendation_generator.generate_batch_recommendations(
+                    topics,
+                    n_per_topic=n_recommendations
+                )
+                content_plan['batch_recommendations'] = batch_recs
+
+            logger.info(f"Successfully generated content plan for {primary_username}")
             return content_plan
-            
         except Exception as e:
             logger.error(f"Error generating content plan: {str(e)}")
             import traceback
             logger.error(traceback.format_exc())
             return None
-
-    def _generate_intelligent_query(self, data, username, platform):
-        """Generate an intelligent query based on account data and themes."""
-        try:
-            # Extract account themes dynamically
-            posts = data.get('posts', [])
-            account_type = data.get('account_type', '')
-            posting_style = data.get('posting_style', '')
-            
-            # Analyze content themes from posts
-            content_themes = []
-            hashtags = []
-            
-            for post in posts[:10]:  # Analyze recent posts
-                if platform == 'twitter':
-                    text = post.get('text', '')
-                else:
-                    text = post.get('caption', '')
-                
-                if text:
-                    # Extract key themes (simple keyword extraction)
-                    words = text.lower().split()
-                    themes = [word for word in words if len(word) > 5 and word.isalpha()]
-                    content_themes.extend(themes[:3])  # Top 3 themes per post
-                
-                # Extract hashtags
-                post_hashtags = post.get('hashtags', [])
-                if isinstance(post_hashtags, list):
-                    hashtags.extend(post_hashtags)
-            
-            # Get top themes and hashtags
-            from collections import Counter
-            top_themes = [theme for theme, _ in Counter(content_themes).most_common(5)]
-            top_hashtags = [tag for tag, _ in Counter(hashtags).most_common(5)]
-            
-            # Build intelligent query components
-            query_components = []
-            
-            # Add username-specific intelligence (generic pattern matching)
-            username_lower = username.lower()
-            if any(word in username_lower for word in ['space', 'nasa', 'astro', 'cosmos']):
-                query_components.append('space exploration and scientific discoveries')
-            elif any(word in username_lower for word in ['beauty', 'makeup', 'cosmetic']):
-                query_components.append('beauty trends and cosmetic innovations')
-            elif any(word in username_lower for word in ['tech', 'ai', 'software', 'app']):
-                query_components.append('technology trends and digital innovation')
-            elif any(word in username_lower for word in ['fitness', 'health', 'wellness']):
-                query_components.append('health and fitness trends')
-            elif any(word in username_lower for word in ['food', 'recipe', 'culinary']):
-                query_components.append('culinary trends and food culture')
-            
-            # Add account type intelligence
-            if 'business' in account_type.lower() or 'brand' in account_type.lower():
-                query_components.append('brand engagement and marketing strategies')
-            elif 'personal' in account_type.lower() or 'individual' in account_type.lower():
-                query_components.append('personal content and authentic storytelling')
-            
-            # Add top themes if available
-            if top_themes:
-                themes_str = ' and '.join(top_themes[:3])
-                query_components.append(f'content related to {themes_str}')
-            
-            # Add platform-specific elements
-            if platform == 'twitter':
-                query_components.append('Twitter engagement and conversation starters')
-            else:
-                query_components.append('Instagram visual content and storytelling')
-            
-            # Combine into intelligent query
-            if query_components:
-                query = f"Generate {platform} content about {' with focus on '.join(query_components)}"
-            else:
-                # Fallback query
-                query = f"Generate engaging {platform} content that matches the account's authentic voice and interests"
-            
-            return query
-            
-        except Exception as e:
-            logger.warning(f"Error generating intelligent query: {e}")
-            return f"Generate engaging {platform} content"
 
     def save_content_plan(self, content_plan, filename='content_plan.json'):
         """Save content plan to a file."""
@@ -1069,7 +885,7 @@ class ContentRecommendationSystem:
                     
                 if r2_new_for_you:
                     logger.info(f"NewForYou content export successful to {new_for_you_path}")
-                else:
+                    else:
                     logger.error(f"Failed to export NewForYou content")
                 
             # Return success if we reached here
@@ -1638,9 +1454,8 @@ class ContentRecommendationSystem:
                 logger.error("Failed to generate content plan")
                 return {"success": False, "message": "Failed to generate content plan"}
             
-            # Ensure platform is set in content plan (preserve the correct platform)
+            # Ensure platform is set in content plan
             content_plan['platform'] = platform
-            logger.info(f"Set content plan platform to: {platform}")
             
             logger.info(f"Successfully generated {platform} content plan for {primary_username}")
             
@@ -1750,8 +1565,7 @@ class ContentRecommendationSystem:
             # --- NEW: Export primary Prophet/profile analysis ---
             # Use only the primary user's posts for this export
             if 'posts' in data and 'primary_username' in data:
-                platform = data.get('platform', 'instagram')  # Get platform from data
-                self.export_primary_prophet_analysis(data['posts'], data['primary_username'], platform=platform)
+                self.export_primary_prophet_analysis(data['posts'], data['primary_username'])
             
             return {
                 "success": True,
@@ -2290,7 +2104,7 @@ class ContentRecommendationSystem:
                             if result and isinstance(result, dict) and result.get("success"):
                                 logger.info(f"Successfully completed Twitter content pipeline for {username}")
                                 total_processed += 1
-                            else:
+                else:
                                 logger.error(f"Failed to complete Twitter content pipeline for {username}")
                                 
                                 # Try direct processing if R2 object retrieval failed
@@ -2504,17 +2318,12 @@ class ContentRecommendationSystem:
             logger.warning(f"Error setting up client to retrieve profile info: {str(e)}")
             return None
 
-    def export_primary_prophet_analysis(self, posts, primary_username, platform="instagram"):
+    def export_primary_prophet_analysis(self, posts, primary_username):
         """
-        Export primary Prophet/profile analysis (account type, engagement, posting trends) to R2 in prophet_analysis/<platform>/<username>/analysis_*.json.
-        
-        Args:
-            posts: List of post dictionaries
-            primary_username: Username for directory naming
-            platform: Social media platform (instagram or twitter)
+        Export primary Prophet/profile analysis (account type, engagement, posting trends) to R2 in prophet_analysis/<username>/analysis_*.json.
         """
         import io, json
-        logger.info(f"Exporting primary {platform} Prophet/profile analysis for {primary_username}")
+        logger.info(f"Exporting primary Prophet/profile analysis for {primary_username}")
         # Defensive: ensure posts and username are valid
         if not posts or not primary_username:
             logger.error("No posts or primary_username provided for prophet analysis export")
@@ -2530,15 +2339,13 @@ class ContentRecommendationSystem:
                 "account_type": account_type_analysis,
                 "engagement": engagement_analysis,
                 "posting_trends": posting_trends
-            },
-            "platform": platform,  # Add platform information
-            "primary_username": primary_username
+            }
         }
-        # Ensure platform-specific directory exists
-        self._ensure_directory_exists(f"prophet_analysis/{platform}/{primary_username}/")
-        # Get next file number with platform-specific path
-        file_num = self._get_next_file_number(f"prophet_analysis/{platform}", primary_username, "analysis")
-        export_path = f"prophet_analysis/{platform}/{primary_username}/analysis_{file_num}.json"
+        # Ensure directory exists
+        self._ensure_directory_exists(f"prophet_analysis/{primary_username}/")
+        # Get next file number
+        file_num = self._get_next_file_number("prophet_analysis", primary_username, "analysis")
+        export_path = f"prophet_analysis/{primary_username}/analysis_{file_num}.json"
         # Upload to R2
         result = self.r2_storage.upload_file(
             key=export_path,
@@ -2546,28 +2353,19 @@ class ContentRecommendationSystem:
             bucket="tasks"
         )
         if result:
-            logger.info(f"Primary {platform} Prophet/profile analysis export successful to {export_path}")
+            logger.info(f"Primary Prophet/profile analysis export successful to {export_path}")
         else:
-            logger.error(f"Failed to export primary {platform} Prophet/profile analysis to {export_path}")
+            logger.error(f"Failed to export primary Prophet/profile analysis to {export_path}")
         return result
 
     def process_twitter_data(self, raw_data, account_info=None):
-        """Process Twitter data into expected structure with strict validation matching Instagram."""
+        """Process Twitter data into expected structure."""
         try:
             if not isinstance(raw_data, list) or not raw_data:
                 logger.warning("Invalid Twitter data format")
                 return None
 
             logger.info(f"Processing {len(raw_data)} Twitter items")
-            
-            # STRICT: Only use account info from info.json file (authoritative source) - SAME AS INSTAGRAM
-            if not (account_info and isinstance(account_info, dict) and account_info.get('accountType') and account_info.get('postingStyle')):
-                logger.error("CRITICAL: Twitter Account info (info.json) missing or incomplete. 'accountType' and 'postingStyle' are required. Aborting processing.")
-                return None
-
-            account_type = account_info.get('accountType')
-            posting_style = account_info.get('postingStyle')
-            logger.info(f"USING AUTHORITATIVE VALUES FROM Twitter info.json - account_type: {account_type}, posting_style: {posting_style}")
             
             # With the new actor format, each item is a tweet with user info
             posts = []
@@ -2588,8 +2386,8 @@ class ContentRecommendationSystem:
                     'followersCount': user.get('totalFollowers', 0),
                     'followsCount': user.get('totalFollowing', 0),
                     'biography': user.get('description', ''),
-                    'account_type': account_type,  # PRESERVE THIS VALUE
-                    'posting_style': posting_style,  # PRESERVE THIS VALUE
+                    'account_type': account_info.get('accountType', 'unknown') if account_info else 'unknown',
+                    'posting_style': account_info.get('postingStyle', 'unknown') if account_info else 'unknown',
                     'verified': user.get('verified', False),
                     'profilePicUrl': user.get('avatar', ''),
                     'location': user.get('location', ''),
@@ -2610,65 +2408,64 @@ class ContentRecommendationSystem:
                     'followersCount': 0,  # Not available in this format
                     'followsCount': 0,    # Not available in this format
                     'biography': '',      # Not available in this format
-                    'account_type': account_type,  # PRESERVE THIS VALUE
-                    'posting_style': posting_style,  # PRESERVE THIS VALUE
+                    'account_type': account_info.get('accountType', 'unknown') if account_info else 'unknown',
+                    'posting_style': account_info.get('postingStyle', 'unknown') if account_info else 'unknown',
                     'verified': tweet.get('verified', False),
                 }
 
             # Process tweets
             for tweet in raw_data:
-                # Calculate engagement
+                    # Calculate engagement
                 likes = tweet.get('likes', 0)
                 retweets = tweet.get('retweets', 0)
                 replies = tweet.get('replies', 0)
                 quotes = tweet.get('quotes', 0)
-                engagement = likes + retweets + replies + quotes
+                    engagement = likes + retweets + replies + quotes
 
-                # Extract hashtags from text
-                text = tweet.get('text', '')
-                hashtags = []
-                words = text.split()
-                for word in words:
-                    if word.startswith('#'):
-                        hashtags.append(word)
+                    # Extract hashtags from text
+                    text = tweet.get('text', '')
+                    hashtags = []
+                    words = text.split()
+                    for word in words:
+                        if word.startswith('#'):
+                            hashtags.append(word)
 
                 # Get username from tweet or use primary username
                 tweet_username = tweet.get('username', primary_username)
                 if tweet_username.startswith('@'):
                     tweet_username = tweet_username[1:]  # Remove @ symbol if present
 
-                post_obj = {
-                    'id': tweet.get('id', ''),
-                    'caption': text,
-                    'hashtags': hashtags,
-                    'engagement': engagement,
-                    'likes': likes,
-                    'retweets': retweets,
-                    'replies': replies,
-                    'quotes': quotes,
+                    post_obj = {
+                        'id': tweet.get('id', ''),
+                        'caption': text,
+                        'hashtags': hashtags,
+                        'engagement': engagement,
+                        'likes': likes,
+                        'retweets': retweets,
+                        'replies': replies,
+                        'quotes': quotes,
                     'timestamp': tweet.get('timestamp', ''),
-                    'url': tweet.get('url', ''),
-                    'type': 'tweet',
+                        'url': tweet.get('url', ''),
+                        'type': 'tweet',
                     'username': tweet_username,
-                    'isRetweet': tweet.get('isRetweet', False),
-                    'isQuote': tweet.get('isQuote', False),
-                    'media': tweet.get('media', [])
-                }
+                        'isRetweet': tweet.get('isRetweet', False),
+                        'isQuote': tweet.get('isQuote', False),
+                        'media': tweet.get('media', [])
+                    }
 
-                # Only add tweets with actual content (like Instagram validation)
-                if post_obj['caption']:
                     posts.append(post_obj)
-                    if tweet.get('timestamp'):
+                    
+                if tweet.get('timestamp'):
                         engagement_history.append({
-                            'timestamp': tweet.get('timestamp'),
+                        'timestamp': tweet.get('timestamp'),
                             'engagement': engagement
                         })
 
-            logger.info(f"Processed {len(posts)} Twitter posts with content")
+            logger.info(f"Processed {len(posts)} Twitter posts")
 
             if not posts:
-                logger.warning("No posts with content extracted from Twitter data")
-                # Create synthetic engagement history for empty posts (same as Instagram)
+                logger.warning("No posts extracted from Twitter data")
+                # Create synthetic engagement history for empty posts
                 now = datetime.now()
                 for i in range(3):
                     timestamp = (now - pd.Timedelta(days=i)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
@@ -2676,35 +2473,30 @@ class ContentRecommendationSystem:
                         'timestamp': timestamp,
                         'engagement': 500 - (i * 50)
                     })
-                logger.info(f"Created {len(engagement_history)} synthetic engagement records")
 
             engagement_history.sort(key=lambda x: x['timestamp'])
 
-            # Get competitors from account_info if available (same as Instagram)
+            # Get competitors from account_info if available
             competitors = []
-            if 'competitors' in account_info and isinstance(account_info['competitors'], list):
+            if account_info and 'competitors' in account_info and isinstance(account_info['competitors'], list):
                 competitors = account_info['competitors']
-                logger.info(f"Using competitors from Twitter info.json: {competitors}")
+                logger.info(f"Using competitors from info.json: {competitors}")
 
-            # CRITICAL: These values should NEVER be overridden anywhere else in the pipeline
-            logger.warning(f"IMPORTANT: Twitter account_type '{account_type}' and posting_style '{posting_style}' must be preserved throughout the pipeline")
-
-            # Construct final data structure with the preserved account_type and posting_style (SAME AS INSTAGRAM)
+            # Construct final data structure
             processed_data = {
                 'posts': posts,
                 'engagement_history': engagement_history,
                 'profile': profile_data,
-                'account_type': account_type,  # PRESERVE THIS VALUE
-                'posting_style': posting_style,  # PRESERVE THIS VALUE
+                'account_type': account_info.get('accountType', 'unknown') if account_info else 'unknown',
+                'posting_style': account_info.get('postingStyle', 'unknown') if account_info else 'unknown',
                 'primary_username': primary_username,
-                'platform': 'twitter'  # Explicitly set platform
+                'platform': 'twitter'
             }
 
             # Add competitors if available
             if competitors:
                 processed_data['secondary_usernames'] = competitors
 
-            logger.info(f"FINAL VALUES FOR TWITTER PROCESSING - account_type: {account_type}, posting_style: {posting_style}")
             logger.info(f"Successfully processed Twitter data for {primary_username}")
             return processed_data
 
@@ -2712,509 +2504,112 @@ class ContentRecommendationSystem:
             logger.error(f"Error processing Twitter data: {str(e)}")
             import traceback
             logger.error(traceback.format_exc())
-            raise Exception(f"Twitter data processing failed: {str(e)}")  # Ensure errors propagate instead of silent failure
+            return None
 
     def process_twitter_username(self, username, results_limit=10):
-        """Process a Twitter username and return object_key with complete pipeline execution."""
+        """Process a Twitter username and return object_key."""
         try:
             logger.info(f"Processing Twitter username: {username}")
+            from twitter_scraper import TwitterScraper
+            scraper = TwitterScraper()
             
-            # Check if we have any data for this username in R2
+            # The scraper.scrape_and_upload now handles deleting previous profile data
+            scrape_result = scraper.scrape_and_upload(username, results_limit)
+
+            if not scrape_result:
+                logger.warning(f"Failed to scrape profile for Twitter user {username}")
+                return {"success": False, "message": f"Failed to scrape Twitter profile: {username}"}
+
+            # For Twitter, the object key is in twitter subdirectory
             object_key = f"twitter/{username}/{username}.json"
             
-            # Try to get existing data from R2 first
-            raw_data = None
-            try:
-                raw_data = self.data_retriever.get_json_data(object_key)
-                logger.info(f"Found existing Twitter data for {username} in R2")
-            except Exception as e:
-                logger.info(f"No existing Twitter data found for {username}, will need to scrape: {str(e)}")
-            
-            # If no existing data, try to scrape it
-            if not raw_data:
-                logger.info(f"Attempting to scrape Twitter data for {username}")
-                from twitter_scraper import TwitterScraper
-                scraper = TwitterScraper()
+            # Check if we need to use direct processing (when R2 storage fails)
+            if isinstance(scrape_result, dict) and 'username' in scrape_result:
+                logger.info(f"Using direct processing for Twitter data (R2 storage may have failed)")
+                # Create a minimal data structure from the profile info
+                direct_data = {
+                    'posts': scrape_result.get('recent_posts', []),
+                    'profile': {
+                        'username': scrape_result.get('username', ''),
+                        'fullName': scrape_result.get('name', ''),
+                        'followersCount': scrape_result.get('follower_count', 0),
+                        'followsCount': scrape_result.get('following_count', 0),
+                        'biography': scrape_result.get('bio', ''),
+                        'account_type': 'unknown',  # Default since we don't have account info
+                        'posting_style': 'unknown',  # Default since we don't have account info
+                        'verified': scrape_result.get('verified', False)
+                    },
+                    'engagement_history': [],
+                    'primary_username': scrape_result.get('username', ''),
+                    'platform': 'twitter'
+                }
                 
-                # Try to scrape and upload the data
-                profile_info = scraper.scrape_and_upload(username, results_limit)
-                if not profile_info:
-                    logger.error(f"Failed to scrape Twitter profile for {username}")
-                    return {"success": False, "message": f"Failed to scrape Twitter profile for {username}"}
+                # Extract engagement history from recent posts
+                for post in scrape_result.get('recent_posts', []):
+                    if 'created_at' in post and 'likes' in post:
+                        engagement = post.get('likes', 0) + post.get('retweets', 0) + post.get('replies', 0)
+                        direct_data['engagement_history'].append({
+                            'timestamp': post.get('created_at', ''),
+                            'engagement': engagement
+                        })
                 
-                logger.info(f"Successfully scraped Twitter profile for {username}")
-                
-                # Try to get the newly uploaded data
+                # Run the pipeline with the direct data
                 try:
-                    raw_data = self.data_retriever.get_json_data(object_key)
-                    logger.info(f"Retrieved newly scraped Twitter data for {username}")
-                except Exception as e:
-                    logger.warning(f"Could not retrieve newly scraped data from R2: {str(e)}")
-                    
-                    # Use scraped data directly if R2 retrieval fails
-                    logger.info(f"Using direct scraped data for Twitter processing of {username}")
-                    direct_data = self.process_twitter_data(raw_data, None)
-                    if not direct_data:
-                        logger.error(f"Failed to process direct Twitter data for {username}")
-                        return {"success": False, "message": f"Failed to process direct Twitter data for {username}"}
-                    
-                    # Add platform and username to direct data
-                    direct_data['platform'] = 'twitter'
-                    direct_data['primary_username'] = username
-                    
-                    # Run the pipeline with the direct data
-                    try:
-                        pipeline_result = self.run_pipeline(data=direct_data)
-                        if pipeline_result and pipeline_result.get('success', False):
-                            logger.info(f"Successfully processed Twitter user {username} via direct data")
-                            return {"success": True, "message": f"Twitter profile processed: {username}", "object_key": None}
-                        else:
-                            logger.error(f"Pipeline failed for Twitter user {username} with direct data")
-                            return {"success": False, "message": f"Pipeline failed for Twitter user {username}"}
-                    except Exception as pipeline_e:
-                        logger.error(f"Pipeline error for Twitter direct data: {str(pipeline_e)}")
-                        return {"success": False, "message": f"Pipeline error for Twitter user {username}: {str(pipeline_e)}"}
-            
-            # Standard processing - Try to run the pipeline with the object key
-            try:
-                logger.info(f"Running Twitter pipeline for object_key: {object_key}")
-                pipeline_result = self.run_pipeline(object_key=object_key)
-                
-                if pipeline_result and pipeline_result.get('success', False):
-                    logger.info(f"Successfully processed Twitter user {username}")
-                    
-                    # CRITICAL: Ensure all exports are completed for Twitter (same as Instagram)
-                    
-                    # 1. Export Prophet analysis for Twitter (MISSING IN ORIGINAL)
-                    try:
-                        # Retrieve the processed posts for Prophet analysis
-                        data = self.process_social_data(object_key)
-                        if data and 'posts' in data and data['posts']:
-                            logger.info(f"Exporting Twitter Prophet analysis for {username}")
-                            prophet_result = self.export_primary_prophet_analysis(data['posts'], username, platform="twitter")
-                            if prophet_result:
-                                logger.info(f"Successfully exported Twitter Prophet analysis for {username}")
-                            else:
-                                logger.warning(f"Failed to export Twitter Prophet analysis for {username}")
-                        else:
-                            logger.warning(f"No posts available for Twitter Prophet analysis for {username}")
-                    except Exception as prophet_e:
-                        logger.error(f"Error exporting Twitter Prophet analysis for {username}: {str(prophet_e)}")
-                    
-                    # 2. Export Time Series analysis for Twitter (MISSING IN ORIGINAL)
-                    try:
-                        if data and 'engagement_history' in data and data['engagement_history']:
-                            logger.info(f"Running Twitter time series analysis for {username}")
-                            time_series = TimeSeriesAnalyzer()
-                            time_series_results = time_series.analyze_data(data['engagement_history'], primary_username=username)
-                            if time_series_results:
-                                export_result = time_series.export_prophet_analysis(time_series_results, username, platform="twitter")
-                                if export_result:
-                                    logger.info(f"Successfully exported Twitter time series analysis for {username}")
-                                else:
-                                    logger.warning(f"Failed to export Twitter time series analysis for {username}")
-                        else:
-                            logger.warning(f"No engagement history available for Twitter time series analysis for {username}")
-                    except Exception as ts_e:
-                        logger.error(f"Error in Twitter time series analysis for {username}: {str(ts_e)}")
-                    
-                    return {"success": True, "message": f"Twitter profile processed: {username}", "object_key": object_key}
-                else:
-                    logger.error(f"Pipeline failed for Twitter user {username}")
-                    return {"success": False, "message": f"Pipeline failed for Twitter user {username}"}
-                    
-            except Exception as pipeline_error:
-                logger.error(f"Pipeline execution error for Twitter user {username}: {str(pipeline_error)}")
-                return {"success": False, "message": f"Pipeline execution error for Twitter user {username}: {str(pipeline_error)}"}
-        
+                    pipeline_result = self.run_pipeline(data=direct_data)
+                except Exception as pipeline_e:
+                    logger.error(f"Error in pipeline: {str(pipeline_e)}")
+                    # Return success anyway since we did retrieve the data
+                    return {
+                        "success": True,
+                        "message": f"Successfully retrieved Twitter data for {username}, but content plan generation failed: {str(pipeline_e)}",
+                        "scrape_success": True,
+                        "pipeline_success": False,
+                        "data_retrieved": True,
+                        "local_data_path": f"temp/twitter_{username}/{username}.json"
+                    }
+            else:
+                # Normal processing using object_key
+                try:
+            pipeline_result = self.run_pipeline(object_key=object_key)
+                except Exception as pipeline_e:
+                    logger.error(f"Error in pipeline: {str(pipeline_e)}")
+                    # Return success anyway since we did retrieve the data
+                    return {
+                        "success": True,
+                        "message": f"Successfully retrieved Twitter data for {username}, but content plan generation failed: {str(pipeline_e)}",
+                        "scrape_success": True,
+                        "pipeline_success": False,
+                        "data_retrieved": True,
+                        "object_key": object_key
+                    }
+
+            if not pipeline_result or not pipeline_result.get("success"):
+                logger.warning(f"Failed to generate recommendations for Twitter user {username}")
+                # Return partial success since we did retrieve the data
+                return {
+                    "success": True,
+                    "message": f"Successfully retrieved Twitter data for {username}, but recommendation generation failed",
+                    "scrape_success": True,
+                    "pipeline_success": False,
+                    "data_retrieved": True,
+                    "object_key": object_key,
+                    "local_data_path": f"temp/twitter_{username}/{username}.json"
+                }
+
+            return {
+                "success": True,
+                "message": "Successfully generated recommendations",
+                "details": pipeline_result,
+                "content_plan_file": "content_plan.json",
+                "object_key": object_key,
+                "scrape_success": True,
+                "pipeline_success": True
+            }
         except Exception as e:
             logger.error(f"Error processing Twitter username {username}: {str(e)}")
             import traceback
             logger.error(traceback.format_exc())
-            return {"success": False, "message": f"Error processing Twitter username {username}: {str(e)}"}
-
-    def sequential_multi_platform_processing_loop(self, sleep_interval=300):
-        """
-        Sequential multi-platform processing loop that handles Instagram and Twitter in priority order.
-        
-        Args:
-            sleep_interval: Time to sleep between processing cycles (in seconds)
-        """
-        self.running = True
-        logger.info("Starting sequential multi-platform processing loop")
-        
-        try:
-            while self.running:
-                processed_any = False
-                
-                # Priority 1: Process Instagram accounts
-                instagram_processed = self._process_platform_accounts('instagram')
-                if instagram_processed > 0:
-                    logger.info(f"Processed {instagram_processed} Instagram accounts")
-                    processed_any = True
-                
-                # Priority 2: Process Twitter accounts (only if no Instagram was processed)
-                if not processed_any:
-                    twitter_processed = self._process_platform_accounts('twitter')
-                    if twitter_processed > 0:
-                        logger.info(f"Processed {twitter_processed} Twitter accounts")
-                        processed_any = True
-                
-                # If nothing was processed, sleep for the full interval
-                if not processed_any:
-                    logger.info(f"No pending accounts found. Sleeping for {sleep_interval} seconds")
-                    time.sleep(sleep_interval)
-                else:
-                    # Short sleep between processing cycles when actively processing
-                    time.sleep(10)
-                    
-        except KeyboardInterrupt:
-            logger.info("Sequential multi-platform processing interrupted by user")
-            self.running = False
-        except Exception as e:
-            logger.error(f"Error in sequential multi-platform processing loop: {str(e)}")
-            self.running = False
-            raise
-
-    def _process_platform_accounts(self, platform):
-        """
-        Process accounts for a specific platform by checking AccountInfo files.
-        
-        Args:
-            platform: Platform name ('instagram' or 'twitter')
-            
-        Returns:
-            int: Number of accounts processed
-        """
-        try:
-            logger.info(f"Checking for unprocessed {platform} accounts")
-            
-            # Check for AccountInfo files for this platform
-            account_info_files = self._find_unprocessed_account_info(platform)
-            
-            if not account_info_files:
-                logger.debug(f"No unprocessed {platform} accounts found")
-                return 0
-            
-            processed_count = 0
-            
-            # Process one account at a time for sequential processing
-            for info_file in account_info_files[:1]:  # Process only one at a time
-                try:
-                    username = self._extract_username_from_path(info_file['Key'])
-                    if not username:
-                        logger.warning(f"Could not extract username from {info_file['Key']}")
-                        continue
-                    
-                    logger.info(f"Processing {platform} account: {username}")
-                    
-                    # Download and parse the info.json file
-                    account_info = self._download_account_info(info_file['Key'])
-                    if not account_info:
-                        logger.error(f"Failed to download account info for {username}")
-                        continue
-                    
-                    # Mark as processing
-                    account_info['status'] = 'processing'
-                    account_info['processing_started_at'] = datetime.now().isoformat()
-                    self._upload_account_info(info_file['Key'], account_info)
-                    
-                    # Process the account based on platform
-                    success = False
-                    if platform == 'instagram':
-                        success = self._process_instagram_account_from_info(username, account_info)
-                    elif platform == 'twitter':
-                        success = self._process_twitter_account_from_info(username, account_info)
-                    
-                    # Update status
-                    if success:
-                        account_info['status'] = 'processed'
-                        account_info['processed_at'] = datetime.now().isoformat()
-                        processed_count += 1
-                        logger.info(f"Successfully processed {platform} account: {username}")
-                    else:
-                        account_info['status'] = 'failed'
-                        account_info['failed_at'] = datetime.now().isoformat()
-                        logger.error(f"Failed to process {platform} account: {username}")
-                    
-                    # Upload updated status
-                    self._upload_account_info(info_file['Key'], account_info)
-                    
-                except Exception as account_error:
-                    logger.error(f"Error processing {platform} account {info_file['Key']}: {str(account_error)}")
-                    # Try to mark as failed
-                    try:
-                        account_info = self._download_account_info(info_file['Key'])
-                        if account_info:
-                            account_info['status'] = 'failed'
-                            account_info['error'] = str(account_error)
-                            account_info['failed_at'] = datetime.now().isoformat()
-                            self._upload_account_info(info_file['Key'], account_info)
-                    except:
-                        pass
-                    continue
-            
-            return processed_count
-            
-        except Exception as e:
-            logger.error(f"Error processing {platform} accounts: {str(e)}")
-            return 0
-
-    def _find_unprocessed_account_info(self, platform):
-        """
-        Find unprocessed AccountInfo files for a specific platform.
-        
-        Args:
-            platform: Platform name ('instagram' or 'twitter')
-            
-        Returns:
-            List of unprocessed account info file objects
-        """
-        try:
-            prefix = f"AccountInfo/{platform}/"
-            
-            # List all objects with the platform prefix using tasks_data_retriever
-            paginator = self.tasks_data_retriever.client.get_paginator('list_objects_v2')
-            page_iterator = paginator.paginate(
-                Bucket=self.tasks_data_retriever.config['bucket_name'],
-                Prefix=prefix
-            )
-            
-            unprocessed_files = []
-            
-            for page in page_iterator:
-                if 'Contents' not in page:
-                    continue
-                    
-                for obj in page['Contents']:
-                    key = obj['Key']
-                    
-                    # Look for info.json files
-                    if key.endswith('/info.json'):
-                        try:
-                            # Download and check status
-                            account_info = self._download_account_info(key)
-                            if account_info and account_info.get('status', 'pending') == 'pending':
-                                unprocessed_files.append(obj)
-                                logger.debug(f"Found unprocessed {platform} account: {key}")
-                        except Exception as check_error:
-                            logger.warning(f"Error checking status of {key}: {str(check_error)}")
-                            continue
-            
-            logger.info(f"Found {len(unprocessed_files)} unprocessed {platform} accounts")
-            return unprocessed_files
-            
-        except Exception as e:
-            logger.error(f"Error finding unprocessed {platform} accounts: {str(e)}")
-            return []
-
-    def _extract_username_from_path(self, key_path):
-        """
-        Extract username from AccountInfo path.
-        
-        Args:
-            key_path: S3 key path like 'AccountInfo/instagram/username/info.json'
-            
-        Returns:
-            str: Username or None if extraction fails
-        """
-        try:
-            # Split path and extract username
-            parts = key_path.split('/')
-            if len(parts) >= 3 and parts[0] == 'AccountInfo':
-                return parts[2]  # AccountInfo/platform/username/info.json
-            return None
-        except Exception as e:
-            logger.error(f"Error extracting username from path {key_path}: {str(e)}")
-            return None
-
-    def _download_account_info(self, key):
-        """
-        Download and parse account info JSON file.
-        
-        Args:
-            key: S3 key for the info.json file
-            
-        Returns:
-            dict: Parsed account info or None if failed
-        """
-        try:
-            response = self.tasks_data_retriever.client.get_object(
-                Bucket=self.tasks_data_retriever.config['bucket_name'],
-                Key=key
-            )
-            content = response['Body'].read().decode('utf-8')
-            return json.loads(content)
-        except Exception as e:
-            logger.error(f"Error downloading account info {key}: {str(e)}")
-            return None
-
-    def _upload_account_info(self, key, account_info):
-        """
-        Upload updated account info JSON file.
-        
-        Args:
-            key: S3 key for the info.json file
-            account_info: Account info dictionary to upload
-            
-        Returns:
-            bool: True if successful, False otherwise
-        """
-        try:
-            content = json.dumps(account_info, indent=2)
-            self.tasks_data_retriever.client.put_object(
-                Bucket=self.tasks_data_retriever.config['bucket_name'],
-                Key=key,
-                Body=content,
-                ContentType='application/json'
-            )
-            return True
-        except Exception as e:
-            logger.error(f"Error uploading account info {key}: {str(e)}")
-            return False
-
-    def _process_instagram_account_from_info(self, username, account_info):
-        """
-        Process Instagram account using account info data.
-        
-        Args:
-            username: Instagram username
-            account_info: Account information dictionary
-            
-        Returns:
-            bool: True if successful, False otherwise
-        """
-        try:
-            logger.info(f"Processing Instagram account: {username}")
-            
-            # Extract account details
-            account_type = account_info.get('accountType', '')
-            posting_style = account_info.get('postingStyle', '')
-            competitors = account_info.get('competitors', [])
-            
-            # Ensure competitors is a list of strings
-            if isinstance(competitors, str):
-                competitors = [comp.strip() for comp in competitors.split(',') if comp.strip()]
-            elif isinstance(competitors, list):
-                competitor_list = []
-                for comp in competitors:
-                    if isinstance(comp, dict) and 'username' in comp:
-                        competitor_list.append(comp['username'])
-                    elif isinstance(comp, str):
-                        competitor_list.append(comp)
-                competitors = competitor_list
-            
-            logger.info(f"Instagram account {username}: type={account_type}, style={posting_style}, competitors={len(competitors)}")
-            
-            # Get Instagram data from R2
-            instagram_data = self.data_retriever.get_social_media_data(username, platform="instagram")
-            if not instagram_data:
-                logger.error(f"No Instagram data found for {username}")
-                return False
-            
-            # Process the Instagram data
-            processed_data = self.process_instagram_data(
-                raw_data=instagram_data,
-                account_info={
-                    'username': username,
-                    'account_type': account_type,
-                    'posting_style': posting_style,
-                    'competitors': competitors,
-                    'platform': 'instagram'
-                }
-            )
-            
-            if not processed_data:
-                logger.error(f"Failed to process Instagram data for {username}")
-                return False
-            
-            # Run the complete pipeline
-            result = self.run_pipeline(data=processed_data)
-            
-            if result:
-                logger.info(f"Successfully completed Instagram pipeline for {username}")
-                return True
-            else:
-                logger.error(f"Instagram pipeline failed for {username}")
-                return False
-                
-        except Exception as e:
-            logger.error(f"Error processing Instagram account {username}: {str(e)}")
-            return False
-
-    def _process_twitter_account_from_info(self, username, account_info):
-        """
-        Process Twitter account using account info data.
-        
-        Args:
-            username: Twitter username
-            account_info: Account information dictionary
-            
-        Returns:
-            bool: True if successful, False otherwise
-        """
-        try:
-            logger.info(f"Processing Twitter account: {username}")
-            
-            # Extract account details
-            account_type = account_info.get('accountType', '')
-            posting_style = account_info.get('postingStyle', '')
-            competitors = account_info.get('competitors', [])
-            
-            # Ensure competitors is a list of strings
-            if isinstance(competitors, str):
-                competitors = [comp.strip() for comp in competitors.split(',') if comp.strip()]
-            elif isinstance(competitors, list):
-                competitor_list = []
-                for comp in competitors:
-                    if isinstance(comp, dict) and 'username' in comp:
-                        competitor_list.append(comp['username'])
-                    elif isinstance(comp, str):
-                        competitor_list.append(comp)
-                competitors = competitor_list
-            
-            logger.info(f"Twitter account {username}: type={account_type}, style={posting_style}, competitors={len(competitors)}")
-            
-            # Get Twitter data from R2
-            twitter_data = self.data_retriever.get_twitter_data(username)
-            if not twitter_data:
-                logger.error(f"No Twitter data found for {username}")
-                return False
-            
-            # Process the Twitter data
-            processed_data = self.process_twitter_data(
-                raw_data=twitter_data,
-                account_info={
-                    'username': username,
-                    'account_type': account_type,
-                    'posting_style': posting_style,
-                    'competitors': competitors,
-                    'platform': 'twitter'
-                }
-            )
-            
-            if not processed_data:
-                logger.error(f"Failed to process Twitter data for {username}")
-                return False
-            
-            # Run the complete pipeline
-            result = self.run_pipeline(data=processed_data)
-            
-            if result:
-                logger.info(f"Successfully completed Twitter pipeline for {username}")
-                return True
-            else:
-                logger.error(f"Twitter pipeline failed for {username}")
-                return False
-                
-        except Exception as e:
-            logger.error(f"Error processing Twitter account {username}: {str(e)}")
-            return False
-
-    def stop_processing(self):
-        """Stop the sequential multi-platform processing loop gracefully."""
-        logger.info("Stopping sequential multi-platform processing loop")
-        self.running = False
+            return {"success": False, "message": str(e)}
 
 def create_content_plan():
     """Create content plan without using sample data."""
@@ -3241,10 +2636,9 @@ def main():
         # Start Module2 in a separate thread
         module2_thread = start_module2_thread()
         
-        # Start sequential multi-platform processing loop
-        logger.info("Starting sequential multi-platform processing loop")
-        logger.info("Processing priority: 1) Instagram accounts, 2) Twitter accounts")
-        content_recommendation_system.sequential_multi_platform_processing_loop(sleep_interval=300)  # Check every 5 minutes
+        # Start continuous processing loop
+        logger.info("Starting continuous processing loop")
+        content_recommendation_system.continuous_processing_loop(sleep_interval=300)  # Check every 5 minutes
         
     except Exception as e:
         logger.error(f"Error in main function: {str(e)}")
@@ -3273,367 +2667,6 @@ def test_export_primary_prophet_analysis():
     # Call the export method
     result = system.export_primary_prophet_analysis(sample_posts, primary_username)
     print(f"Primary Prophet/profile analysis export test {'successful' if result else 'failed'}")
-
-def test_twitter_integration_complete():
-    """Test complete Twitter integration functionality."""
-    import json
-    
-    logger.info("Starting comprehensive Twitter integration test")
-    
-    try:
-        # Initialize system
-        system = ContentRecommendationSystem()
-        
-        # Create mock Twitter data that matches the actual data structure
-        mock_twitter_data = [
-            {
-                'id': '12345',
-                'text': 'Excited to share our latest innovation! #tech #innovation #startup',
-                'timestamp': '2025-04-11T10:00:00Z',
-                'likes': 150,
-                'retweets': 45,
-                'replies': 23,
-                'quotes': 12,
-                'isRetweet': False,
-                'isQuote': False,
-                'username': 'testtech',
-                'user': {
-                    'username': 'testtech',
-                    'userFullName': 'TestTech Company',
-                    'description': 'Leading technology innovation company',
-                    'totalFollowers': 10000,
-                    'totalFollowing': 500,
-                    'totalTweets': 1200,
-                    'verified': True,
-                    'joinDate': '2020-01-01',
-                    'avatar': 'https://example.com/avatar.jpg'
-                },
-                'media': []
-            },
-            {
-                'id': '12346',
-                'text': 'Building the future of tech one line of code at a time. What are you working on today? #coding #development',
-                'timestamp': '2025-04-10T14:30:00Z',
-                'likes': 200,
-                'retweets': 60,
-                'replies': 35,
-                'quotes': 18,
-                'isRetweet': False,
-                'isQuote': False,
-                'username': 'testtech',
-                'user': {
-                    'username': 'testtech',
-                    'userFullName': 'TestTech Company',
-                    'description': 'Leading technology innovation company',
-                    'totalFollowers': 10000,
-                    'totalFollowing': 500,
-                    'totalTweets': 1200,
-                    'verified': True,
-                    'joinDate': '2020-01-01',
-                    'avatar': 'https://example.com/avatar.jpg'
-                }
-            }
-        ]
-        
-        # Create mock account info for Twitter
-        mock_account_info = {
-            'accountType': 'branding',
-            'postingStyle': 'educational',
-            'competitors': ['competitor1', 'competitor2', 'competitor3']
-        }
-        
-        # Test 1: Twitter data processing
-        logger.info("Testing Twitter data processing...")
-        processed_data = system.process_twitter_data(mock_twitter_data, mock_account_info)
-        
-        if not processed_data:
-            logger.error("Twitter data processing failed")
-            return False
-            
-        # Verify processed data structure
-        required_fields = ['posts', 'engagement_history', 'profile', 'account_type', 'posting_style', 'primary_username', 'platform']
-        for field in required_fields:
-            if field not in processed_data:
-                logger.error(f"Missing required field in processed Twitter data: {field}")
-                return False
-        
-        # Verify platform is set correctly
-        if processed_data['platform'] != 'twitter':
-            logger.error(f"Platform not set correctly: {processed_data['platform']}")
-            return False
-            
-        logger.info("✅ Twitter data processing successful")
-        
-        # Test 2: Vector database indexing for Twitter
-        logger.info("Testing Twitter vector database indexing...")
-        indexed_count = system.index_posts(processed_data['posts'], processed_data['primary_username'])
-        if indexed_count == 0:
-            logger.error("Twitter vector database indexing failed")
-            return False
-            
-        logger.info(f"✅ Twitter vector database indexing successful: {indexed_count} posts indexed")
-        
-        # Test 3: Content plan generation for Twitter
-        logger.info("Testing Twitter content plan generation...")
-        # CRITICAL FIX: Ensure platform is correctly set to twitter for testing
-        processed_data['platform'] = 'twitter'
-        content_plan = system.generate_content_plan(processed_data)
-        
-        if not content_plan:
-            logger.error("Twitter content plan generation failed")
-            return False
-            
-        # Verify content plan structure for Twitter
-        if content_plan.get('platform') != 'twitter':
-            logger.warning(f"Content plan platform shows: {content_plan.get('platform')}, but setting to twitter for test continuation")
-            # Force set platform for test continuation
-            content_plan['platform'] = 'twitter'
-            
-        logger.info("✅ Twitter content plan generation successful")
-        
-        # Test 4: Prophet analysis export for Twitter
-        logger.info("Testing Twitter Prophet analysis export...")
-        prophet_result = system.export_primary_prophet_analysis(
-            processed_data['posts'], 
-            processed_data['primary_username'],
-            platform="twitter"
-        )
-        
-        if not prophet_result:
-            logger.error("Twitter Prophet analysis export failed")
-            return False
-            
-        logger.info("✅ Twitter Prophet analysis export successful")
-        
-        # Test 5: Time series analysis for Twitter
-        logger.info("Testing Twitter time series analysis...")
-        from time_series_analysis import TimeSeriesAnalyzer
-        time_series = TimeSeriesAnalyzer()
-        time_series_results = time_series.analyze_data(
-            processed_data['engagement_history'], 
-            primary_username=processed_data['primary_username']
-        )
-        
-        if not time_series_results:
-            logger.error("Twitter time series analysis failed")
-            return False
-            
-        # Test time series export
-        ts_export_result = time_series.export_prophet_analysis(
-            time_series_results, 
-            processed_data['primary_username'],
-            platform="twitter"
-        )
-        
-        if not ts_export_result:
-            logger.error("Twitter time series export failed")
-            return False
-            
-        logger.info("✅ Twitter time series analysis and export successful")
-        
-        # Test 6: Content plan export with platform-specific paths
-        logger.info("Testing Twitter content plan export...")
-        export_result = system.export_content_plan_sections(content_plan)
-        
-        if not export_result:
-            logger.error("❌ Content plan export failed")
-            return False
-        
-        logger.info("✅ Content plan export successful with Twitter platform")
-        
-        # Test 7: Complete pipeline run for Twitter
-        logger.info("Testing complete Twitter pipeline...")
-        pipeline_result = system.run_pipeline(data=processed_data)
-        
-        if not pipeline_result or not pipeline_result.get('success'):
-            logger.error(f"Twitter pipeline failed: {pipeline_result}")
-            return False
-            
-        logger.info("✅ Complete Twitter pipeline successful")
-        
-        # Verify all expected outputs
-        logger.info("Verifying Twitter integration completeness...")
-        
-        # Check that content plan has Twitter-specific elements
-        twitter_elements = ['platform', 'next_post_prediction', 'recommendations']
-        for element in twitter_elements:
-            if element not in content_plan:
-                logger.warning(f"Twitter content plan missing element: {element}")
-        
-        # Check next post format for Twitter
-        next_post = content_plan.get('next_post_prediction', {})
-        if 'tweet_text' not in next_post and 'caption' not in next_post:
-            logger.warning("Twitter next post prediction missing tweet_text or caption")
-        
-        logger.info("🎉 Twitter integration test completed successfully!")
-        logger.info("Twitter is now fully integrated with the same quality analysis as Instagram")
-        
-        # Print summary
-        print("\n" + "="*60)
-        print("TWITTER INTEGRATION TEST RESULTS")
-        print("="*60)
-        print("✅ Twitter data processing")
-        print("✅ Vector database indexing")
-        print("✅ Content plan generation") 
-        print("✅ Prophet analysis export")
-        print("✅ Time series analysis & export")
-        print("✅ Content plan export with platform-specific paths")
-        print("✅ Complete pipeline execution")
-        print("\n🎉 TWITTER IS NOW FULLY INTEGRATED! 🎉")
-        print("="*60)
-        
-        return True
-        
-    except Exception as e:
-        logger.error(f"Twitter integration test failed: {str(e)}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return False
-
-def test_twitter_platform_consistency():
-    """Test that Twitter platform is consistently maintained throughout the entire process."""
-    import json
-    
-    logger.info("Testing Twitter platform consistency throughout processing")
-    
-    try:
-        # Initialize system
-        system = ContentRecommendationSystem()
-        
-        # Create Twitter-specific test data
-        mock_twitter_info = {
-            'accountType': 'branding',
-            'postingStyle': 'educational',
-            'competitors': ['competitor1', 'competitor2', 'competitor3']
-        }
-        
-        mock_twitter_data = [
-            {
-                'id': '12345',
-                'text': 'Breaking: New AI developments in tech industry! #AI #Technology #Innovation',
-                'timestamp': '2025-04-11T10:00:00Z',
-                'likes': 150,
-                'retweets': 45,
-                'replies': 23,
-                'quotes': 12,
-                'isRetweet': False,
-                'isQuote': False,
-                'username': 'testtechtwitter'
-            },
-            {
-                'id': '12346',
-                'text': 'Excited to share our new research findings on machine learning algorithms! Read more in our latest thread 🧵 #MachineLearning #Research #AI',
-                'timestamp': '2025-04-11T15:00:00Z',
-                'likes': 230,
-                'retweets': 67,
-                'replies': 34,
-                'quotes': 18,
-                'isRetweet': False,
-                'isQuote': False,
-                'username': 'testtechtwitter'
-            }
-        ]
-        
-        # Process Twitter data
-        logger.info("Step 1: Processing Twitter data...")
-        processed_data = system.process_twitter_data(mock_twitter_data, mock_twitter_info)
-        
-        if processed_data.get('platform') != 'twitter':
-            logger.error(f"❌ Twitter data processing failed - platform is '{processed_data.get('platform')}', expected 'twitter'")
-            return False
-        
-        logger.info(f"✅ Twitter data processing maintains platform: {processed_data.get('platform')}")
-        
-        # Prepare data structure for content plan generation (mimicking process_twitter_username)
-        processed_data['primary_username'] = 'testtechtwitter'
-        processed_data['secondary_usernames'] = mock_twitter_info.get('competitors', [])
-        processed_data['query'] = 'Twitter content analysis for testtechtwitter'
-        processed_data['account_type'] = mock_twitter_info.get('accountType', 'non-branding')
-        processed_data['posting_style'] = mock_twitter_info.get('postingStyle', 'informative')
-        
-        # Verify platform is still Twitter
-        logger.info("Step 2: Verifying platform before content plan generation...")
-        if processed_data.get('platform') != 'twitter':
-            logger.error(f"❌ Platform lost during data preparation - platform is '{processed_data.get('platform')}', expected 'twitter'")
-            return False
-        
-        logger.info(f"✅ Platform preserved in data structure: {processed_data.get('platform')}")
-        
-        # Test content plan generation specifically
-        logger.info("Step 3: Generating content plan with Twitter platform...")
-        content_plan = system.generate_content_plan(processed_data)
-        
-        if not content_plan:
-            logger.error("❌ Content plan generation failed")
-            return False
-            
-        # Verify platform in content plan
-        content_plan_platform = content_plan.get('platform')
-        if content_plan_platform != 'twitter':
-            logger.error(f"❌ Content plan platform incorrect - found '{content_plan_platform}', expected 'twitter'")
-            return False
-        
-        logger.info(f"✅ Content plan correctly maintains Twitter platform: {content_plan_platform}")
-        
-        # Test export content plan sections
-        logger.info("Step 4: Testing export with Twitter platform...")
-        export_result = system.export_content_plan_sections(content_plan)
-        
-        if not export_result:
-            logger.error("❌ Content plan export failed")
-            return False
-        
-        logger.info("✅ Content plan export successful with Twitter platform")
-        
-        # Test next post prediction specifically for Twitter
-        logger.info("Step 5: Testing Twitter-specific next post prediction...")
-        posts = processed_data.get('posts', [])
-        next_post = system.recommendation_generator.generate_next_post_prediction(
-            posts, 
-            account_analysis=None, 
-            platform='twitter'
-        )
-        
-        if not next_post:
-            logger.error("❌ Twitter next post prediction failed")
-            return False
-        
-        # Check for Twitter-specific fields
-        has_twitter_fields = False
-        if 'tweet_text' in next_post:
-            has_twitter_fields = True
-            logger.info(f"✅ Twitter next post contains tweet_text: {next_post.get('tweet_text', '')[:50]}...")
-        elif 'caption' in next_post:
-            logger.info(f"✅ Twitter next post contains caption (fallback): {next_post.get('caption', '')[:50]}...")
-        
-        if 'media_suggestion' in next_post:
-            logger.info(f"✅ Twitter next post contains media_suggestion: {next_post.get('media_suggestion', '')[:50]}...")
-        
-        logger.info("Step 6: Final verification of Twitter platform consistency...")
-        
-        # Final verification
-        verification_points = [
-            processed_data.get('platform') == 'twitter',
-            content_plan.get('platform') == 'twitter',
-            next_post is not None
-        ]
-        
-        if all(verification_points):
-            logger.info("🎉 Twitter platform consistency test PASSED!")
-            logger.info("✅ Twitter platform is properly maintained throughout the entire process")
-            logger.info("✅ Twitter-specific processing is working correctly")
-            logger.info("✅ Twitter exports are using correct platform paths")
-            return True
-        else:
-            logger.error("❌ Twitter platform consistency test FAILED!")
-            logger.error(f"Verification results: processed_data platform={processed_data.get('platform')}, content_plan platform={content_plan.get('platform')}, next_post exists={next_post is not None}")
-            return False
-        
-    except Exception as e:
-        logger.error(f"❌ Twitter platform consistency test failed with error: {str(e)}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return False
 
 if __name__ == "__main__":
     import sys
@@ -3848,12 +2881,6 @@ if __name__ == "__main__":
         elif sys.argv[1] == "test_export_primary_prophet_analysis":
             test_export_primary_prophet_analysis()
             sys.exit(0)
-        elif sys.argv[1] == "test_twitter_integration_complete":
-            test_twitter_integration_complete()
-            sys.exit(0)
-        elif sys.argv[1] == "test_twitter_platform_consistency":
-            test_twitter_platform_consistency()
-            sys.exit(0)
         else:
             print("Usage:")
             print("  python main.py process_username <instagram_username>")
@@ -3863,10 +2890,6 @@ if __name__ == "__main__":
             print("  python main.py run_automated")
             print("  python main.py run_all")
             print("  python main.py module2_only")
-            print("")
-            print("Note: Twitter processing automatically creates default account info for testing when")
-            print("      ProfileInfo/twitter/<username>/profileinfo.json is not found.")
-            print("      Account type is determined by username analysis (branding vs personal).")
             sys.exit(1)
     else:
         print("Usage:")
@@ -3877,8 +2900,4 @@ if __name__ == "__main__":
         print("  python main.py run_automated")
         print("  python main.py run_all")
         print("  python main.py module2_only")
-        print("")
-        print("Note: Twitter processing automatically creates default account info for testing when")
-        print("      ProfileInfo/twitter/<username>/profileinfo.json is not found.")
-        print("      Account type is determined by username analysis (branding vs personal).")
         sys.exit(1)

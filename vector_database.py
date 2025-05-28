@@ -20,8 +20,9 @@ class VectorDatabaseManager:
         """Initialize with vector database configuration."""
         self.config = config
         self.client = chromadb.Client()
+        self.embedding_dimension = 384  # Fixed embedding dimension for consistency
         self.collection = self._get_or_create_collection()
-        self.vectorizer = TfidfVectorizer()
+        self.vectorizer = TfidfVectorizer(max_features=self.embedding_dimension)
         self.fitted = False
         
     def _get_or_create_collection(self):
@@ -30,35 +31,50 @@ class VectorDatabaseManager:
             collection = self.client.get_or_create_collection(
                 name=self.config['collection_name']
             )
-            logger.info(f"Initialized collection: {self.config['collection_name']}")
+            logger.info(f"Initialized collection: {self.config['collection_name']} with embedding dimension: {self.embedding_dimension}")
             return collection
         except Exception as e:
             logger.error(f"Error initializing collection: {str(e)}")
             raise
     
     def _get_embeddings(self, texts):
-        """Generate embeddings for the given texts using TF-IDF."""
+        """Generate embeddings for the given texts using TF-IDF with fixed dimensionality."""
         try:
             if not texts or all(not text.strip() for text in texts):
                 logger.warning("No valid text provided for embeddings")
-                return []
+                # Return zero vector of correct dimension instead of empty list
+                return np.zeros((1, self.embedding_dimension)).tolist()
             
+            # Get raw embeddings with max_features limiting dimension
             if not self.fitted:
+                # Make sure the vectorizer is initialized with correct dimensions
+                self.vectorizer = TfidfVectorizer(max_features=self.embedding_dimension)
                 embeddings = self.vectorizer.fit_transform(texts).toarray()
                 self.fitted = True
             else:
                 embeddings = self.vectorizer.transform(texts).toarray()
+            
+            # Ensure consistent dimension (handle case where actual dimension is less than target)
+            current_dim = embeddings.shape[1]
+            if current_dim < self.embedding_dimension:
+                logger.info(f"Padding embeddings from {current_dim} to {self.embedding_dimension} dimensions")
+                padding = np.zeros((embeddings.shape[0], self.embedding_dimension - current_dim))
+                embeddings = np.hstack((embeddings, padding))
+            elif current_dim > self.embedding_dimension:
+                logger.info(f"Truncating embeddings from {current_dim} to {self.embedding_dimension} dimensions")
+                embeddings = embeddings[:, :self.embedding_dimension]
             
             # Normalize embeddings
             norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
             norms[norms == 0] = 1  # Avoid division by zero
             normalized_embeddings = embeddings / norms
             
-            logger.info(f"Generated embeddings for {len(texts)} texts")
+            logger.info(f"Generated embeddings with shape: {normalized_embeddings.shape} for {len(texts)} texts")
             return normalized_embeddings.tolist()
         except Exception as e:
             logger.error(f"Error generating embeddings: {str(e)}")
-            raise
+            # Return zero vectors of correct dimension as fallback
+            return np.zeros((len(texts), self.embedding_dimension)).tolist()
     
     def add_documents(self, documents, ids=None, metadatas=None):
         """Add documents to the vector database."""
@@ -91,27 +107,119 @@ class VectorDatabaseManager:
             raise
     
     def query_similar(self, query_text, n_results=5, filter_username=None):
-        """Query for similar documents with optional username filter."""
+        """Query for similar documents with enhanced context retrieval and optional username filter."""
         try:
             if not query_text.strip():
                 logger.warning("Empty query text provided")
                 return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
             
-            query_embedding = self._get_embeddings([query_text])[0]
+            # Generate embedding for query
+            query_embedding = self._get_embeddings([query_text])
+            if not query_embedding or len(query_embedding) == 0:
+                logger.error("Failed to generate embedding for query")
+                return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
+                
+            # Make sure we're using the first (and only) embedding
+            query_vector = query_embedding[0]
+            
+            # Check embedding dimensions
+            if len(query_vector) != self.embedding_dimension:
+                logger.warning(f"Query embedding dimension {len(query_vector)} doesn't match expected {self.embedding_dimension}")
+                # Fix dimension issue by padding or truncating
+                if len(query_vector) < self.embedding_dimension:
+                    query_vector = query_vector + [0] * (self.embedding_dimension - len(query_vector))
+                else:
+                    query_vector = query_vector[:self.embedding_dimension]
+            
+            # Increase n_results for better context if no filter is applied
+            if not filter_username:
+                # For general queries, get more results for richer context
+                enhanced_n_results = min(n_results * 2, 20)
+            else:
+                # For username-specific queries, get more results for that user's context
+                enhanced_n_results = min(n_results * 3, 25)
+            
+            # Set up query parameters
             query_params = {
-                'query_embeddings': [query_embedding],
-                'n_results': n_results
+                'query_embeddings': [query_vector],
+                'n_results': enhanced_n_results
             }
             
+            # Add username filter if provided
             if filter_username:
                 query_params['where'] = {'username': filter_username}
+                logger.info(f"Querying for {enhanced_n_results} results filtered by username: {filter_username}")
+            else:
+                logger.info(f"Querying for {enhanced_n_results} results across all users")
             
+            # Execute query
             results = self.collection.query(**query_params)
-            logger.info(f"Found {len(results['documents'][0])} similar documents for query")
-            return results
+            
+            # Handle empty results
+            if not results['documents'] or not results['documents'][0]:
+                logger.info(f"No similar documents found for query: {query_text[:50]}...")
+                return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
+            
+            # Enhanced result processing for better theme alignment
+            documents = results['documents'][0]
+            metadatas = results['metadatas'][0]
+            distances = results.get('distances', [[]])[0] if results.get('distances') else [0] * len(documents)
+            
+            # Sort by relevance (lower distance = more similar) and engagement
+            doc_metadata_distance = list(zip(documents, metadatas, distances))
+            
+            # Apply intelligent ranking: combine similarity and engagement for better results
+            def intelligent_ranking(item):
+                doc, meta, distance = item
+                engagement = meta.get('engagement', 0)
+                
+                # Normalize engagement (0-1 scale) - higher is better
+                max_engagement = max(m.get('engagement', 0) for _, m, _ in doc_metadata_distance) or 1
+                normalized_engagement = engagement / max_engagement
+                
+                # Normalize distance (0-1 scale) - lower is better
+                max_distance = max(distances) if distances else 1
+                if max_distance > 0:
+                    normalized_distance = 1 - (distance / max_distance)
+                else:
+                    normalized_distance = 1
+                
+                # Combine similarity (40%) and engagement (60%) for theme-aligned results
+                combined_score = (0.4 * normalized_distance) + (0.6 * normalized_engagement)
+                return combined_score
+            
+            # Sort by intelligent ranking (highest score first)
+            ranked_results = sorted(doc_metadata_distance, key=intelligent_ranking, reverse=True)
+            
+            # Take the top n_results after intelligent ranking
+            final_results = ranked_results[:n_results]
+            
+            # Separate back into documents, metadatas, and distances
+            final_documents = [item[0] for item in final_results]
+            final_metadatas = [item[1] for item in final_results]
+            final_distances = [item[2] for item in final_results]
+            
+            # Add ranking score to metadata for transparency
+            for i, meta in enumerate(final_metadatas):
+                if isinstance(meta, dict):
+                    doc, meta_orig, distance = final_results[i]
+                    ranking_score = intelligent_ranking((doc, meta_orig, distance))
+                    meta['ranking_score'] = round(ranking_score, 3)
+                    meta['similarity_distance'] = round(distance, 3)
+            
+            enhanced_results = {
+                'documents': [final_documents],
+                'metadatas': [final_metadatas],
+                'distances': [final_distances]
+            }
+            
+            logger.info(f"Enhanced query returned {len(final_documents)} intelligently ranked results for better theme alignment")
+            return enhanced_results
+            
         except Exception as e:
-            logger.error(f"Error querying similar documents: {str(e)}")
-            raise
+            logger.error(f"Error in enhanced query for similar documents: {str(e)}")
+            # Return empty result structure instead of raising
+            return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
     
     def get_count(self):
         """Get the number of documents in the collection."""
@@ -145,41 +253,92 @@ class VectorDatabaseManager:
             post_count = 0
             
             for post in posts:
-                text = post.get('caption', '').strip()
+                # Handle different field names between Instagram and Twitter
+                if 'caption' in post:
+                    text = post.get('caption', '').strip()  # Instagram format
+                elif 'text' in post:
+                    text = post.get('text', '').strip()     # Twitter format
+                else:
+                    text = ''  # No text content found
+                
+                # Skip empty posts
                 if not text:
-                    logger.debug(f"Skipping post with empty caption: {post.get('id', 'unknown')}")
                     continue
                 
-                post_id = post.get('id', f"post_{post_count}")
-                username = post.get('username', primary_username if 'maccosmetics' in str(post_id) else 'unknown')
+                # Get engagement metrics with fallbacks for different formats
+                engagement = post.get('engagement', 0)
+                if engagement == 0:
+                    # Fallback: calculate from individual metrics
+                    likes = post.get('likes', 0)
+                    comments = post.get('comments', 0)
+                    shares = post.get('shares', 0)
+                    retweets = post.get('retweets', 0)
+                    replies = post.get('replies', 0)
+                    quotes = post.get('quotes', 0)
+                    
+                    # Sum available metrics based on platform type
+                    engagement = likes + comments + shares + retweets + replies + quotes
                 
+                # Get timestamp with fallback
+                timestamp = post.get('timestamp', '')
+                if not timestamp and 'created_at' in post:
+                    timestamp = post.get('created_at', '')  # Twitter format
+                
+                # Get username with fallback to primary_username
+                username = post.get('username', primary_username)
+                # Remove @ symbol if present (for Twitter)
+                if username and username.startswith('@'):
+                    username = username[1:]
+                
+                # Create document and metadata
                 documents.append(text)
-                ids.append(f"post_{post_id}_{username}")  # Unique ID with username
+                
+                # Use stable ID generation for consistency
+                if 'id' in post:
+                    post_id = f"{username}_{post['id']}"
+                else:
+                    # Create a deterministic ID from content
+                    post_id = f"{username}_{abs(hash(text + timestamp))}"
+                
+                ids.append(post_id)
                 
                 metadata = {
-                    'username': username,
-                    'engagement': int(post.get('engagement', 0)),
-                    'likes': int(post.get('likes', 0)),
-                    'comments': int(post.get('comments', 0)),
-                    'timestamp': str(post.get('timestamp', '')),
+                    "username": username,
+                    "primary_username": primary_username,
+                    "engagement": engagement,
+                    "timestamp": timestamp,
+                    "platform": post.get('platform', 'instagram')  # Default to Instagram if not specified
                 }
                 
-                if 'hashtags' in post:
-                    metadata['hashtags'] = ' '.join(post['hashtags']) if isinstance(post['hashtags'], list) else str(post['hashtags'])
+                # Add platform-specific metadata
+                if 'retweets' in post or 'replies' in post:
+                    metadata['platform'] = 'twitter'
+                    metadata['retweets'] = post.get('retweets', 0)
+                    metadata['replies'] = post.get('replies', 0)
+                    metadata['quotes'] = post.get('quotes', 0)
                 
                 metadatas.append(metadata)
                 post_count += 1
             
-            if documents:
-                self.add_documents(documents, ids, metadatas)
-                logger.info(f"Indexed {post_count} posts with usernames for {primary_username}")
-                return post_count
-            else:
-                logger.warning("No valid posts to add after filtering")
-                return 0
+            if post_count > 0:
+                # Generate embeddings and add to collection
+                embeddings = self._get_embeddings(documents)
                 
+                self.collection.add(
+                    documents=documents,
+                    embeddings=embeddings,
+                    ids=ids,
+                    metadatas=metadatas
+                )
+                logger.info(f"Indexed {post_count} posts with usernames for {primary_username}")
+            else:
+                logger.warning(f"No valid posts found to index for {primary_username}")
+                
+            return post_count
         except Exception as e:
-            logger.error(f"Error adding posts: {str(e)}")
+            logger.error(f"Error adding posts to vector DB: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
             return 0
     
     def clear_collection(self):
@@ -188,7 +347,7 @@ class VectorDatabaseManager:
             count_before = self.get_count()
             self.client.delete_collection(self.config['collection_name'])
             self.collection = self._get_or_create_collection()
-            self.vectorizer = TfidfVectorizer()
+            self.vectorizer = TfidfVectorizer(max_features=self.embedding_dimension)
             self.fitted = False
             logger.info(f"Cleared collection with {count_before} documents")
             return True
@@ -232,7 +391,7 @@ def test_vector_db_multi_user():
             return False
         
         # Test querying
-        query = "What’s trending in makeup?"
+        query = "What's trending in makeup?"
         results_all = manager.query_similar(query, n_results=3)
         results_primary = manager.query_similar(query, n_results=2, filter_username=primary_username)
         results_secondary = manager.query_similar(query, n_results=2, filter_username="fentybeauty")

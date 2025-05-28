@@ -2,9 +2,9 @@
 
 # R2 Storage Configuration
 R2_CONFIG = {
-    'endpoint_url': f'https://9069781eea9a108d41848d73443b3a87.r2.cloudflarestorage.com',
-    'aws_access_key_id': 'b94be077bc48dcc2aec3e4331233327e',
-    'aws_secret_access_key': '791d5eeddcd8ed5bf3f41bfaebbd37e58af7dcb12275b1422747605d7dc75bc4',
+    'endpoint_url': f'https://b21d96e73b908d7d7b822d41516ccc64.r2.cloudflarestorage.com',
+    'aws_access_key_id': '986718fe67d6790c7fe4eeb78943adba',
+    'aws_secret_access_key': '08fb3b012163cce35bee80b54d83e3a6924f2679f466790a9c7fdd9456bc44fe',
     'bucket_name': 'structuredb',
     'personal_bucket_name': 'miner',  # Personal bucket for miner validation
     'bucket_name2': 'tasks',

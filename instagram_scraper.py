@@ -19,7 +19,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Apify API token
-APIFY_API_TOKEN = "apify_api_88I8mu5LcmIjJa1fVUI3S3BvKGvNr60wvFPa"
+APIFY_API_TOKEN = "apify_api_wFKozVJYcTV7EYXD89MfH7kr01hgA11DYk2I"
 
 class InstagramScraper:
     """Class for scraping Instagram profiles and uploading to R2 storage."""
