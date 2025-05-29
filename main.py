@@ -1482,14 +1482,50 @@ class ContentRecommendationSystem:
     def run_pipeline(self, object_key=None, data=None):
         """Run the content recommendation pipeline for given object key or data."""
         try:
-            logger.info(f"Running pipeline for object key: {object_key}")
+            if not object_key and not data:
+                logger.error("No object_key or data provided to pipeline")
+                return {"success": False, "message": "No object_key or data provided"}
+
+            # FIXED: Robust platform detection with priority order
+            platform = 'instagram'  # default fallback only
             
-            # Detect platform from object_key
-            platform = 'instagram'  # Default to Instagram
-            if object_key:
-                if object_key.startswith('twitter/'):
+            # Priority 1: Platform detection from data (for Twitter integration)
+            if data and data.get('platform'):
+                platform = data.get('platform')
+                logger.info(f"✅ Detected {platform} platform from data.platform field")
+            # Priority 2: Platform detection from object_key
+            elif object_key and object_key.startswith('twitter/'):
+                platform = 'twitter'
+                logger.info(f"✅ Detected {platform} platform from object_key: {object_key}")
+            # Priority 3: Platform detection from data structure hints
+            elif data:
+                # Check for Twitter-specific fields in posts
+                posts = data.get('posts', [])
+                if posts and any('retweets' in post or 'quotes' in post or post.get('type') == 'tweet' for post in posts):
                     platform = 'twitter'
-                    logger.info(f"Detected Twitter platform from object_key: {object_key}")
+                    logger.info(f"✅ Detected {platform} platform from data structure (Twitter-specific fields found)")
+                # Check for Twitter profile fields
+                elif 'profile' in data:
+                    profile = data['profile']
+                    if 'tweet_count' in profile or 'following_count' in profile:
+                        platform = 'twitter'
+                        logger.info(f"✅ Detected {platform} platform from profile structure (Twitter-specific fields found)")
+                    else:
+                        logger.info(f"✅ Using default {platform} platform (Instagram-specific or generic fields)")
+                else:
+                    logger.info(f"✅ Using default {platform} platform (no specific platform indicators found)")
+            else:
+                logger.info(f"✅ Using default {platform} platform (no data provided)")
+            
+            logger.info(f"🎯 FINAL PLATFORM DETERMINATION: {platform.upper()}")
+            
+            # Ensure platform is set in data if data exists
+            if data and not data.get('platform'):
+                data['platform'] = platform
+                logger.info(f"🔧 Set data.platform = {platform}")
+            
+            primary_username = None
+            account_name = None
             
             # If object_key is provided, retrieve the data from R2
             if object_key:
@@ -3182,6 +3218,10 @@ class ContentRecommendationSystem:
             if not processed_data:
                 logger.error(f"Failed to process Twitter data for {username}")
                 return False
+            
+            # CRITICAL: Ensure platform is explicitly set to prevent misunderstanding
+            processed_data['platform'] = 'twitter'
+            logger.info(f"🔧 TWITTER PLATFORM ENFORCEMENT: Set processed_data.platform = 'twitter' for {username}")
             
             # Run the complete pipeline
             result = self.run_pipeline(data=processed_data)
