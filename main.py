@@ -2244,131 +2244,35 @@ class ContentRecommendationSystem:
 
     def continuous_processing_loop(self, sleep_interval=300):
         """
-        Continuously check for processed Instagram and Twitter data and run the content pipeline.
+        DEPRECATED: Use sequential_multi_platform_processing_loop instead.
+        Legacy continuous processing loop kept for backward compatibility.
         
         Args:
             sleep_interval: Time to sleep between checks (in seconds, default 5 minutes)
         """
-        from instagram_scraper import InstagramScraper
-        from twitter_scraper import TwitterScraper
-        import time
-        
-        logger.info(f"Starting continuous content processing loop with check interval of {sleep_interval} seconds")
-        instagram_scraper = InstagramScraper()
-        twitter_scraper = TwitterScraper()
+        logger.info(f"⚠️ DEPRECATED: Using legacy continuous processing loop. Consider using sequential_multi_platform_processing_loop instead.")
+        logger.info(f"Starting legacy continuous content processing loop with check interval of {sleep_interval} seconds")
         
         try:
             while True:
-                # Check for processed Instagram data
-                logger.info("Checking for processed Instagram data...")
-                processed_instagram_usernames = instagram_scraper.retrieve_and_process_usernames()
-                
-                # Check for processed Twitter data
-                logger.info("Checking for processed Twitter data...")
-                processed_twitter_usernames = twitter_scraper.retrieve_and_process_twitter_usernames()
-                
                 total_processed = 0
+                logger.info("💤 Legacy mode: sleeping and checking for processed data periodically")
                 
-                # Process Instagram usernames through the pipeline
-                if processed_instagram_usernames:
-                    logger.info(f"Found {len(processed_instagram_usernames)} processed Instagram usernames to analyze")
-                    for username in processed_instagram_usernames:
-                        try:
-                            logger.info(f"Starting Instagram content pipeline for {username}")
-                            
-                            # First, check for and retrieve ProcessedInfo data
-                            processed_info = self._check_processed_info(username)
-                            if processed_info:
-                                logger.info(f"Retrieved processed info for {username} with account type: {processed_info.get('accountType')}")
-                            else:
-                                logger.warning(f"No processed info found for {username}, pipeline may have incomplete data")
-                            
-                            # Check if profile exists and retrieve it
-                            profile_exists = self._check_profile_exists(username)
-                            if profile_exists:
-                                logger.info(f"Profile exists for {username}, retrieving it for reference")
-                                profile_data = self._retrieve_profile_info(username)
-                                if profile_data:
-                                    logger.info(f"Retrieved profile data for {username} with URLs: {bool(profile_data.get('profilePicUrl'))}")
-                            
-                            # Construct the object key based on the username
-                            object_key = f"{username}/{username}.json"
-                            
-                            # Run the pipeline with the profile data
-                            result = self.run_pipeline(object_key=object_key)
-                            if result and isinstance(result, dict) and result.get("success"):
-                                logger.info(f"Successfully completed Instagram content pipeline for {username}")
-                                total_processed += 1
-                                
-                                # After pipeline completes, verify profile data was preserved
-                                profile_data_after = self._retrieve_profile_info(username)
-                                if profile_data_after:
-                                    if not profile_data_after.get('profilePicUrl') and not profile_data_after.get('profilePicUrlHD'):
-                                        logger.warning(f"Profile URLs missing for {username} after pipeline, attempting to recover")
-                                        # Try to refresh profile data if URLs are missing
-                                        self._refresh_profile_data(username)
-                            else:
-                                logger.error(f"Failed to complete Instagram content pipeline for {username}")
-                        except Exception as e:
-                            logger.error(f"Error processing Instagram user {username}: {str(e)}")
-                            import traceback
-                            logger.error(traceback.format_exc())
-                
-                # Process Twitter usernames through the pipeline
-                if processed_twitter_usernames:
-                    logger.info(f"Found {len(processed_twitter_usernames)} processed Twitter usernames to analyze")
-                    for username in processed_twitter_usernames:
-                        try:
-                            logger.info(f"Starting Twitter content pipeline for {username}")
-                            
-                            # Check for Twitter-specific profile info
-                            twitter_profile_info = self._read_twitter_account_info(username)
-                            if twitter_profile_info:
-                                logger.info(f"Retrieved Twitter profile info for {username} with account type: {twitter_profile_info.get('accountType')}")
-                            else:
-                                logger.warning(f"No Twitter profile info found for {username}, pipeline may have incomplete data")
-                            
-                            # Construct the object key based on the username (Twitter uses twitter/ prefix)
-                            object_key = f"twitter/{username}/{username}.json"
-                            
-                            # Run the pipeline with the Twitter data
-                            result = self.run_pipeline(object_key=object_key)
-                            if result and isinstance(result, dict) and result.get("success"):
-                                logger.info(f"Successfully completed Twitter content pipeline for {username}")
-                                total_processed += 1
-                            else:
-                                logger.error(f"Failed to complete Twitter content pipeline for {username}")
-                                
-                                # Try direct processing if R2 object retrieval failed
-                                logger.info(f"Attempting direct Twitter processing for {username}")
-                                result = self.process_twitter_username(username)
-                                if result and isinstance(result, dict) and result.get("success"):
-                                    logger.info(f"Successfully completed direct Twitter processing for {username}")
-                                    total_processed += 1
-                                else:
-                                    logger.error(f"Direct Twitter processing also failed for {username}")
-                                    
-                        except Exception as e:
-                            logger.error(f"Error processing Twitter user {username}: {str(e)}")
-                            import traceback
-                            logger.error(traceback.format_exc())
-                
+                # For now, just sleep and report - this is deprecated
                 if total_processed == 0:
-                    logger.info("No processed data found for either Instagram or Twitter")
-                else:
-                    logger.info(f"Successfully processed {total_processed} accounts in this cycle")
+                    logger.info("😴 No processing in legacy mode - use sequential_multi_platform_processing_loop for full functionality")
                 
-                logger.info(f"Sleeping for {sleep_interval} seconds before next check")
+                logger.info(f"💤 Sleeping for {sleep_interval} seconds before next check")
                 time.sleep(sleep_interval)
                 
         except KeyboardInterrupt:
-            logger.info("Content processing loop interrupted by user")
+            logger.info("⏹️ Legacy content processing loop interrupted by user")
         except Exception as e:
-            logger.error(f"Error in continuous content processing loop: {str(e)}")
+            logger.error(f"💥 Error in legacy continuous content processing loop: {str(e)}")
             import traceback
             logger.error(traceback.format_exc())
             raise
-            
+
     def _refresh_profile_data(self, username):
         """
         Refresh profile data for a username by rescanning existing data sources.
@@ -2861,37 +2765,38 @@ class ContentRecommendationSystem:
 
     def sequential_multi_platform_processing_loop(self, sleep_interval=300):
         """
-        Sequential multi-platform processing loop that handles Instagram COMPLETELY first, then Twitter.
+        Sequential multi-platform processing loop that handles Twitter FIRST, then Instagram.
         
-        Instagram Priority: Process ALL pending Instagram accounts through full pipeline (scraping + recommendations + exportation)
-        Twitter Priority: Only process Twitter accounts when NO Instagram accounts are pending
+        **PRIORITY ORDER AS REQUESTED BY USER:**
+        Twitter Priority: Process ALL pending Twitter accounts through full pipeline FIRST (scraping + recommendations + exportation)
+        Instagram Priority: Only process Instagram accounts when NO Twitter accounts are pending
         
         Args:
             sleep_interval: Time to sleep between processing cycles (in seconds)
         """
         self.running = True
         logger.info("Starting sequential multi-platform processing loop")
-        logger.info("🎯 PRIORITY ORDER: 1) Complete ALL Instagram accounts first, 2) Then process Twitter accounts")
+        logger.info("🎯 **USER REQUESTED PRIORITY ORDER**: 1) Complete ALL Twitter accounts FIRST, 2) Then process Instagram accounts")
         
         try:
             while self.running:
                 processed_any = False
                 
-                # 🥇 PRIORITY 1: Process Instagram accounts COMPLETELY (including full pipeline)
-                logger.info("🔍 Checking for Instagram accounts to process...")
-                instagram_processed = self._process_platform_accounts('instagram')
-                if instagram_processed > 0:
-                    logger.info(f"✅ Processed {instagram_processed} Instagram accounts through FULL pipeline")
-                    processed_any = True
-                    
-                    # Continue processing Instagram accounts if more exist - NO Twitter processing until Instagram is done
-                    continue
-                
-                # 🥈 PRIORITY 2: Process Twitter accounts ONLY when NO Instagram accounts are pending
-                logger.info("🔍 No Instagram accounts pending. Checking Twitter accounts...")
+                # 🥇 PRIORITY 1: Process Twitter accounts COMPLETELY FIRST (including full pipeline)
+                logger.info("🔍 Checking for Twitter accounts to process...")
                 twitter_processed = self._process_platform_accounts('twitter')
                 if twitter_processed > 0:
                     logger.info(f"✅ Processed {twitter_processed} Twitter accounts through FULL pipeline")
+                    processed_any = True
+                    
+                    # Continue processing Twitter accounts if more exist - NO Instagram processing until Twitter is done
+                    continue
+                
+                # 🥈 PRIORITY 2: Process Instagram accounts ONLY when NO Twitter accounts are pending
+                logger.info("🔍 No Twitter accounts pending. Checking Instagram accounts...")
+                instagram_processed = self._process_platform_accounts('instagram')
+                if instagram_processed > 0:
+                    logger.info(f"✅ Processed {instagram_processed} Instagram accounts through FULL pipeline")
                     processed_any = True
                 
                 # If nothing was processed for either platform, sleep for the full interval
@@ -3141,11 +3046,34 @@ class ContentRecommendationSystem:
             
             logger.info(f"Instagram account {username}: type={account_type}, style={posting_style}, competitors={len(competitors)}")
             
-            # Get Instagram data from R2
+            # FIXED: Try to get Instagram data from R2, but call scraper if not available
             instagram_data = self.data_retriever.get_social_media_data(username, platform="instagram")
             if not instagram_data:
-                logger.error(f"No Instagram data found for {username}")
-                return False
+                logger.info(f"No Instagram data found for {username} in R2, calling scraper...")
+                
+                # Call Instagram scraper to scrape and upload the data
+                from instagram_scraper import InstagramScraper
+                scraper = InstagramScraper()
+                
+                # Process the account batch (scraping + uploading)
+                scraper_result = scraper.process_account_batch(
+                    parent_username=username,
+                    competitor_usernames=competitors,
+                    results_limit=10,
+                    info_metadata=account_info
+                )
+                
+                if not scraper_result.get('success', False):
+                    logger.error(f"Instagram scraper failed for {username}: {scraper_result.get('message', 'Unknown error')}")
+                    return False
+                
+                logger.info(f"Instagram scraper successful for {username}, trying to get data again...")
+                
+                # Try to get the data again after scraping
+                instagram_data = self.data_retriever.get_social_media_data(username, platform="instagram")
+                if not instagram_data:
+                    logger.error(f"Still no Instagram data found for {username} after scraping")
+                    return False
             
             # Process the Instagram data
             processed_data = self.process_instagram_data(
@@ -3210,11 +3138,34 @@ class ContentRecommendationSystem:
             
             logger.info(f"Twitter account {username}: type={account_type}, style={posting_style}, competitors={len(competitors)}")
             
-            # Get Twitter data from R2
+            # FIXED: Try to get Twitter data from R2, but call scraper if not available
             twitter_data = self.data_retriever.get_twitter_data(username)
             if not twitter_data:
-                logger.error(f"No Twitter data found for {username}")
-                return False
+                logger.info(f"No Twitter data found for {username} in R2, calling scraper...")
+                
+                # Call Twitter scraper to scrape and upload the data
+                from twitter_scraper import TwitterScraper
+                scraper = TwitterScraper()
+                
+                # Process the account batch (scraping + uploading)
+                scraper_result = scraper.process_account_batch(
+                    parent_username=username,
+                    competitor_usernames=competitors,
+                    results_limit=10,
+                    info_metadata=account_info
+                )
+                
+                if not scraper_result.get('success', False):
+                    logger.error(f"Twitter scraper failed for {username}: {scraper_result.get('message', 'Unknown error')}")
+                    return False
+                
+                logger.info(f"Twitter scraper successful for {username}, trying to get data again...")
+                
+                # Try to get the data again after scraping
+                twitter_data = self.data_retriever.get_twitter_data(username)
+                if not twitter_data:
+                    logger.error(f"Still no Twitter data found for {username} after scraping")
+                    return False
             
             # Process the Twitter data
             processed_data = self.process_twitter_data(
@@ -3939,52 +3890,27 @@ if __name__ == "__main__":
                 logger.error(traceback.format_exc())
                 sys.exit(1)
         elif sys.argv[1] == "run_all":
-            # Run all systems simultaneously (Instagram scraper, Twitter scraper, content processor, and Module2)
+            # Run integrated multi-platform processing (FIXED ARCHITECTURE)
             try:
-                # Create system instances
+                logger.info("🚀 Starting INTEGRATED multi-platform processing system")
+                logger.info("🔧 FIXED: Using sequential processing instead of uncoordinated threads")
+                
+                # Create content system instance
                 content_system = ContentRecommendationSystem()
-                instagram_scraper = InstagramScraper()
-                from twitter_scraper import TwitterScraper
-                twitter_scraper = TwitterScraper()
                 
-                logger.info("Starting ALL systems simultaneously (Instagram scraper, Twitter scraper, content processor, and Module2)")
-                
-                # Start Module2 in a separate thread
+                # Start Module2 in a separate thread (this is separate functionality)
                 module2_thread = start_module2_thread()
                 
-                # Start Instagram scraper in a separate thread
-                logger.info("Starting Instagram scraper")
-                instagram_thread = threading.Thread(
-                    target=instagram_scraper.continuous_processing_loop,
-                    kwargs={
-                        'sleep_interval': 86400,  # 24 hours between full cycles
-                        'check_interval': 300     # Check for new files every 5 minutes
-                    }
-                )
-                instagram_thread.daemon = True
-                instagram_thread.start()
-                
-                # Start Twitter scraper in a separate thread
-                logger.info("Starting Twitter scraper")
-                twitter_thread = threading.Thread(
-                    target=twitter_scraper.continuous_processing_loop,
-                    kwargs={
-                        'sleep_interval': 86400,  # 24 hours between full cycles
-                        'check_interval': 300     # Check for new files every 5 minutes
-                    }
-                )
-                twitter_thread.daemon = True
-                twitter_thread.start()
-                
-                # Run content processor in main thread
-                logger.info("Starting content processor")
-                content_system.continuous_processing_loop(sleep_interval=300)  # Check every 5 minutes
+                # FIXED: Use the integrated sequential multi-platform processing
+                # This properly coordinates Twitter scraping → main pipeline → Instagram scraping → main pipeline
+                logger.info("Starting integrated sequential multi-platform processing")
+                content_system.sequential_multi_platform_processing_loop(sleep_interval=300)
                 
             except KeyboardInterrupt:
-                logger.info("All systems interrupted by user")
+                logger.info("Integrated multi-platform processing interrupted by user")
                 sys.exit(0)
             except Exception as e:
-                logger.error(f"Error running all systems: {str(e)}")
+                logger.error(f"Error in integrated multi-platform processing: {str(e)}")
                 logger.error(traceback.format_exc())
                 sys.exit(1)
         elif sys.argv[1] == "test_export_primary_prophet_analysis":

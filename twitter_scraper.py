@@ -19,7 +19,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Apify API token for Twitter scraper - UPDATED with fresh token
-APIFY_API_TOKEN = "apify_api_88I8mu5LcmIjJa1fVUI3S3BvKGvNr60wvFPa"
+APIFY_API_TOKEN = "apify_api_HJjuynFqfZO0LigrxbReTxBBCn4oO30PrRSp"
 TWITTER_ACTOR_ID = "web.harvester/twitter-scraper"  # Most reliable and popular actor
 
 class TwitterScraper:
@@ -199,7 +199,6 @@ class TwitterScraper:
                     if run_info.get('status') == 'FAILED' and attempt == 3:
                         logger.error(f"💥 FINAL FAILURE: Twitter scraper failed for {username} after 3 attempts")
                         return None
-                        
                 except Exception as e:
                     logger.warning(f"Could not get detailed run info: {str(e)}")
                 
@@ -652,7 +651,7 @@ class TwitterScraper:
                             media_list.append(media_url)
                     elif isinstance(media, str):
                         media_list.append(media)
-            
+                    
             return {
                 'id': str(tweet.get('id', f'tweet_{index}')),
                 'text': tweet_text,
@@ -670,7 +669,7 @@ class TwitterScraper:
         except Exception as e:
             logger.warning(f"Error extracting tweet data: {str(e)}")
             return None
-
+    
     def retrieve_and_process_twitter_usernames(self):
         """
         Retrieve and process ONE pending profileinfo.json from tasks/AccountInfo/twitter/<username>/info.json 
@@ -1015,7 +1014,7 @@ class TwitterScraper:
             
             logger.info(f"📝 Twitter Account type for {parent_username}: {parent_short_info['account_type']}")
             logger.info(f"📝 Twitter Posting style for {parent_username}: {parent_short_info['posting_style']}")
-        
+            
         # BULLETPROOF PROFILE UPLOAD - Always preserve profile data
         logger.info(f"💾 Preserving profile info for {parent_username}...")
         profile_upload_result = self.upload_short_profile_to_tasks(parent_short_info)
@@ -1144,7 +1143,7 @@ class TwitterScraper:
         
         logger.info(f"🎯 BULLETPROOF RESULT for {parent_username}: {result}")
         return result
-
+    
     def scrape_and_upload(self, username, results_limit=10, info_metadata=None):
         """Scrape a single Twitter account and upload to R2 storage."""
         if not username:
