@@ -28,7 +28,8 @@ class R2DataRetriever:
                 's3',
                 endpoint_url=self.config['endpoint_url'],
                 aws_access_key_id=self.config['aws_access_key_id'],
-                aws_secret_access_key=self.config['aws_secret_access_key']
+                aws_secret_access_key=self.config['aws_secret_access_key'],
+                region_name='auto'
             )
             logger.info("Successfully created R2 client")
             return client

@@ -3,7 +3,7 @@
 import logging
 import json
 import re
-from google import genai
+import google.generativeai as genai
 from vector_database import VectorDatabaseManager
 from config import GEMINI_CONFIG, LOGGING_CONFIG, CONTENT_TEMPLATES
 from datetime import datetime

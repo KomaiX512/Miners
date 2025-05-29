@@ -33,6 +33,7 @@ class InstagramScraper:
             endpoint_url=self.r2_config['endpoint_url'],
             aws_access_key_id=self.r2_config['aws_access_key_id'],  # Updated
             aws_secret_access_key=self.r2_config['aws_secret_access_key'],  # Updated
+            region_name='auto',  # Fixed: Use 'auto' for R2 storage
             config=Config(signature_version='s3v4')
         )
         self.running = False
@@ -379,7 +380,7 @@ class InstagramScraper:
                 logger.warning("Username missing in profile info")
                 return False
                 
-            profile_key = f"ProfileInfo/{username}.json"
+            profile_key = f"ProfileInfo/instagram/{username}.json"
             
             # Check if the new profile info has complete data 
             has_complete_data = (
@@ -640,11 +641,11 @@ class InstagramScraper:
     
     def retrieve_and_process_usernames(self):
         """
-        Retrieve and process ONE pending info.json from tasks/AccountInfo/<username>/info.json.
+        Retrieve and process ONE pending info.json from tasks/AccountInfo/instagram/<username>/info.json.
         Returns the processed parent username or an empty list if none processed.
         """
         tasks_bucket = self.r2_config['bucket_name2']
-        prefix = "AccountInfo/"
+        prefix = "AccountInfo/instagram/"
         processed_parents = []
         
         try:
@@ -654,36 +655,45 @@ class InstagramScraper:
             info_files = []
             for page in page_iterator:
                 if 'Contents' not in page:
-                    logger.debug(f"No objects found for prefix {prefix} in page")
+                    logger.debug(f"No objects found for Instagram prefix {prefix} in page")
                     continue
                 for obj in page['Contents']:
                     if obj['Key'].endswith('/info.json'):
                         info_files.append(obj)
             
             if not info_files:
-                logger.info(f"No info.json files found in {tasks_bucket} with prefix {prefix}")
+                logger.info(f"No Instagram info.json files found in {tasks_bucket} with prefix {prefix}")
                 return processed_parents
             
             info_files.sort(key=lambda x: x['LastModified'])
-            logger.debug(f"Found {len(info_files)} info.json files: {[f['Key'] for f in info_files]}")
+            logger.debug(f"Found {len(info_files)} Instagram info.json files: {[f['Key'] for f in info_files]}")
             
             for obj in info_files:
                 info_key = obj['Key']
-                logger.debug(f"Attempting to process {info_key}")
+                logger.debug(f"Attempting to process Instagram {info_key}")
                 
                 try:
                     response = self.s3.get_object(Bucket=tasks_bucket, Key=info_key)
                     info_data = json.loads(response['Body'].read().decode('utf-8'))
-                    logger.debug(f"Loaded info.json content: {json.dumps(info_data, indent=2)}")
+                    logger.debug(f"Loaded Instagram info.json content: {json.dumps(info_data, indent=2)}")
                     
-                    username = info_data.get('username', '')
+                    # Extract username from the path: AccountInfo/instagram/<username>/info.json
+                    username = None
+                    parts = info_key.split('/')
+                    if len(parts) >= 3 and parts[0] == 'AccountInfo' and parts[1] == 'instagram':
+                        username = parts[2]
+                    
+                    # Fallback to username in data if path extraction fails
+                    if not username:
+                        username = info_data.get('username', '')
+                        
                     account_type = info_data.get('accountType', '')
                     posting_style = info_data.get('postingStyle', '')
                     competitors = info_data.get('competitors', [])
                     timestamp = info_data.get('timestamp', '')
                     
                     if not username or not account_type:
-                        logger.error(f"Invalid info.json at {info_key}: missing username or accountType")
+                        logger.error(f"Invalid Instagram info.json at {info_key}: missing username or accountType")
                         info_data['status'] = 'failed'
                         info_data['error'] = 'Missing required fields'
                         info_data['failed_at'] = datetime.now().isoformat()
@@ -696,10 +706,10 @@ class InstagramScraper:
                         continue
                     
                     if info_data.get('status', 'pending') != 'pending':
-                        logger.info(f"Skipping already processed info.json: {info_key} (status: {info_data.get('status')})")
+                        logger.info(f"Skipping already processed Instagram info.json: {info_key} (status: {info_data.get('status')})")
                         continue
                     
-                    logger.info(f"Processing info.json for username: {username}")
+                    logger.info(f"Processing Instagram info.json for username: {username}")
                     logger.info(f"Account type: {account_type}, Posting style: {posting_style}")
                     
                     # Handle different competitors field formats
@@ -717,7 +727,7 @@ class InstagramScraper:
                         if not competitor_usernames and competitors.strip():
                             competitor_usernames = [competitors.strip()]
                     
-                    logger.debug(f"Competitor usernames: {competitor_usernames}")
+                    logger.debug(f"Instagram competitor usernames: {competitor_usernames}")
                     
                     info_data['status'] = 'processing'
                     info_data['processing_started_at'] = datetime.now().isoformat()
@@ -749,15 +759,15 @@ class InstagramScraper:
                     
                     if result['success']:
                         processed_parents.append(username)
-                        logger.info(f"Successfully processed {username}")
+                        logger.info(f"Successfully processed Instagram user {username}")
                     else:
-                        logger.error(f"Failed to process {username}: {result['message']}")
+                        logger.error(f"Failed to process Instagram user {username}: {result['message']}")
                     
-                    logger.debug("Processed one info.json, exiting loop")
+                    logger.debug("Processed one Instagram info.json, exiting loop")
                     break
                 
                 except Exception as e:
-                    logger.error(f"Error processing {info_key}: {str(e)}")
+                    logger.error(f"Error processing Instagram {info_key}: {str(e)}")
                     try:
                         info_data['status'] = 'failed'
                         info_data['error'] = str(e)
@@ -769,11 +779,11 @@ class InstagramScraper:
                             ContentType='application/json'
                         )
                     except Exception as update_e:
-                        logger.error(f"Failed to update status for {info_key}: {update_e}")
+                        logger.error(f"Failed to update status for Instagram {info_key}: {update_e}")
                     continue
         
         except Exception as e:
-            logger.error(f"Failed to list info.json files in {tasks_bucket} with prefix {prefix}: {str(e)}")
+            logger.error(f"Failed to list Instagram info.json files in {tasks_bucket} with prefix {prefix}: {str(e)}")
         
         return processed_parents
     
@@ -905,7 +915,7 @@ class InstagramScraper:
     def _check_for_new_pending_files(self):
         """Check if there are any new pending info.json files."""
         tasks_bucket = self.r2_config['bucket_name2']
-        prefix = "AccountInfo/"
+        prefix = "AccountInfo/instagram/"
         
         try:
             response = self.s3.list_objects_v2(
@@ -959,7 +969,7 @@ def test_instagram_scraper():
             return False
         
         tasks_bucket = scraper.r2_config['bucket_name2']
-        scraper.s3.head_object(Bucket=tasks_bucket, Key=f"ProfileInfo/{parent_username}.json")
+        scraper.s3.head_object(Bucket=tasks_bucket, Key=f"ProfileInfo/instagram/{parent_username}.json")
         scraper.s3.head_object(Bucket=tasks_bucket, Key=f"ProcessedInfo/{parent_username}.json")
         logger.info("Test successful: Processed info.json and stored metadata")
         return True
