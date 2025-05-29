@@ -505,6 +505,17 @@ class ContentRecommendationSystem:
     def analyze_engagement(self, data):
         """Analyze engagement data using time series analysis."""
         try:
+            # If data is a list, assume it's a list of engagement values
+            if isinstance(data, list):
+                # Convert to dictionary with timestamps
+                processed_data = {}
+                for i, value in enumerate(data):
+                    # Create timestamp as days from now
+                    from datetime import datetime, timedelta
+                    timestamp = (datetime.now() - timedelta(days=len(data) - i)).isoformat()
+                    processed_data[timestamp] = value
+                data = processed_data
+            
             # Initialize time series analyzer if not already initialized
             if not hasattr(self, 'time_series') or self.time_series is None:
                 self.time_series = TimeSeriesAnalyzer()
@@ -518,51 +529,8 @@ class ContentRecommendationSystem:
                     "trending_periods": []
                 }
             
-            # Handle different data formats - FIXED: Pass data in proper format
-            processed_data = None
-            
-            # Check if data is engagement_history (list of dicts with timestamp/engagement)
-            if isinstance(data, list) and data and isinstance(data[0], dict):
-                if 'timestamp' in data[0] and 'engagement' in data[0]:
-                    # This is proper engagement_history format - use directly
-                    processed_data = data
-                    logger.info(f"Using engagement_history format with {len(data)} records")
-                else:
-                    # List of engagement values - convert to proper format
-                    processed_data = []
-                    for i, value in enumerate(data):
-                        # Create timestamp as days from now
-                        from datetime import datetime, timedelta
-                        timestamp = (datetime.now() - timedelta(days=len(data) - i)).isoformat()
-                        processed_data.append({
-                            'timestamp': timestamp,
-                            'engagement': value if isinstance(value, (int, float)) else 0
-                        })
-                    logger.info(f"Converted list to engagement_history format with {len(processed_data)} records")
-            elif isinstance(data, dict):
-                # If it's a dict with timestamp keys and engagement values
-                if all(isinstance(v, (int, float)) for v in data.values()):
-                    processed_data = []
-                    for timestamp, engagement in data.items():
-                        processed_data.append({
-                            'timestamp': timestamp,
-                            'engagement': engagement
-                        })
-                    logger.info(f"Converted dict to engagement_history format with {len(processed_data)} records")
-                else:
-                    # Treat as single engagement record
-                    processed_data = [data]
-                    logger.info("Using single record format")
-            else:
-                logger.warning(f"Unexpected data format: {type(data)}")
-                return {
-                    "trend_detected": False,
-                    "forecast": [],
-                    "trending_periods": []
-                }
-            
-            # Analyze engagement data with proper format
-            return self.time_series.analyze_data(processed_data, timestamp_col='timestamp', value_col='engagement')
+            # Analyze engagement data
+            return self.time_series.analyze_data(data)
         except Exception as e:
             logger.error(f"Error analyzing engagement: {str(e)}")
             return None
@@ -647,10 +615,6 @@ class ContentRecommendationSystem:
             # Log the exact values being used
             logger.info(f"Content plan generation for account_type: {account_type}, posting_style: {posting_style}, platform: {platform}")
 
-            # FIXED: Set username context for recommendation generator to avoid hardcoded values
-            self.recommendation_generator._current_primary_username = primary_username
-            self.recommendation_generator._current_secondary_usernames = secondary_usernames
-
             # Generate the main recommendation using RAG
             main_recommendation = self.recommendation_generator.rag.generate_recommendation(
                 primary_username=primary_username,
@@ -663,68 +627,6 @@ class ContentRecommendationSystem:
             if not main_recommendation:
                 logger.error("Failed to generate main recommendation")
                 return None
-
-            # ENSURE RECOMMENDATIONS ARE NEVER EMPTY - Critical Fix
-            recommendations_list = main_recommendation.get('recommendations', [])
-            if not recommendations_list or (isinstance(recommendations_list, list) and len(recommendations_list) == 0):
-                logger.warning("RAG returned empty recommendations - generating fallback content")
-                # Create high-quality fallback recommendations based on account type and platform
-                if is_branding:
-                    recommendations_list = [
-                        f"Develop strategic content pillars that showcase {primary_username}'s unique brand value proposition and industry expertise",
-                        f"Create authentic storytelling content that builds emotional connection with target audience while maintaining professional brand image",
-                        f"Implement data-driven posting schedule optimization based on audience engagement patterns and platform algorithms",
-                        f"Design interactive content formats (polls, Q&A, behind-the-scenes) that drive meaningful community engagement",
-                        f"Establish thought leadership through industry insights and trend commentary that positions {primary_username} as market authority"
-                    ]
-                else:
-                    recommendations_list = [
-                        f"Develop authentic personal content themes that reflect {primary_username}'s genuine interests and lifestyle",
-                        f"Create engaging storytelling posts that share personal experiences and connect with audience on emotional level",
-                        f"Optimize content timing based on when your audience is most active for maximum organic reach",
-                        f"Use interactive features like stories, polls, and direct engagement to build stronger community relationships",
-                        f"Share valuable insights and personal perspectives that provide genuine value to your followers"
-                    ]
-                
-                main_recommendation['recommendations'] = recommendations_list
-                logger.info(f"Generated {len(recommendations_list)} fallback recommendations for {platform} {account_type} account")
-
-            # ENSURE NEXT POST IS NEVER EMPTY OR MALFORMED - Critical Fix
-            next_post_prediction = main_recommendation.get('next_post', {})
-            if not next_post_prediction or not isinstance(next_post_prediction, dict):
-                logger.warning("RAG returned empty/malformed next_post - generating fallback content")
-                if platform.lower() == "twitter":
-                    next_post_prediction = {
-                        "tweet_text": f"Exciting updates coming from {primary_username}! Stay tuned for fresh insights and behind-the-scenes content. What would you love to see more of?",
-                        "hashtags": ["#Updates", "#Community", "#Content", "#Engagement"],
-                        "media_suggestion": "High-quality image that reflects brand personality",
-                        "follow_up_tweets": ["Thanks for being part of this amazing community! Your support means everything."]
-                    }
-                else:
-                    next_post_prediction = {
-                        "caption": f"Grateful for this amazing community! ✨ What started as a simple idea has grown into something beautiful, and it's all because of your support. Can't wait to share what's coming next! 💫",
-                        "hashtags": ["#Grateful", "#Community", "#Journey", "#Authentic", "#Growth"],
-                        "call_to_action": "What would you love to see more of? Let me know in the comments! 👇",
-                        "image_prompt": "Warm, authentic photo that captures genuine emotion - natural lighting with personal touch"
-                    }
-                
-                main_recommendation['next_post'] = next_post_prediction
-                logger.info(f"Generated fallback next_post for {platform} platform")
-
-            # ENSURE COMPETITOR ANALYSIS IS MEANINGFUL - Critical Fix
-            competitor_analysis = main_recommendation.get('competitor_analysis', {})
-            if is_branding and secondary_usernames and (not competitor_analysis or len(competitor_analysis) == 0):
-                logger.warning("RAG returned empty competitor_analysis - generating strategic fallback")
-                competitor_analysis = {}
-                for competitor in secondary_usernames[:3]:  # Limit to top 3
-                    competitor_analysis[competitor] = (
-                        f"Strategic analysis of {competitor} reveals opportunities for differentiation through authentic content approach. "
-                        f"Market positioning analysis indicates potential for {primary_username} to capture underserved audience segments "
-                        f"through strategic content pillars and consistent brand messaging. Key opportunities include leveraging unique "
-                        f"brand personality, optimizing engagement timing, and developing authentic storytelling that resonates with target demographics."
-                    )
-                main_recommendation['competitor_analysis'] = competitor_analysis
-                logger.info(f"Generated strategic competitor analysis for {len(competitor_analysis)} competitors")
 
             # Generate next post prediction
             next_post = self.recommendation_generator.generate_next_post_prediction(
@@ -1583,7 +1485,7 @@ class ContentRecommendationSystem:
             if not object_key and not data:
                 logger.error("No object_key or data provided to pipeline")
                 return {"success": False, "message": "No object_key or data provided"}
-            
+
             # FIXED: Robust platform detection with priority order
             platform = 'instagram'  # default fallback only
             
@@ -1664,16 +1566,7 @@ class ContentRecommendationSystem:
                         self.export_profile_info(profile_data, primary_username, platform)
                 
             # Try to extract username from object_key or data - setting it early to avoid NameError
-            # CRITICAL FIX: Prioritize primary_username from data (authoritative source) over object_key extraction
-            if data and data.get('primary_username'):
-                primary_username = data['primary_username']
-                account_name = primary_username
-                logger.info(f"✅ USING AUTHORITATIVE primary username from data: {primary_username} (platform: {platform})")
-            elif data and 'profile' in data and 'username' in data['profile']:
-                primary_username = data['profile']['username']
-                account_name = primary_username
-                logger.info(f"✅ Using primary username from data.profile: {primary_username} (platform: {platform})")
-            elif object_key and '/' in object_key:
+            if object_key and '/' in object_key:
                 if platform == 'twitter':
                     # Twitter format: twitter/username/username.json
                     path_parts = object_key.split('/')
@@ -1684,7 +1577,14 @@ class ContentRecommendationSystem:
                     # Instagram format: username/username.json
                     primary_username = object_key.split('/')[0]
                     
-                logger.info(f"⚠️  FALLBACK: Extracted primary username from object_key: {primary_username} (platform: {platform})")
+                logger.info(f"Extracted primary username from data_key: {primary_username} (platform: {platform})")
+                
+            elif data and 'primary_username' in data:
+                primary_username = data['primary_username']
+                account_name = primary_username
+            elif data and 'profile' in data and 'username' in data['profile']:
+                primary_username = data['profile']['username']
+                account_name = primary_username
             else:
                 logger.error("Cannot determine primary username from data or object key")
                 return {"success": False, "message": "Cannot determine primary username"}
@@ -1805,7 +1705,7 @@ class ContentRecommendationSystem:
             # Use time series analysis for both types (common functionality)
             if engagement_data:
                 time_series = TimeSeriesAnalyzer()
-                time_series_results = time_series.analyze_data(engagement_data, timestamp_col='timestamp', value_col='engagement', primary_username=primary_username)
+                time_series_results = time_series.analyze_data(engagement_data)
                 data['time_series_results'] = time_series_results
             
             # Update data with necessary fields for content generation
@@ -2140,519 +2040,243 @@ class ContentRecommendationSystem:
             return []
 
     def _extract_competitive_strengths(self, content_plan):
-        """Extract competitive strengths from RAG-generated content plan."""
+        """Extract competitive strengths from the content plan."""
         try:
+            # Handle the case where primary_analysis is None
+            if 'primary_analysis' not in content_plan or content_plan['primary_analysis'] is None:
+                logger.info("No primary_analysis found in content plan for extracting competitive strengths")
+                return ["Brand recognition"]
+
+            primary_analysis = content_plan['primary_analysis']
+            
+            # Handle case where primary_analysis is a string (not a dictionary)
+            if isinstance(primary_analysis, str):
+                # Try to extract strengths from the text
+                if "strength" in primary_analysis.lower():
+                    logger.info("Extracting strengths from primary_analysis string")
+                    # Split by sentences and find sentences with "strength"
+                    sentences = primary_analysis.split('. ')
+                    strength_sentences = [s for s in sentences if "strength" in s.lower()]
+                    if strength_sentences:
+                        return [strength_sentences[0]]
+                return ["Brand recognition"] 
+            
+            # Continue with normal processing (primary_analysis is a dictionary)
             strengths = []
             
-            # Extract from primary analysis strategic strengths
-            if 'primary_analysis' in content_plan and content_plan['primary_analysis']:
-                primary_analysis = content_plan['primary_analysis']
+            # Try to get strengths directly from the competitive_strengths list
+            if 'competitive_strengths' in primary_analysis and isinstance(primary_analysis['competitive_strengths'], list):
+                return primary_analysis['competitive_strengths']
+            
+            # Try to extract from analysis text
+            if 'analysis' in primary_analysis and isinstance(primary_analysis['analysis'], str):
+                analysis_text = primary_analysis['analysis']
                 
-                if isinstance(primary_analysis, str):
-                    # Extract strength indicators from RAG primary analysis
-                    strength_indicators = [
-                        'strength', 'advantage', 'successful', 'strong performance',
-                        'competitive edge', 'market position', 'unique selling', 'differentiator'
-                    ]
-                    sentences = re.split(r'[.!?]', primary_analysis)
-                    for sentence in sentences:
-                        if any(indicator in sentence.lower() for indicator in strength_indicators):
-                            strengths.append(sentence.strip())
-                            
-                elif isinstance(primary_analysis, dict):
-                    # Handle dictionary format from RAG
-                    if 'competitive_strengths' in primary_analysis:
-                        return primary_analysis['competitive_strengths']
-                    elif 'analysis' in primary_analysis:
-                        analysis_text = primary_analysis['analysis']
-                        sentences = re.split(r'[.!?]', analysis_text)
-                        for sentence in sentences:
-                            if 'strength' in sentence.lower():
-                                strengths.append(sentence.strip())
+                # Look for strengths in the analysis text
+                if "strength" in analysis_text.lower():
+                    sentences = analysis_text.split('. ')
+                    strength_sentences = [s for s in sentences if "strength" in s.lower()]
+                    strengths.extend(strength_sentences)
             
-            # Extract from recommendations that highlight strengths
-            if 'recommendations' in content_plan:
-                recs = content_plan['recommendations']
-                if isinstance(recs, list):
-                    for rec in recs:
-                        if isinstance(rec, str):
-                            if any(word in rec.lower() for word in ['leverage', 'build on', 'utilize', 'strength', 'advantage']):
-                                strengths.append(f"Strategic strength: {rec}")
-                elif isinstance(recs, str):
-                    sentences = re.split(r'[.!?]', recs)
-                    for sentence in sentences:
-                        if any(word in sentence.lower() for word in ['leverage', 'strength', 'advantage', 'competitive edge']):
-                            strengths.append(sentence.strip())
-            
-            # Extract from improvement recommendations that identify existing strengths
-            if 'improvement_recommendations' in content_plan:
-                improvements = content_plan['improvement_recommendations']
-                if isinstance(improvements, list):
-                    for improvement in improvements:
-                        if isinstance(improvement, str):
-                            if any(word in improvement.lower() for word in ['current strength', 'existing advantage', 'already strong']):
-                                strengths.append(f"Recognized strength: {improvement}")
-            
-            # Clean and format strengths
-            if strengths:
-                formatted_strengths = []
-                for strength in strengths[:4]:  # Limit to top 4
-                    if len(strength) > 25:  # Ensure substantial content
-                        formatted_strengths.append(strength[:180] + "..." if len(strength) > 180 else strength)
-                return formatted_strengths
-            else:
-                return ["Consistent content strategy and authentic voice demonstrate strong brand foundation"]
+            # Add a default strength if none found
+            if not strengths:
+                strengths = ["Brand recognition"]
+                
+            return strengths
                 
         except Exception as e:
             logger.error(f"Error extracting competitive strengths: {str(e)}")
-            return ["Brand foundation and content consistency provide competitive advantages"]
+            return ["Brand recognition (Error)"]
 
     def _extract_competitive_opportunities(self, content_plan):
-        """Extract competitive opportunities from RAG-generated content plan."""
+        """Extract competitive opportunities from content plan."""
         try:
             opportunities = []
-            
-            # Extract from RAG recommendations with opportunity focus
-            if 'recommendations' in content_plan:
-                recs = content_plan['recommendations']
-                if isinstance(recs, list):
-                    for rec in recs:
-                        if isinstance(rec, str):
-                            # Look for opportunity language in RAG recommendations
-                            if any(word in rec.lower() for word in ['opportunity', 'potential', 'capitalize', 'leverage', 'expand']):
-                                opportunities.append(f"Strategic opportunity: {rec}")
-                elif isinstance(recs, str):
-                    sentences = re.split(r'[.!?]', recs)
-                    for sentence in sentences:
-                        if any(word in sentence.lower() for word in ['opportunity', 'potential', 'could', 'expand', 'leverage']):
-                            opportunities.append(sentence.strip())
-            
-            # Extract opportunities from competitor analysis
-            if 'competitor_analysis' in content_plan:
-                for competitor, analysis in content_plan['competitor_analysis'].items():
-                    if isinstance(analysis, str):
-                        # Look for gaps and weaknesses that represent opportunities
-                        opportunity_indicators = [
-                            'opportunity', 'gap', 'underserved', 'missing', 'potential',
-                            'weakness', 'lack', 'inconsistent', 'fails to'
-                        ]
-                        for indicator in opportunity_indicators:
-                            if indicator in analysis.lower():
-                                context_start = analysis.lower().find(indicator)
-                                context = analysis[context_start:context_start+200]
-                                if context.strip():
-                                    opportunities.append(f"Market opportunity vs {competitor}: {context.strip()}")
-            
-            # Extract from primary analysis opportunity insights
-            if 'primary_analysis' in content_plan and content_plan['primary_analysis']:
-                primary_text = content_plan['primary_analysis']
-                if isinstance(primary_text, str):
-                    sentences = re.split(r'[.!?]', primary_text)
-                    for sentence in sentences:
-                        if any(word in sentence.lower() for word in ['opportunity', 'potential', 'expand', 'grow', 'market']):
-                            opportunities.append(f"Strategic opportunity: {sentence.strip()}")
-            
-            # Extract from improvement recommendations as opportunities
-            if 'improvement_recommendations' in content_plan:
-                improvements = content_plan['improvement_recommendations']
-                if isinstance(improvements, list):
-                    for improvement in improvements[:3]:  # Top 3 improvements as opportunities
-                        if isinstance(improvement, str) and len(improvement) > 30:
-                            opportunities.append(f"Growth opportunity: {improvement}")
-            
-            # Clean and format opportunities
-            if opportunities:
-                formatted_opportunities = []
-                for opp in opportunities[:5]:  # Limit to top 5
-                    if len(opp) > 25:  # Ensure substantial content
-                        formatted_opportunities.append(opp[:200] + "..." if len(opp) > 200 else opp)
-                return formatted_opportunities
-            else:
-                return ["Content optimization and strategic positioning offer significant growth potential"]
-                
+            recommendations = content_plan.get('recommendations', '')
+
+            if isinstance(recommendations, str):
+                # Look for opportunity markers
+                opportunity_markers = ['opportunity', 'potential', 'could', 'should', 'recommend', 'suggest']
+                for marker in opportunity_markers:
+                    sentences = re.findall(r'[^.!?]*(?<=[.!?\s])' + marker + r'[^.!?]*[.!?]', recommendations, re.IGNORECASE)
+                    opportunities.extend(sentences)
+
+            # Get competitor-specific opportunities
+            competitor_analysis = content_plan.get('competitor_analysis', {})
+            for competitor, analysis in competitor_analysis.items():
+                if isinstance(analysis, str):
+                    # Find sentences mentioning weaknesses or gaps
+                    weakness_sentences = re.findall(r'[^.!?]*(?<=[.!?\s])(weak|gap|miss|lack|fail)[^.!?]*[.!?]', analysis, re.IGNORECASE)
+                    if weakness_sentences:
+                        opportunities.append(f"Exploit {competitor}'s weakness: {weakness_sentences[0]}")
+
+            # Limit to top 5 opportunities
+            return opportunities[:5] if opportunities else ["No clear competitive opportunities identified"]
         except Exception as e:
             logger.error(f"Error extracting competitive opportunities: {str(e)}")
-            return ["Market analysis indicates opportunities for audience expansion and engagement growth"]
+            return ["Error analyzing competitive opportunities"]
 
     def _extract_competitor_strengths(self, analysis, competitor_name):
-        """Extract strengths from RAG-generated competitor analysis."""
+        """Extract strengths from competitor analysis."""
         try:
             strengths = []
-            
-            # Extract from actual RAG competitor analysis structure
+
+            # Check if analysis is a dictionary or string
             if isinstance(analysis, dict):
-                # Check for direct competitor analysis from RAG
-                if 'competitor_analysis' in analysis and competitor_name in analysis['competitor_analysis']:
-                    competitor_data = analysis['competitor_analysis'][competitor_name]
-                    if isinstance(competitor_data, str):
-                        # Extract strength indicators from RAG analysis
-                        strength_indicators = [
-                            'strengths:', 'excels at', 'successful', 'advantage', 'dominates',
-                            'leads in', 'strong performance', 'outperforms', 'competitive edge'
-                        ]
-                        for indicator in strength_indicators:
-                            if indicator in competitor_data.lower():
-                                context_start = competitor_data.lower().find(indicator)
-                                context = competitor_data[context_start:context_start+200]
-                                if context.strip():
-                                    strengths.append(context.strip())
-                                
-                # Extract from primary analysis mentions of competitor
-                elif 'primary_analysis' in analysis:
-                    primary_text = analysis['primary_analysis']
-                    if competitor_name.lower() in primary_text.lower():
-                        # Look for positive mentions of this competitor
-                        sentences = re.split(r'[.!?]', primary_text)
-                        for sentence in sentences:
-                            if (competitor_name.lower() in sentence.lower() and 
-                                any(word in sentence.lower() for word in ['strong', 'effective', 'successful', 'leading'])):
-                                strengths.append(sentence.strip())
-                                
-                # Extract from recommendations that mention competitor strengths
-                elif 'recommendations' in analysis:
-                    recommendations = analysis['recommendations']
-                    if isinstance(recommendations, list):
-                        for rec in recommendations:
-                            if isinstance(rec, str) and competitor_name.lower() in rec.lower():
-                                if any(word in rec.lower() for word in ['strong', 'advantage', 'leading']):
-                                    strengths.append(f"Competitive insight: {rec}")
-                    elif isinstance(recommendations, str) and competitor_name.lower() in recommendations.lower():
-                        # Extract strength-related sentences
-                        sentences = re.split(r'[.!?]', recommendations)
-                        for sentence in sentences:
-                            if (competitor_name.lower() in sentence.lower() and 
-                                any(word in sentence.lower() for word in ['strong', 'advantage', 'dominates'])):
-                                strengths.append(sentence.strip())
+                # Handle dictionary format
+                analysis_text = analysis.get('text', '')
+                if analysis_text:
+                    analysis = analysis_text
             
-            elif isinstance(analysis, str):
-                # Fallback for string analysis - extract context around competitor mentions
-                if competitor_name.lower() in analysis.lower():
-                    sentences = re.split(r'[.!?]', analysis)
-                    for sentence in sentences:
-                        if (competitor_name.lower() in sentence.lower() and 
-                            any(word in sentence.lower() for word in ['strong', 'successful', 'effective', 'dominates', 'leads'])):
-                            strengths.append(sentence.strip())
-            
-            # Clean and format strengths
-            if strengths:
-                formatted_strengths = []
-                for strength in strengths[:5]:  # Limit to top 5
-                    if len(strength) > 20:  # Ensure substantial content
-                        formatted_strengths.append(strength[:150] + "..." if len(strength) > 150 else strength)
-                return formatted_strengths
-            else:
-                return [f"Content analysis shows {competitor_name} has established market presence with consistent posting patterns"]
-                
+            if isinstance(analysis, str):
+                # Look for positive indicators
+                positive_markers = ['success', 'strong', 'effective', 'high engagement', 'popular', 'trend']
+                for marker in positive_markers:
+                    sentences = re.findall(r'[^.!?]*(?<=[.!?\s])' + marker + r'[^.!?]*[.!?]', analysis, re.IGNORECASE)
+                    strengths.extend(sentences)
+
+            # Limit and return
+            return strengths[:3] if strengths else [f"No clear strengths identified for {competitor_name}"]
         except Exception as e:
             logger.error(f"Error extracting competitor strengths: {str(e)}")
-            return [f"Strategic analysis of {competitor_name} requires deeper competitive intelligence gathering"]
+            return [f"Error analyzing {competitor_name}'s strengths"]
 
     def _extract_competitor_weaknesses(self, analysis, competitor_name):
-        """Extract weaknesses from RAG-generated competitor analysis."""
+        """Extract weaknesses from competitor analysis."""
         try:
             weaknesses = []
-            
-            # Extract from actual RAG competitor analysis
-            if isinstance(analysis, dict):
-                # Check for direct competitor analysis from RAG
-                if 'competitor_analysis' in analysis and competitor_name in analysis['competitor_analysis']:
-                    competitor_data = analysis['competitor_analysis'][competitor_name]
-                    if isinstance(competitor_data, str):
-                        # Extract weakness indicators from RAG analysis
-                        weakness_indicators = [
-                            'weaknesses:', 'lacks', 'missing', 'fails to', 'struggles with',
-                            'inconsistent', 'opportunity', 'gap', 'underperforms'
-                        ]
-                        for indicator in weakness_indicators:
-                            if indicator in competitor_data.lower():
-                                context_start = competitor_data.lower().find(indicator)
-                                context = competitor_data[context_start:context_start+200]
-                                if context.strip():
-                                    weaknesses.append(context.strip())
-                
-                # Extract from recommendations that identify competitor gaps
-                elif 'recommendations' in analysis:
-                    recommendations = analysis['recommendations']
-                    if isinstance(recommendations, list):
-                        for rec in recommendations:
-                            if isinstance(rec, str) and competitor_name.lower() in rec.lower():
-                                if any(word in rec.lower() for word in ['gap', 'opportunity', 'missing', 'lacks']):
-                                    weaknesses.append(f"Opportunity identified: {rec}")
-                    elif isinstance(recommendations, str):
-                        sentences = re.split(r'[.!?]', recommendations)
-                        for sentence in sentences:
-                            if (competitor_name.lower() in sentence.lower() and 
-                                any(word in sentence.lower() for word in ['gap', 'lacks', 'missing', 'opportunity'])):
-                                weaknesses.append(sentence.strip())
-            
-            elif isinstance(analysis, str):
-                # Extract weakness context from string analysis
-                if competitor_name.lower() in analysis.lower():
-                    sentences = re.split(r'[.!?]', analysis)
-                    for sentence in sentences:
-                        if (competitor_name.lower() in sentence.lower() and 
-                            any(word in sentence.lower() for word in ['weak', 'lacks', 'missing', 'inconsistent', 'opportunity'])):
-                            weaknesses.append(sentence.strip())
-            
-            # Clean and format weaknesses
-            if weaknesses:
-                formatted_weaknesses = []
-                for weakness in weaknesses[:5]:  # Limit to top 5
-                    if len(weakness) > 20:  # Ensure substantial content
-                        formatted_weaknesses.append(weakness[:150] + "..." if len(weakness) > 150 else weakness)
-                return formatted_weaknesses
-            else:
-                return [f"Strategic analysis reveals potential opportunities to differentiate from {competitor_name}'s approach"]
-                
+
+            if isinstance(analysis, str):
+                # Look for negative indicators
+                negative_markers = ['weak', 'poor', 'lack', 'miss', 'inconsistent', 'fail', 'low engagement']
+                for marker in negative_markers:
+                    sentences = re.findall(r'[^.!?]*(?<=[.!?\s])' + marker + r'[^.!?]*[.!?]', analysis, re.IGNORECASE)
+                    weaknesses.extend(sentences)
+
+            # Limit and return
+            return weaknesses[:3] if weaknesses else [f"No clear weaknesses identified for {competitor_name}"]
         except Exception as e:
             logger.error(f"Error extracting competitor weaknesses: {str(e)}")
-            return [f"Competitive gap analysis for {competitor_name} requires additional market intelligence"]
+            return [f"Error analyzing {competitor_name}'s weaknesses"]
 
     def _extract_exploitation_opportunities(self, analysis, recommendations):
-        """Extract exploitation opportunities from RAG-generated analysis."""
+        """Extract exploitation opportunities based on competitor analysis and recommendations."""
         try:
             opportunities = []
-            
-            # Extract from RAG analysis structure
-            if isinstance(analysis, dict):
-                # Look for explicit opportunities in competitor analysis
-                if 'competitor_analysis' in analysis:
-                    for competitor, comp_analysis in analysis['competitor_analysis'].items():
-                        if isinstance(comp_analysis, str):
-                            # Find opportunity keywords in competitor analysis
-                            opportunity_indicators = [
-                                'opportunity', 'exploit', 'capitalize', 'leverage', 'advantage',
-                                'gap', 'underserved', 'potential', 'strategic opening'
-                            ]
-                            for indicator in opportunity_indicators:
-                                if indicator in comp_analysis.lower():
-                                    context_start = comp_analysis.lower().find(indicator)
-                                    context = comp_analysis[context_start:context_start+180]
-                                    if context.strip():
-                                        opportunities.append(f"Market opportunity: {context.strip()}")
-                
-                # Extract from strategic recommendations
-                if 'recommendations' in analysis:
-                    recs = analysis['recommendations']
-                    if isinstance(recs, list):
-                        for rec in recs:
-                            if isinstance(rec, str):
-                                if any(word in rec.lower() for word in ['opportunity', 'leverage', 'exploit', 'capitalize']):
-                                    opportunities.append(f"Strategic opportunity: {rec}")
-                    elif isinstance(recs, str):
-                        sentences = re.split(r'[.!?]', recs)
-                        for sentence in sentences:
-                            if any(word in sentence.lower() for word in ['opportunity', 'leverage', 'gap', 'capitalize']):
-                                opportunities.append(sentence.strip())
-                
-                # Extract from primary analysis strategic insights
-                if 'primary_analysis' in analysis:
-                    primary_text = analysis['primary_analysis']
-                    sentences = re.split(r'[.!?]', primary_text)
-                    for sentence in sentences:
-                        if any(word in sentence.lower() for word in ['opportunity', 'potential', 'leverage', 'strategic']):
-                            opportunities.append(sentence.strip())
-            
-            # Clean and format opportunities
-            if opportunities:
-                formatted_opportunities = []
-                for opp in opportunities[:4]:  # Limit to top 4
-                    if len(opp) > 25:  # Ensure substantial content
-                        formatted_opportunities.append(opp[:200] + "..." if len(opp) > 200 else opp)
-                return formatted_opportunities
-            else:
-                return ["Strategic content positioning to capture underserved audience segments and market gaps"]
-                
+
+            if isinstance(analysis, str) and isinstance(recommendations, str):
+                # Find opportunities in recommendations that relate to this competitor's analysis
+                # Extract key terms from the analysis
+                analysis_terms = set(re.findall(r'\b\w{5,}\b', analysis.lower()))
+
+                # Find sentences in recommendations that contain these terms
+                for term in analysis_terms:
+                    if term in recommendations.lower():
+                        sentences = re.findall(r'[^.!?]*(?<=[.!?\s])' + term + r'[^.!?]*[.!?]', recommendations, re.IGNORECASE)
+                        opportunities.extend(sentences)
+
+            # Limit and return unique opportunities
+            unique_opportunities = list(set(opportunities))
+            return unique_opportunities[:3] if unique_opportunities else ["No specific exploitation opportunities identified"]
         except Exception as e:
             logger.error(f"Error extracting exploitation opportunities: {str(e)}")
-            return ["Market analysis indicates opportunities for strategic positioning and audience growth"]
+            return ["Error analyzing exploitation opportunities"]
 
     def _extract_counter_tactics(self, competitor_name, content_plan):
-        """Extract counter tactics from RAG-generated content plan."""
+        """Extract specific counter tactics against a competitor."""
         try:
             tactics = []
-            
-            # Extract from recommendations with competitor context
-            if 'recommendations' in content_plan:
-                recs = content_plan['recommendations']
-                if isinstance(recs, list):
-                    for rec in recs:
-                        if isinstance(rec, str) and competitor_name.lower() in rec.lower():
-                            tactics.append(f"Strategic counter-approach: {rec}")
-                elif isinstance(recs, str):
-                    if competitor_name.lower() in recs.lower():
-                        sentences = re.split(r'[.!?]', recs)
-                        for sentence in sentences:
-                            if competitor_name.lower() in sentence.lower():
-                                tactics.append(sentence.strip())
-            
-            # Extract from competitor analysis strategy
-            if 'competitor_analysis' in content_plan and competitor_name in content_plan['competitor_analysis']:
-                comp_analysis = content_plan['competitor_analysis'][competitor_name]
-                if isinstance(comp_analysis, str):
-                    # Look for tactical recommendations
-                    tactical_indicators = [
-                        'instead', 'counter', 'different approach', 'alternative',
-                        'outmaneuver', 'strategic response', 'tactical advantage'
-                    ]
-                    for indicator in tactical_indicators:
-                        if indicator in comp_analysis.lower():
-                            context_start = comp_analysis.lower().find(indicator)
-                            context = comp_analysis[context_start:context_start+180]
-                            if context.strip():
-                                tactics.append(f"Counter-tactic: {context.strip()}")
-            
-            # Extract tactical elements from next post
-            if 'next_post_prediction' in content_plan:
-                next_post = content_plan['next_post_prediction']
-                if isinstance(next_post, dict):
-                    caption = next_post.get('caption', '')
-                    if caption and len(caption) > 30:
-                        tactics.append(f"Content differentiation through authentic voice: {caption[:100]}...")
-            
-            # Clean and format tactics
-            if tactics:
-                formatted_tactics = []
-                for tactic in tactics[:3]:  # Limit to top 3
-                    if len(tactic) > 20:  # Ensure substantial content
-                        formatted_tactics.append(tactic[:180] + "..." if len(tactic) > 180 else tactic)
-                return formatted_tactics
-            else:
-                return [f"Differentiation strategy through authentic content approach and strategic positioning against {competitor_name}"]
-                
+            recommendations = content_plan.get('recommendations', '')
+
+            if isinstance(recommendations, str):
+                # Look for sentences that specifically mention this competitor
+                competitor_sentences = re.findall(r'[^.!?]*' + re.escape(competitor_name) + r'[^.!?]*[.!?]', recommendations, re.IGNORECASE)
+                tactics.extend(competitor_sentences)
+
+                # Look for counter strategy indicators
+                counter_markers = ['counter', 'against', 'instead of', 'better than', 'unlike', 'whereas']
+                for marker in counter_markers:
+                    sentences = re.findall(r'[^.!?]*(?<=[.!?\s])' + marker + r'[^.!?]*[.!?]', recommendations, re.IGNORECASE)
+                    # Only add if they might relate to this competitor
+                    for sentence in sentences:
+                        if competitor_name.lower() in sentence.lower() or any(term in sentence.lower() for term in competitor_name.lower().split()):
+                            tactics.append(sentence)
+
+            # Look in next post for counter positioning
+            next_post = content_plan.get('next_post_prediction', {})
+            if isinstance(next_post, dict) and 'caption' in next_post:
+                caption = next_post.get('caption', '')
+                if competitor_name.lower() in caption.lower():
+                    tactics.append(f"Suggested caption directly counters {competitor_name}'s approach: {caption}")
+
+            # Limit and return unique tactics
+            unique_tactics = list(set(tactics))
+            return unique_tactics[:3] if unique_tactics else [f"No specific counter tactics identified against {competitor_name}"]
         except Exception as e:
             logger.error(f"Error extracting counter tactics: {str(e)}")
-            return [f"Strategic counter-positioning requires deeper competitive analysis of {competitor_name}"]
+            return ["Error analyzing counter tactics"]
 
     def _extract_differentiation_factors(self, content_plan):
-        """Extract differentiation factors from RAG-generated content plan."""
+        """Extract differentiation factors for the next post."""
         try:
             factors = []
-            
-            # Extract from main recommendations with differentiation focus
-            if 'recommendations' in content_plan:
-                recs = content_plan['recommendations']
-                if isinstance(recs, list):
-                    for rec in recs:
-                        if isinstance(rec, str):
-                            # Look for differentiation language in RAG recommendations
-                            if any(word in rec.lower() for word in ['differentiate', 'unique', 'distinct', 'stand out', 'positioning']):
-                                factors.append(f"Strategic differentiation: {rec}")
-                elif isinstance(recs, str):
-                    sentences = re.split(r'[.!?]', recs)
-                    for sentence in sentences:
-                        if any(word in sentence.lower() for word in ['differentiate', 'unique', 'authentic', 'distinct']):
-                            factors.append(sentence.strip())
-            
-            # Extract from primary analysis differentiation insights
-            if 'primary_analysis' in content_plan:
-                primary_text = content_plan['primary_analysis']
-                sentences = re.split(r'[.!?]', primary_text)
-                for sentence in sentences:
-                    if any(word in sentence.lower() for word in ['unique', 'authentic', 'differentiate', 'positioning', 'advantage']):
-                        factors.append(sentence.strip())
-            
-            # Extract from next post as differentiation example
-            if 'next_post_prediction' in content_plan:
-                next_post = content_plan['next_post_prediction']
-                if isinstance(next_post, dict):
-                    caption = next_post.get('caption', '')
-                    image_prompt = next_post.get('image_prompt', next_post.get('visual_prompt', ''))
-                    
-                    if caption and len(caption) > 30:
-                        factors.append(f"Content voice differentiation: Authentic caption style demonstrates unique brand personality")
-                    
-                    if image_prompt and len(image_prompt) > 20:
-                        factors.append(f"Visual differentiation: {image_prompt[:100]}..." if len(image_prompt) > 100 else f"Visual approach: {image_prompt}")
-            
-            # Extract differentiation from competitor analysis context
-            if 'competitor_analysis' in content_plan:
-                for competitor, analysis in content_plan['competitor_analysis'].items():
-                    if isinstance(analysis, str):
-                        sentences = re.split(r'[.!?]', analysis)
-                        for sentence in sentences:
-                            if any(word in sentence.lower() for word in ['unlike', 'different', 'alternative', 'unique approach']):
-                                factors.append(f"Competitive differentiation: {sentence.strip()}")
-            
-            # Clean and format factors
-            if factors:
-                formatted_factors = []
-                for factor in factors[:4]:  # Limit to top 4
-                    if len(factor) > 25:  # Ensure substantial content
-                        formatted_factors.append(factor[:180] + "..." if len(factor) > 180 else factor)
-                return formatted_factors
-            else:
-                return ["Authentic voice and strategic content positioning creates natural differentiation from competitors"]
-                
+            next_post = content_plan.get('next_post_prediction', {})
+            recommendations = content_plan.get('recommendations', '')
+
+            # Look for differentiation language in recommendations
+            if isinstance(recommendations, str):
+                diff_markers = ['different', 'unique', 'stand out', 'unlike', 'distinguish', 'separate']
+                for marker in diff_markers:
+                    sentences = re.findall(r'[^.!?]*(?<=[.!?\s])' + marker + r'[^.!?]*[.!?]', recommendations, re.IGNORECASE)
+                    factors.extend(sentences)
+
+            # Add caption and visual elements as differentiation factors
+            if isinstance(next_post, dict):
+                caption = next_post.get('caption', '')
+                visual = next_post.get('visual_prompt', '')
+
+                if caption:
+                    factors.append(f"Distinctive caption approach: {caption[:50]}...")
+
+                if visual:
+                    factors.append(f"Unique visual concept: {visual[:50]}...")
+
+            # Limit and return unique factors
+            unique_factors = list(set(factors))
+            return unique_factors[:3] if unique_factors else ["No specific differentiation factors identified"]
         except Exception as e:
             logger.error(f"Error extracting differentiation factors: {str(e)}")
-            return ["Strategic differentiation through content authenticity and targeted audience engagement"]
+            return ["Error analyzing differentiation factors"]
 
     def _extract_counter_strategies(self, content_plan):
-        """Extract counter strategies from RAG-generated content plan."""
+        """Extract counter strategies from the content plan."""
         try:
             strategies = []
-            
-            # Extract strategic approaches from recommendations
-            if 'recommendations' in content_plan:
-                recs = content_plan['recommendations']
-                if isinstance(recs, list):
-                    for rec in recs:
-                        if isinstance(rec, str):
-                            # Look for strategic language in RAG recommendations
-                            if any(word in rec.lower() for word in ['strategy', 'approach', 'counter', 'strategic', 'positioning']):
-                                strategies.append(f"Strategic approach: {rec}")
-                elif isinstance(recs, str):
-                    sentences = re.split(r'[.!?]', recs)
-                    for sentence in sentences:
-                        if any(word in sentence.lower() for word in ['strategy', 'counter', 'approach', 'tactical']):
-                            strategies.append(sentence.strip())
-            
-            # Extract from competitor analysis strategic insights
-            if 'competitor_analysis' in content_plan:
-                for competitor, analysis in content_plan['competitor_analysis'].items():
-                    if isinstance(analysis, str):
-                        # Look for strategic recommendations against this competitor
-                        strategic_indicators = [
-                            'strategy', 'strategic response', 'counter approach', 'positioning',
-                            'tactical advantage', 'competitive edge', 'market position'
-                        ]
-                        for indicator in strategic_indicators:
-                            if indicator in analysis.lower():
-                                context_start = analysis.lower().find(indicator)
-                                context = analysis[context_start:context_start+200]
-                                if context.strip():
-                                    strategies.append(f"Counter-strategy vs {competitor}: {context.strip()}")
-            
-            # Extract from primary analysis strategic positioning
-            if 'primary_analysis' in content_plan:
-                primary_text = content_plan['primary_analysis']
-                sentences = re.split(r'[.!?]', primary_text)
-                for sentence in sentences:
-                    if any(word in sentence.lower() for word in ['strategic', 'positioning', 'approach', 'market']):
-                        strategies.append(f"Primary strategy: {sentence.strip()}")
-            
-            # Extract strategic elements from improvement recommendations
-            if 'improvement_recommendations' in content_plan:
-                improvements = content_plan['improvement_recommendations']
-                if isinstance(improvements, list):
-                    for improvement in improvements[:3]:  # Top 3 improvements
-                        if isinstance(improvement, str) and len(improvement) > 30:
-                            strategies.append(f"Enhancement strategy: {improvement}")
-            
-            # Clean and format strategies
-            if strategies:
-                formatted_strategies = []
-                for strategy in strategies[:4]:  # Limit to top 4
-                    if len(strategy) > 25:  # Ensure substantial content
-                        formatted_strategies.append(strategy[:200] + "..." if len(strategy) > 200 else strategy)
-                return formatted_strategies
-            else:
-                return ["Content strategy focused on authentic engagement and strategic market positioning"]
-                
+            recommendations = content_plan.get('recommendations', '')
+
+            # Look for counter strategy language
+            if isinstance(recommendations, str):
+                strategy_markers = ['counter', 'against', 'instead of', 'better than', 'outperform']
+                for marker in strategy_markers:
+                    sentences = re.findall(r'[^.!?]*(?<=[.!?\s])' + marker + r'[^.!?]*[.!?]', recommendations, re.IGNORECASE)
+                    strategies.extend(sentences)
+
+            # Look for explicit strategies in competitor analysis
+            competitor_analysis = content_plan.get('competitor_analysis', {})
+            for competitor, analysis in competitor_analysis.items():
+                if isinstance(analysis, str):
+                    # Look for strategy recommendations specific to this competitor
+                    if "recommend" in analysis.lower() or "should" in analysis.lower():
+                        rec_sentences = re.findall(r'[^.!?]*(?<=[.!?\s])(recommend|should)[^.!?]*[.!?]', analysis, re.IGNORECASE)
+                        if rec_sentences:
+                            strategies.append(f"Against {competitor}: {rec_sentences[0]}")
+
+            # Limit and return unique strategies
+            unique_strategies = list(set(strategies))
+            return unique_strategies[:3] if unique_strategies else ["No specific counter strategies identified"]
         except Exception as e:
             logger.error(f"Error extracting counter strategies: {str(e)}")
-            return ["Strategic content approach emphasizing authentic voice and competitive positioning"]
+            return ["Error analyzing counter strategies"]
 
     def continuous_processing_loop(self, sleep_interval=300):
         """
@@ -2684,7 +2308,7 @@ class ContentRecommendationSystem:
             import traceback
             logger.error(traceback.format_exc())
             raise
-            
+
     def _refresh_profile_data(self, username):
         """
         Refresh profile data for a username by rescanning existing data sources.
@@ -2937,29 +2561,20 @@ class ContentRecommendationSystem:
             posting_style = posting_style_from_info
             logger.info(f"USING AUTHORITATIVE VALUES FROM Twitter info.json - account_type: {account_type}, posting_style: {posting_style}")
             
-            # CRITICAL FIX: Use authoritative username from info.json instead of extracting from Twitter data
-            # This prevents using competitor usernames as primary username
-            authoritative_username = account_info.get('username') if account_info else None
-            if not authoritative_username:
-                logger.error("CRITICAL: No authoritative username found in account_info. Cannot determine primary username.")
-                return None
-            
-            logger.info(f"🔧 AUTHORITATIVE PRIMARY USERNAME FROM info.json: '{authoritative_username}'")
-            
             # With the new actor format, each item is a tweet with user info
             posts = []
             engagement_history = []
-            primary_username = authoritative_username  # Use authoritative username ALWAYS
+            primary_username = None
             profile_data = {}
             
             # Process tweets to extract user info and posts
             for item in raw_data:
-                if 'user' in item and not profile_data:
+                if 'user' in item and primary_username is None:
                     # Extract profile data from the first tweet's user info
                     user_info = item['user']
-                    # CRITICAL: Always use authoritative username, NOT the one from Twitter data
+                    primary_username = user_info.get('username', '')
                     profile_data = {
-                        'username': primary_username,  # Use authoritative username
+                        'username': primary_username,
                         'fullName': user_info.get('userFullName', ''),
                         'followersCount': user_info.get('totalFollowers', 0),
                         'followsCount': user_info.get('totalFollowing', 0),
@@ -2968,7 +2583,7 @@ class ContentRecommendationSystem:
                         'account_type': account_type,  # PRESERVE THIS VALUE
                         'posting_style': posting_style,  # PRESERVE THIS VALUE
                     }
-                    logger.info(f"✅ Created Twitter profile for AUTHORITATIVE primary username: {primary_username}")
+                    logger.info(f"Extracted Twitter profile for {primary_username}")
                 
                 # Process tweet data
                 if 'text' in item and item.get('text', '').strip():
@@ -2992,7 +2607,7 @@ class ContentRecommendationSystem:
                         'timestamp': item.get('timestamp', ''),
                         'url': item.get('url', ''),
                         'type': 'tweet',
-                        'username': primary_username,  # Always use authoritative username
+                        'username': primary_username or '',
                         'is_retweet': item.get('isRetweet', False),
                         'is_quote': item.get('isQuote', False)
                     }
@@ -3011,7 +2626,7 @@ class ContentRecommendationSystem:
                             'engagement': engagement
                         })
 
-            logger.info(f"Processed {len(posts)} Twitter posts with content for primary username: {primary_username}")
+            logger.info(f"Processed {len(posts)} Twitter posts with content")
 
             if not posts:
                 logger.warning("No posts with content extracted from Twitter data")
@@ -3036,7 +2651,6 @@ class ContentRecommendationSystem:
 
             # CRITICAL: These values should NEVER be overridden anywhere else in the pipeline
             logger.warning(f"IMPORTANT: Twitter account_type '{account_type}' and posting_style '{posting_style}' must be preserved throughout the pipeline")
-            logger.warning(f"IMPORTANT: Twitter primary username '{primary_username}' is AUTHORITATIVE and must be preserved throughout the pipeline")
 
             # Construct final data structure with the preserved account_type and posting_style (SAME AS INSTAGRAM)
             processed_data = {
@@ -3045,7 +2659,7 @@ class ContentRecommendationSystem:
                 'profile': profile_data,
                 'account_type': account_type,  # PRESERVE THIS VALUE
                 'posting_style': posting_style,  # PRESERVE THIS VALUE
-                'primary_username': primary_username,  # PRESERVE AUTHORITATIVE USERNAME
+                'primary_username': primary_username,
                 'platform': 'twitter'  # Explicitly set platform
             }
 
@@ -3053,7 +2667,7 @@ class ContentRecommendationSystem:
             if competitors:
                 processed_data['secondary_usernames'] = competitors
 
-            logger.info(f"FINAL VALUES FOR TWITTER PROCESSING - primary_username: {primary_username}, account_type: {account_type}, posting_style: {posting_style}")
+            logger.info(f"FINAL VALUES FOR TWITTER PROCESSING - account_type: {account_type}, posting_style: {posting_style}")
 
             return processed_data
 
@@ -3068,11 +2682,6 @@ class ContentRecommendationSystem:
         try:
             logger.info(f"Processing Twitter username: {username} (force_fresh={force_fresh})")
             
-            # For automated sequential processing, we should prioritize fresh data
-            # but for direct user calls, we can allow cached data unless explicitly requested
-            if not force_fresh:
-                logger.info(f"💡 TIP: Use force_fresh=True to ensure latest Twitter updates for {username}")
-            
             # Check if we have any data for this username in R2
             object_key = f"twitter/{username}/{username}.json"
             
@@ -3081,15 +2690,15 @@ class ContentRecommendationSystem:
             if not force_fresh:
                 try:
                     raw_data = self.data_retriever.get_json_data(object_key)
-                    logger.info(f"Found existing Twitter data for {username} in R2 (using cached data)")
+                    logger.info(f"Found existing Twitter data for {username} in R2")
                 except Exception as e:
                     logger.info(f"No existing Twitter data found for {username}, will need to scrape: {str(e)}")
             else:
-                logger.info(f"🔄 Force fresh scraping enabled - ignoring any existing data for {username}")
+                logger.info(f"Force fresh scraping enabled - ignoring any existing data for {username}")
             
             # If no existing data OR force_fresh is True, scrape it
             if not raw_data or force_fresh:
-                logger.info(f"🔄 FRESH SCRAPING: Attempting to scrape latest Twitter data for {username}")
+                logger.info(f"Attempting to scrape Twitter data for {username}")
                 from twitter_scraper import TwitterScraper
                 scraper = TwitterScraper()
                 
@@ -3099,7 +2708,7 @@ class ContentRecommendationSystem:
                     logger.error(f"Failed to scrape Twitter profile for {username}")
                     return {"success": False, "message": f"Failed to scrape Twitter profile for {username}"}
                 
-                logger.info(f"✅ Successfully scraped fresh Twitter profile for {username}")
+                logger.info(f"Successfully scraped Twitter profile for {username}")
                 
                 # Try to get the newly uploaded data
                 try:
@@ -3131,8 +2740,6 @@ class ContentRecommendationSystem:
                     except Exception as pipeline_e:
                         logger.error(f"Pipeline error for Twitter direct data: {str(pipeline_e)}")
                         return {"success": False, "message": f"Pipeline error for Twitter user {username}: {str(pipeline_e)}"}
-            else:
-                logger.info(f"📦 Using cached Twitter data for {username} (use force_fresh=True for latest updates)")
             
             # Standard processing - Try to run the pipeline with the object key
             try:
@@ -3200,36 +2807,32 @@ class ContentRecommendationSystem:
         Twitter Priority: Process ALL pending Twitter accounts through full pipeline FIRST (scraping + recommendations + exportation)
         Instagram Priority: Only process Instagram accounts when NO Twitter accounts are pending
         
-        **FRESH SCRAPING GUARANTEE:**
-        NEVER skips scraping - Always gets latest updates when processing unprocessed info.json files
-        
         Args:
             sleep_interval: Time to sleep between processing cycles (in seconds)
         """
         self.running = True
-        logger.info("🚀 Starting sequential multi-platform processing loop")
+        logger.info("Starting sequential multi-platform processing loop")
         logger.info("🎯 **USER REQUESTED PRIORITY ORDER**: 1) Complete ALL Twitter accounts FIRST, 2) Then process Instagram accounts")
-        logger.info("🔄 **FRESH SCRAPING GUARANTEE**: NEVER skips scraping - Always gets latest social media updates")
         
         try:
             while self.running:
                 processed_any = False
                 
                 # 🥇 PRIORITY 1: Process Twitter accounts COMPLETELY FIRST (including full pipeline)
-                logger.info("🔍 Checking for Twitter accounts to process with FRESH SCRAPING...")
+                logger.info("🔍 Checking for Twitter accounts to process...")
                 twitter_processed = self._process_platform_accounts('twitter')
                 if twitter_processed > 0:
-                    logger.info(f"✅ Processed {twitter_processed} Twitter accounts through FULL pipeline with fresh data")
+                    logger.info(f"✅ Processed {twitter_processed} Twitter accounts through FULL pipeline")
                     processed_any = True
                     
                     # Continue processing Twitter accounts if more exist - NO Instagram processing until Twitter is done
                     continue
                 
                 # 🥈 PRIORITY 2: Process Instagram accounts ONLY when NO Twitter accounts are pending
-                logger.info("🔍 No Twitter accounts pending. Checking Instagram accounts with FRESH SCRAPING...")
+                logger.info("🔍 No Twitter accounts pending. Checking Instagram accounts...")
                 instagram_processed = self._process_platform_accounts('instagram')
                 if instagram_processed > 0:
-                    logger.info(f"✅ Processed {instagram_processed} Instagram accounts through FULL pipeline with fresh data")
+                    logger.info(f"✅ Processed {instagram_processed} Instagram accounts through FULL pipeline")
                     processed_any = True
                 
                 # If nothing was processed for either platform, sleep for the full interval
@@ -3260,7 +2863,7 @@ class ContentRecommendationSystem:
             int: Number of accounts processed
         """
         try:
-            logger.info(f"🔍 SEQUENTIAL PROCESSING: Checking for unprocessed {platform} accounts")
+            logger.info(f"Checking for unprocessed {platform} accounts")
             
             # Check for AccountInfo files for this platform
             account_info_files = self._find_unprocessed_account_info(platform)
@@ -3279,7 +2882,7 @@ class ContentRecommendationSystem:
                         logger.warning(f"Could not extract username from {info_file['Key']}")
                         continue
                     
-                    logger.info(f"🔄 SEQUENTIAL PROCESSING: Processing {platform} account: {username} with FRESH SCRAPING")
+                    logger.info(f"Processing {platform} account: {username}")
                     
                     # Download and parse the info.json file
                     account_info = self._download_account_info(info_file['Key'])
@@ -3292,13 +2895,11 @@ class ContentRecommendationSystem:
                     account_info['processing_started_at'] = datetime.now().isoformat()
                     self._upload_account_info(info_file['Key'], account_info)
                     
-                    # Process the account based on platform with GUARANTEED FRESH SCRAPING
+                    # Process the account based on platform
                     success = False
                     if platform == 'instagram':
-                        # Instagram: Use the _process_instagram_account_from_info which now ALWAYS scrapes fresh
                         success = self._process_instagram_account_from_info(username, account_info)
                     elif platform == 'twitter':
-                        # Twitter: Use the _process_twitter_account_from_info which now ALWAYS scrapes fresh
                         success = self._process_twitter_account_from_info(username, account_info)
                     
                     # Update status
@@ -3306,11 +2907,11 @@ class ContentRecommendationSystem:
                         account_info['status'] = 'processed'
                         account_info['processed_at'] = datetime.now().isoformat()
                         processed_count += 1
-                        logger.info(f"✅ Successfully processed {platform} account: {username} with fresh data")
+                        logger.info(f"Successfully processed {platform} account: {username}")
                     else:
                         account_info['status'] = 'failed'
                         account_info['failed_at'] = datetime.now().isoformat()
-                        logger.error(f"❌ Failed to process {platform} account: {username}")
+                        logger.error(f"Failed to process {platform} account: {username}")
                     
                     # Upload updated status
                     self._upload_account_info(info_file['Key'], account_info)
@@ -3328,9 +2929,6 @@ class ContentRecommendationSystem:
                     except:
                         pass
                     continue
-            
-            if processed_count > 0:
-                logger.info(f"🎉 SEQUENTIAL PROCESSING: Successfully processed {processed_count} {platform} accounts with fresh scraping")
             
             return processed_count
             
@@ -3484,33 +3082,34 @@ class ContentRecommendationSystem:
             
             logger.info(f"Instagram account {username}: type={account_type}, style={posting_style}, competitors={len(competitors)}")
             
-            # FIXED: ALWAYS scrape fresh data when processing unprocessed info.json files
-            # Never skip scraping to ensure we get the latest updates
-            logger.info(f"🔄 ALWAYS FRESH SCRAPING: Processing unprocessed info.json for {username} - calling Instagram scraper for latest data")
-            
-            # Call Instagram scraper to scrape and upload fresh data
-            from instagram_scraper import InstagramScraper
-            scraper = InstagramScraper()
-            
-            # Process the account batch (scraping + uploading) with fresh data
-            scraper_result = scraper.process_account_batch(
-                parent_username=username,
-                competitor_usernames=competitors,
-                results_limit=10,
-                info_metadata=account_info
-            )
-            
-            if not scraper_result.get('success', False):
-                logger.error(f"Instagram scraper failed for {username}: {scraper_result.get('message', 'Unknown error')}")
-                return False
-            
-            logger.info(f"✅ Instagram fresh scraping successful for {username}, proceeding with pipeline")
-            
-            # Get the freshly scraped data
+            # FIXED: Try to get Instagram data from R2, but call scraper if not available
             instagram_data = self.data_retriever.get_social_media_data(username, platform="instagram")
             if not instagram_data:
-                logger.error(f"No Instagram data found for {username} after fresh scraping")
-                return False
+                logger.info(f"No Instagram data found for {username} in R2, calling scraper...")
+                
+                # Call Instagram scraper to scrape and upload the data
+                from instagram_scraper import InstagramScraper
+                scraper = InstagramScraper()
+                
+                # Process the account batch (scraping + uploading)
+                scraper_result = scraper.process_account_batch(
+                    parent_username=username,
+                    competitor_usernames=competitors,
+                    results_limit=10,
+                    info_metadata=account_info
+                )
+                
+                if not scraper_result.get('success', False):
+                    logger.error(f"Instagram scraper failed for {username}: {scraper_result.get('message', 'Unknown error')}")
+                    return False
+                
+                logger.info(f"Instagram scraper successful for {username}, trying to get data again...")
+                
+                # Try to get the data again after scraping
+                instagram_data = self.data_retriever.get_social_media_data(username, platform="instagram")
+                if not instagram_data:
+                    logger.error(f"Still no Instagram data found for {username} after scraping")
+                    return False
             
             # Process the Instagram data
             processed_data = self.process_instagram_data(
@@ -3575,41 +3174,42 @@ class ContentRecommendationSystem:
             
             logger.info(f"Twitter account {username}: type={account_type}, style={posting_style}, competitors={len(competitors)}")
             
-            # FIXED: ALWAYS scrape fresh data when processing unprocessed info.json files
-            # Never skip scraping to ensure we get the latest updates
-            logger.info(f"🔄 ALWAYS FRESH SCRAPING: Processing unprocessed info.json for {username} - calling Twitter scraper for latest data")
-            
-            # Call Twitter scraper to scrape and upload fresh data
-            from twitter_scraper import TwitterScraper
-            scraper = TwitterScraper()
-            
-            # Process the account batch (scraping + uploading) with fresh data
-            scraper_result = scraper.process_account_batch(
-                parent_username=username,
-                competitor_usernames=competitors,
-                results_limit=10,
-                info_metadata=account_info
-            )
-            
-            if not scraper_result.get('success', False):
-                logger.error(f"Twitter scraper failed for {username}: {scraper_result.get('message', 'Unknown error')}")
-                return False
-            
-            logger.info(f"✅ Twitter fresh scraping successful for {username}, proceeding with pipeline")
-            
-            # Get the freshly scraped data
+            # FIXED: Try to get Twitter data from R2, but call scraper if not available
             twitter_data = self.data_retriever.get_twitter_data(username)
             if not twitter_data:
-                logger.error(f"No Twitter data found for {username} after fresh scraping")
-                return False
+                logger.info(f"No Twitter data found for {username} in R2, calling scraper...")
+                
+                # Call Twitter scraper to scrape and upload the data
+                from twitter_scraper import TwitterScraper
+                scraper = TwitterScraper()
+                
+                # Process the account batch (scraping + uploading)
+                scraper_result = scraper.process_account_batch(
+                    parent_username=username,
+                    competitor_usernames=competitors,
+                    results_limit=10,
+                    info_metadata=account_info
+                )
+                
+                if not scraper_result.get('success', False):
+                    logger.error(f"Twitter scraper failed for {username}: {scraper_result.get('message', 'Unknown error')}")
+                    return False
+                
+                logger.info(f"Twitter scraper successful for {username}, trying to get data again...")
+                
+                # Try to get the data again after scraping
+                twitter_data = self.data_retriever.get_twitter_data(username)
+                if not twitter_data:
+                    logger.error(f"Still no Twitter data found for {username} after scraping")
+                    return False
             
             # Process the Twitter data
             processed_data = self.process_twitter_data(
                 raw_data=twitter_data,
                 account_info={
-                    'username': username,  # CRITICAL: Pass the authoritative username from info.json
-                    'accountType': account_type,  # Use consistent field names
-                    'postingStyle': posting_style,  # Use consistent field names
+                    'username': username,
+                    'account_type': account_type,
+                    'posting_style': posting_style,
                     'competitors': competitors,
                     'platform': 'twitter'
                 }

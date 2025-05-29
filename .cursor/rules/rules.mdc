@@ -3,8 +3,15 @@ description:
 globs: 
 alwaysApply: true
 ---
-ALWAYS MAKE BEST REUSABLE DYNAMIC CODE THAT WORK SMART AND FULLY REAL PIPLELINING IMPLEMENTATAION ADN NEVER EVER USE FALLBACK SYSTEM. RESOLVE EVERY ERROR BEFORE YOU MOVE AHEAD
-ALWASYS NARROW DOWN THE ISSUE AND MAKE PROBLME FULLY DEBUG AND THE RESOLVE, IF THAT HAS SOME SOEME PART WHICH IS OUT OF YOUR SCOPE YOU SHALL THEN POINT OUT TO ME WITHOUT ANY IMPLEMEMENTING FALLBACK SYSTEM. DON'T DISTURB PREVIOUS ANY FUNCTIONLAITY UNLESS IT IS NEEDED AND ALWAYS TRY TO IMPROVE THR CODE WITHOUT AFFECTING ANY CODEBASE CARELESS CHANGES
+Ensure the creation of robust, reusable, and dynamic code with an emphasis on effective pipelining implementation. Avoid fallback systems at all costs. Before proceeding with any new development, resolve all present errors.
 
-be genius and use some contextual intelligence
-this is professional work so be professional
+Issue Analysis and Debugging
+- Systematically narrow down the issue to fully debug and resolve it.
+- If any part of the issue is outside your scope, clearly communicate this without resorting to a fallback solution.
+- Maintain existing functionality unless it's necessary to alter it for improvement.
+
+Code Improvement Guidelines
+- Prioritize incremental code improvements without negatively impacting the codebase or adding careless changes.
+- Make professional-level contextual edits to resolve issues while being fully aware of the surrounding code. 
+
+Conduct all edits thoughtfully without disrupting adjacent lines of code. Ensure that every modification is reasonable and contextually appropriate. Maintain a high standard of professionalism throughout this process, demonstrating contextual intelligence in your approach.

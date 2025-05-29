@@ -16,6 +16,7 @@ class ImageGenerator:
         self.status_manager = StatusManager()
         self.input_prefix = "next_posts/"
         self.output_prefix = "ready_post/"
+        self.platforms = ["instagram", "twitter"]  # Support both platforms
 
     def fix_post_data(self, data, key):
         """
@@ -191,9 +192,17 @@ class ImageGenerator:
             await self.r2_client.write_json(key, data)
             return
 
-        # Set up paths for storing files
-        username = key.split("/")[1]
-        output_dir = f"{self.output_prefix}{username}/"
+        # Extract platform and username from new schema: next_posts/platform/username/file.json
+        key_parts = key.split("/")
+        if len(key_parts) < 4:
+            logger.error(f"Invalid key format for new schema: {key}")
+            return
+            
+        platform = key_parts[1]  # next_posts/platform/username/file.json
+        username = key_parts[2]
+        
+        # Create platform-aware output directory path - NEW SCHEMA: ready_post/platform/username/
+        output_dir = f"{self.output_prefix}{platform}/{username}/"
         objects = await self.r2_client.list_objects(output_dir)
         post_number = len([o for o in objects if "ready_post_" in o["Key"]]) + 1
         
@@ -235,13 +244,17 @@ class ImageGenerator:
         async with aiohttp.ClientSession() as session:
             while True:
                 try:
-                    logger.info("Checking for new posts...")
-                    objects = await self.r2_client.list_objects(self.input_prefix)
-                    logger.debug(f"Found {len(objects)} objects under {self.input_prefix}")
+                    logger.info("Checking for new posts across all platforms...")
                     
-                    # Separate files into urgent and regular posts
+                    # Separate files into urgent and regular posts across all platforms
                     urgent_files = []
                     regular_files = []
+                    
+                    # Scan both platforms for posts
+                    for platform in self.platforms:
+                        platform_prefix = f"{self.input_prefix}{platform}/"
+                        objects = await self.r2_client.list_objects(platform_prefix)
+                        logger.debug(f"Found {len(objects)} objects under {platform_prefix}")
                     
                     for obj in objects:
                         key = obj["Key"]

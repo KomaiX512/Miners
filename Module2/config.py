@@ -4,16 +4,16 @@ import os
 load_dotenv()
 
 R2_CONFIG = {
-    "endpoint_url": os.getenv("R2_ENDPOINT_URL", "https://9069781eea9a108d41848d73443b3a87.r2.cloudflarestorage.com"),
-    "aws_access_key_id": os.getenv("R2_ACCESS_KEY", "b94be077bc48dcc2aec3e4331233327e"),
-    "aws_secret_access_key": os.getenv("R2_SECRET_KEY", "791d5eeddcd8ed5bf3f41bfaebbd37e58af7dcb12275b1422747605d7dc75bc4"),
+    "endpoint_url": os.getenv("R2_ENDPOINT_URL", "https://b21d96e73b908d7d7b822d41516ccc64.r2.cloudflarestorage.com"),
+    "aws_access_key_id": os.getenv("R2_ACCESS_KEY", "986718fe67d6790c7fe4eeb78943adba"),
+    "aws_secret_access_key": os.getenv("R2_SECRET_KEY", "08fb3b012163cce35bee80b54d83e3a6924f2679f466790a9c7fdd9456bc44fe"),
     "bucket_name": os.getenv("R2_BUCKET_NAME", "tasks")
 }
 
 STRUCTUREDB_R2_CONFIG = {
-    "endpoint_url": os.getenv("STRUCTUREDB_ENDPOINT_URL", "https://9069781eea9a108d41848d73443b3a87.r2.cloudflarestorage.com"),
-    "aws_access_key_id": os.getenv("STRUCTUREDB_ACCESS_KEY", os.getenv("R2_ACCESS_KEY", "b94be077bc48dcc2aec3e4331233327e")),
-    "aws_secret_access_key": os.getenv("STRUCTUREDB_SECRET_KEY", os.getenv("R2_SECRET_KEY", "791d5eeddcd8ed5bf3f41bfaebbd37e58af7dcb12275b1422747605d7dc75bc4")),
+    "endpoint_url": os.getenv("STRUCTUREDB_ENDPOINT_URL", "https://b21d96e73b908d7d7b822d41516ccc64.r2.cloudflarestorage.com"),
+    "aws_access_key_id": os.getenv("STRUCTUREDB_ACCESS_KEY", os.getenv("R2_ACCESS_KEY", "986718fe67d6790c7fe4eeb78943adba")),
+    "aws_secret_access_key": os.getenv("STRUCTUREDB_SECRET_KEY", os.getenv("R2_SECRET_KEY", "08fb3b012163cce35bee80b54d83e3a6924f2679f466790a9c7fdd9456bc44fe")),
     "bucket_name": os.getenv("STRUCTUREDB_BUCKET_NAME", "structuredb")
 }
 

@@ -14,6 +14,7 @@ class AIReplyHandler:
         self.poll_interval = poll_interval
         self.tasks_client = R2Client(config=R2_CONFIG)
         self.structuredb_client = R2Client(config=STRUCTUREDB_R2_CONFIG)
+        self.platforms = ["instagram", "twitter"]  # Support both platforms
         genai.configure(api_key=GEMINI_CONFIG["api_key"])
         self.model = genai.GenerativeModel(
             model_name=GEMINI_CONFIG["model"],
@@ -36,8 +37,11 @@ class AIReplyHandler:
             await asyncio.sleep(self.poll_interval)
 
     async def process_pending_replies(self):
-        # List all ai_reply/<username>/ai_dm_*.json and ai_comment_*.json files
-        objects = await self.tasks_client.list_objects("ai_reply/")
+        # Scan both platforms for AI reply files - NEW SCHEMA: ai_reply/platform/username/ai_dm_*.json
+        for platform in self.platforms:
+            platform_prefix = f"ai_reply/{platform}/"
+            objects = await self.tasks_client.list_objects(platform_prefix)
+            
         for obj in objects:
             key = obj["Key"]
             if not key.endswith(".json"):
@@ -46,9 +50,15 @@ class AIReplyHandler:
             base = key.split("/")[-1]
             if not (base.startswith("ai_dm_") or base.startswith("ai_comment_")):
                 continue
-            username = key.split("/")[1]
+                
+                # Extract username from new schema: ai_reply/platform/username/file.json
+                key_parts = key.split("/")
+                if len(key_parts) < 4:
+                    continue
+                username = key_parts[2]  # ai_reply/platform/username/file.json
+                
             if await self.is_pending(key):
-                await self.handle_reply_file(username, key)
+                    await self.handle_reply_file(username, key, platform)
 
     async def is_pending(self, key):
         # Download and check status
@@ -59,32 +69,34 @@ class AIReplyHandler:
         except Exception:
             return False
 
-    async def handle_reply_file(self, username, key):
-        logger.info(f"Processing {key} for user {username}")
+    async def handle_reply_file(self, username, key, platform):
+        logger.info(f"Processing {key} for user {username} on platform {platform}")
         # Download DM/comment JSON
         dm_json = await self.tasks_client.read_json(key)
         # Fetch profile
-        profile = await self.fetch_profile(username)
+        profile = await self.fetch_profile(username, platform)
         # Fetch rules (optional)
-        rules = await self.fetch_rules(username)
+        rules = await self.fetch_rules(username, platform)
         # Compose RAG prompt and get reply
         reply = await self.generate_reply(dm_json, profile, rules)
         # Upload reply
-        await self.upload_reply(username, key, reply)
+        await self.upload_reply(username, key, reply, platform)
         # Optionally, mark original as processed
         await self.mark_as_processed(key)
 
-    async def fetch_profile(self, username):
-        profile_key = f"{username}/{username}.json"
+    async def fetch_profile(self, username, platform="instagram"):
+        # NEW SCHEMA: platform/username/username.json
+        profile_key = f"{platform}/{username}/{username}.json"
         try:
             data = await self.structuredb_client.read_json(profile_key)
             return data
         except Exception as e:
-            logger.warning(f"Profile not found for {username}: {e}")
+            logger.warning(f"Profile not found for {username} on {platform}: {e}")
             return None
 
-    async def fetch_rules(self, username):
-        rules_key = f"rules/{username}/rules.json"
+    async def fetch_rules(self, username, platform="instagram"):
+        # NEW SCHEMA: rules/platform/username/rules.json
+        rules_key = f"rules/{platform}/{username}/rules.json"
         try:
             data = await self.tasks_client.read_json(rules_key)
             return data
@@ -158,19 +170,19 @@ class AIReplyHandler:
             logger.error(f"Error generating reply: {e}, using fallback.")
             return fallback_reply
 
-    async def upload_reply(self, username, orig_key, reply):
+    async def upload_reply(self, username, orig_key, reply, platform):
         # Compose new key based on original file type
         base = os.path.basename(orig_key)
         if base.startswith("ai_dm_"):
             num = base[len("ai_dm_"):].split(".")[0]
-            replied_key = f"ai_reply/{username}/ai_dm_replied_{num}.json"
+            replied_key = f"ai_reply/{platform}/{username}/ai_dm_replied_{num}.json"
         elif base.startswith("ai_comment_"):
             num = base[len("ai_comment_"):].split(".")[0]
-            replied_key = f"ai_reply/{username}/ai_comment_replied_{num}.json"
+            replied_key = f"ai_reply/{platform}/{username}/ai_comment_replied_{num}.json"
         else:
             # fallback for unexpected cases
             num = base.split("_")[2].split(".")[0] if "_" in base else "unknown"
-            replied_key = f"ai_reply/{username}/ai_replied_{num}.json"
+            replied_key = f"ai_reply/{platform}/{username}/ai_replied_{num}.json"
         payload = {"reply": reply}
         await self.tasks_client.write_json(replied_key, payload)
         logger.info(f"Uploaded reply to {replied_key}")

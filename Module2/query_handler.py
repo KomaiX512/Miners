@@ -44,6 +44,7 @@ class QueryHandler:
         self.input_prefix = "queries/"
         self.output_prefix = "next_posts/"  # Changed from "queries/" to "next_posts/"
         self.rules_prefix = "rules/"
+        self.platforms = ["instagram", "twitter"]  # Support both platforms
         self.embeddings = SimpleEmbeddings()
         self.chroma_client = chromadb.Client()
         self.collection = self.chroma_client.get_or_create_collection("rag_docs")
@@ -78,11 +79,15 @@ class QueryHandler:
     async def scan_for_pending_queries(self):
         """Scan for pending queries and process them - can be triggered periodically"""
         try:
-            logger.info("Scanning for pending queries...")
-            objects = await self.r2_client.list_objects(self.input_prefix)
-            logger.debug(f"Found {len(objects)} objects under {self.input_prefix}")
-            tasks = []
+            logger.info("Scanning for pending queries across all platforms...")
             processed_count = 0
+            tasks = []
+            
+            # Scan both platforms for queries
+            for platform in self.platforms:
+                platform_prefix = f"{self.input_prefix}{platform}/"
+                objects = await self.r2_client.list_objects(platform_prefix)
+                logger.debug(f"Found {len(objects)} objects under {platform_prefix}")
             
             for obj in objects:
                 key = obj["Key"]
@@ -94,14 +99,14 @@ class QueryHandler:
             
             if tasks:
                 await asyncio.gather(*tasks)
-                logger.info(f"Processed {processed_count} pending queries")
+                logger.info(f"Processed {processed_count} pending queries across all platforms")
             else:
                 logger.debug("No pending queries found")
                 
         except Exception as e:
             logger.error(f"Error in scanning pending queries: {e}")
 
-    async def load_documents(self, username):
+    async def load_documents(self, username, platform="instagram"):
         try:
             # Reset collection
             self.collection = self.chroma_client.get_or_create_collection("rag_docs")
@@ -109,21 +114,19 @@ class QueryHandler:
             # Case-insensitive username pattern for searching
             username_pattern = username.lower()
             
-            # First, list all files in both buckets to diagnose what's actually there
-            logger.info(f"Scanning for files related to {username}")
+            # Find profiles by pattern searching with platform awareness
+            logger.info(f"Scanning for {platform} files related to {username}")
             
-            # Find profiles by pattern searching - FROM DEBUG WE KNOW THESE EXIST:
-            # - maccosmetics/maccosmetics.json 
-            # - anastasiabeverlyhills/maccosmetics.json
             profile_data = None
             tried_profile_paths = []
             
-            # Direct paths we know exist from debug output
+            # Platform-aware profile paths - NEW SCHEMA: platform/username/username.json
             exact_profile_paths = [
-                f"maccosmetics/maccosmetics.json",
-                f"anastasiabeverlyhills/maccosmetics.json",
-                f"fenty beauty/maccosmetics.json",
-                f"fentybeauty/maccosmetics.json"
+                f"{platform}/{username}/{username}.json",
+                f"{platform}/maccosmetics/maccosmetics.json",
+                f"{platform}/anastasiabeverlyhills/maccosmetics.json",
+                f"{platform}/fenty beauty/maccosmetics.json",
+                f"{platform}/fentybeauty/maccosmetics.json"
             ]
             
             # Try exact paths first
@@ -135,9 +138,10 @@ class QueryHandler:
                     logger.info(f"Successfully loaded profile from exact path: {profile_path}")
                     break
             
-            # If direct paths don't work, fall back to pattern search
+            # If direct paths don't work, fall back to pattern search within platform
             if not profile_data:
-                profile_candidates = await self.r2_client_structuredb.find_file_by_pattern(username_pattern)
+                platform_pattern = f"{platform}/{username_pattern}"
+                profile_candidates = await self.r2_client_structuredb.find_file_by_pattern(platform_pattern)
                 for profile_path in profile_candidates:
                     if profile_path not in tried_profile_paths:
                         tried_profile_paths.append(profile_path)
@@ -150,24 +154,24 @@ class QueryHandler:
             if profile_data:
                 profile_doc = Document(
                     page_content=json.dumps(profile_data),
-                    metadata={"source": "profile", "username": username}
+                    metadata={"source": "profile", "username": username, "platform": platform}
                 )
                 self.collection.add(
                     documents=[profile_doc.page_content],
                     metadatas=[profile_doc.metadata],
-                    ids=[f"profile_{username}"]
+                    ids=[f"profile_{platform}_{username}"]
                 )
             else:
-                logger.warning(f"No profile found after trying multiple paths: {', '.join(tried_profile_paths)}")
+                logger.warning(f"No {platform} profile found after trying multiple paths: {', '.join(tried_profile_paths)}")
             
-            # Load rules data - FROM DEBUG WE KNOW THIS EXISTS:
-            # - rules/maccosmetics/rules.json
+            # Load rules data with platform awareness - NEW SCHEMA: rules/platform/username/rules.json
             rules_data = None
             tried_rules_paths = []
             
-            # Direct paths we know exist from debug output
+            # Platform-aware rules paths
             exact_rules_paths = [
-                f"rules/maccosmetics/rules.json"
+                f"rules/{platform}/{username}/rules.json",
+                f"rules/{platform}/maccosmetics/rules.json"
             ]
             
             # Try exact paths first
@@ -179,9 +183,10 @@ class QueryHandler:
                     logger.info(f"Successfully loaded rules from exact path: {rules_path}")
                     break
             
-            # If direct paths don't work, fall back to pattern search
+            # If direct paths don't work, fall back to pattern search within platform
             if not rules_data:
-                rules_candidates = await self.r2_client.find_file_by_pattern(f"rules/{username_pattern}")
+                platform_rules_pattern = f"rules/{platform}/{username_pattern}"
+                rules_candidates = await self.r2_client.find_file_by_pattern(platform_rules_pattern)
                 for rules_path in rules_candidates:
                     if rules_path not in tried_rules_paths:
                         tried_rules_paths.append(rules_path)
@@ -194,15 +199,15 @@ class QueryHandler:
             if rules_data:
                 rules_doc = Document(
                     page_content=json.dumps(rules_data),
-                    metadata={"source": "rules", "username": username}
+                    metadata={"source": "rules", "username": username, "platform": platform}
                 )
                 self.collection.add(
                     documents=[rules_doc.page_content],
                     metadatas=[rules_doc.metadata],
-                    ids=[f"rules_{username}"]
+                    ids=[f"rules_{platform}_{username}"]
                 )
             else:
-                logger.warning(f"No rules found after trying multiple paths: {', '.join(tried_rules_paths)}")
+                logger.warning(f"No {platform} rules found after trying multiple paths: {', '.join(tried_rules_paths)}")
 
             # Fit the embeddings
             documents = []
@@ -215,10 +220,10 @@ class QueryHandler:
                 self.embeddings.fit(documents)
 
             doc_count = self.collection.count()
-            logger.info(f"Loaded {doc_count} documents for {username}")
+            logger.info(f"Loaded {doc_count} {platform} documents for {username}")
             return doc_count > 0
         except Exception as e:
-            logger.error(f"Failed to load documents for {username}: {e}")
+            logger.error(f"Failed to load {platform} documents for {username}: {e}")
             return False
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
@@ -365,13 +370,21 @@ class QueryHandler:
             return
 
         query = data["query"]
-        username = key.split("/")[1]
-        logger.info(f"Processing query for {key}")
+        # Extract platform and username from new schema: queries/platform/username/query_*.json
+        key_parts = key.split("/")
+        if len(key_parts) < 4:
+            logger.error(f"Invalid key format for new schema: {key}")
+            return
+            
+        platform = key_parts[1]  # queries/platform/username/file.json
+        username = key_parts[2]
+        
+        logger.info(f"Processing {platform} query for {key}")
 
-        # Try loading documents, but continue even if none are found
-        docs_loaded = await self.load_documents(username)
+        # Try loading documents with platform awareness
+        docs_loaded = await self.load_documents(username, platform)
         if not docs_loaded:
-            logger.warning(f"Processing {key} with no documents")
+            logger.warning(f"Processing {key} with no {platform} documents")
         
         # Generate post content
         post_content = await self.generate_post_content(query, username)
@@ -385,8 +398,8 @@ class QueryHandler:
         # Add status to the output
         post_content["status"] = "processed"
 
-        # Create output directory path
-        output_dir = f"{self.output_prefix}{username}/"
+        # Create platform-aware output directory path - NEW SCHEMA: next_posts/platform/username/
+        output_dir = f"{self.output_prefix}{platform}/{username}/"
         
         # Get sequential post number
         try:

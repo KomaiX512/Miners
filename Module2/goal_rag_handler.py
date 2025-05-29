@@ -35,10 +35,17 @@ class FileDataManager:
     def __init__(self, r2_tasks: R2Client, r2_structuredb: R2Client):
         self.r2_tasks = r2_tasks
         self.r2_structuredb = r2_structuredb
+        self.platforms = ["instagram", "twitter"]  # Support both platforms
     
-    async def get_latest_file(self, prefix: str, pattern: str) -> Optional[str]:
-        """Get the latest file matching pattern under prefix."""
-        objects = await self.r2_tasks.list_objects(prefix)
+    async def get_latest_file(self, prefix: str, pattern: str, platform: str = None) -> Optional[str]:
+        """Get the latest file matching pattern under prefix, optionally filtered by platform."""
+        if platform:
+            # Use platform-aware prefix
+            search_prefix = f"{prefix}{platform}/"
+        else:
+            search_prefix = prefix
+            
+        objects = await self.r2_tasks.list_objects(search_prefix)
         candidates = [o["Key"] for o in objects if pattern in o["Key"]]
         if not candidates:
             return None
@@ -58,37 +65,40 @@ class FileDataManager:
             return None
         return goal_data
     
-    async def get_prophet_analysis(self, username: str) -> Optional[Dict]:
-        """Retrieve latest prophet analysis for user."""
-        prophet_prefix = f"prophet_analysis/{username}/"
-        prophet_key = await self.get_latest_file(prophet_prefix, "analysis_")
+    async def get_prophet_analysis(self, username: str, platform: str = "instagram") -> Optional[Dict]:
+        """Retrieve latest prophet analysis for user with platform awareness."""
+        # NEW SCHEMA: prophet_analysis/platform/username/analysis_*.json
+        prophet_prefix = f"prophet_analysis/{platform}/{username}/"
+        prophet_key = await self.get_latest_file(prophet_prefix, "analysis_", platform=None)  # Already platform-aware
         logger.info(f"Retrieving prophet analysis file: {prophet_key}")
         prophet_data = await self.r2_tasks.read_json(prophet_key) if prophet_key else None
         if not prophet_data:
-            logger.error(f"Prophet analysis file missing or unreadable for user: {username}")
+            logger.error(f"Prophet analysis file missing or unreadable for user: {username} on {platform}")
             return None
         return prophet_data
     
-    async def get_recommendations(self, username: str) -> Dict:
-        """Retrieve latest recommendations for user."""
-        rec_prefix = f"recommendations/{username}/"
+    async def get_recommendations(self, username: str, platform: str = "instagram") -> Dict:
+        """Retrieve latest recommendations for user with platform awareness."""
+        # NEW SCHEMA: recommendations/platform/username/recommendation_*.json
+        rec_prefix = f"recommendations/{platform}/{username}/"
         rec_objects = await self.r2_tasks.list_objects(rec_prefix)
         logger.info(f"Available files in {rec_prefix}: {[o['Key'] for o in rec_objects]}")
-        rec_key = await self.get_latest_file(rec_prefix, "recommendation_")
+        rec_key = await self.get_latest_file(rec_prefix, "recommendation_", platform=None)  # Already platform-aware
         logger.info(f"Retrieving recommendations file: {rec_key}")
         rec_data = await self.r2_tasks.read_json(rec_key) if rec_key else None
         if rec_data is None:
-            logger.warning(f"Recommendations file missing or unreadable for user: {username}. Proceeding with empty recommendations.")
+            logger.warning(f"Recommendations file missing or unreadable for user: {username} on {platform}. Proceeding with empty recommendations.")
             rec_data = {}
         return rec_data
     
-    async def get_profile_data(self, username: str) -> Optional[Dict]:
-        """Retrieve profile data from structuredb."""
-        profile_key = f"{username}/{username}.json"
+    async def get_profile_data(self, username: str, platform: str = "instagram") -> Optional[Dict]:
+        """Retrieve profile data from structuredb with platform awareness."""
+        # NEW SCHEMA: platform/username/username.json
+        profile_key = f"{platform}/{username}/{username}.json"
         logger.info(f"Retrieving profile file: {profile_key}")
         profile_data = await self.r2_structuredb.read_json(profile_key)
         if not profile_data:
-            logger.error(f"Profile file missing or unreadable for user: {username}")
+            logger.error(f"Profile file missing or unreadable for user: {username} on {platform}")
             return None
         return profile_data
     
@@ -98,27 +108,29 @@ class FileDataManager:
         await self.r2_tasks.write_json(goal_key, goal_data)
         logger.info(f"Marked goal file as processed: {goal_key}")
     
-    async def upload_posting_delay(self, username: str, delay_hours: float, only_once: bool = False) -> None:
-        """Upload posting delay information."""
-        prefix = f"time_delay/{username}/"
+    async def upload_posting_delay(self, username: str, delay_hours: float, platform: str = "instagram", only_once: bool = False) -> None:
+        """Upload posting delay information with platform awareness."""
+        # NEW SCHEMA: time_delay/platform/username/time_delay_*.json
+        prefix = f"time_delay/{platform}/{username}/"
         objects = await self.r2_tasks.list_objects(prefix)
         n = len([o for o in objects if "time_delay_" in o["Key"]]) + 1
         if only_once and n > 1:
-            logger.info(f"Delay file already exists for {username}, skipping export.")
+            logger.info(f"Delay file already exists for {username} on {platform}, skipping export.")
             return
         key = f"{prefix}time_delay_{n}.json"
         data = {"Posting_Delay_Intervals": str(int(delay_hours))}
         await self.r2_tasks.write_json(key, data)
-        logger.info(f"Uploaded posting delay for {username}: {key}")
+        logger.info(f"Uploaded posting delay for {username} on {platform}: {key}")
     
-    async def upload_post_plan(self, username: str, post_number: int, post_data: Dict) -> None:
-        """Upload individual post plan."""
-        prefix = f"queries/{username}/"
+    async def upload_post_plan(self, username: str, post_number: int, post_data: Dict, platform: str = "instagram") -> None:
+        """Upload individual post plan with platform awareness."""
+        # NEW SCHEMA: queries/platform/username/query_*.json
+        prefix = f"queries/{platform}/{username}/"
         objects = await self.r2_tasks.list_objects(prefix)
         existing = len([o["Key"] for o in objects if "query_" in o["Key"]])
         key = f"{prefix}query_{existing + post_number}.json"
         await self.r2_tasks.write_json(key, post_data)
-        logger.info(f"Uploaded post plan {post_number} for {username}: {key}")
+        logger.info(f"Uploaded post plan {post_number} for {username} on {platform}: {key}")
 
 
 class RAGPromptManager:
@@ -367,34 +379,35 @@ class GoalRAGHandler:
         self.processed_files.add(goal_key)
         
         try:
-            # Extract username from path: goal/<username>/goal_*.json
+            # Extract username and platform from path: goal/platform/username/goal_*.json
             parts = goal_key.split('/')
-            if len(parts) < 3:
-                logger.error(f"Invalid goal key format: {goal_key}")
+            if len(parts) < 4:
+                logger.error(f"Invalid goal key format for new schema: {goal_key}")
                 return
                 
-            username = parts[1]
-            logger.info(f"Processing goal for user: {username}")
+            platform = parts[1]  # goal/platform/username/goal_*.json
+            username = parts[2]
+            logger.info(f"Processing goal for user: {username} on {platform}")
             
-            # 1. Fetch and validate all required data
+            # 1. Fetch and validate all required data with platform awareness
             goal_data = await self.file_manager.get_goal_data(goal_key)
             if not goal_data:
                 return
                 
-            prophet_data = await self.file_manager.get_prophet_analysis(username)
+            prophet_data = await self.file_manager.get_prophet_analysis(username, platform)
             if not prophet_data:
                 return
                 
-            rec_data = await self.file_manager.get_recommendations(username)
+            rec_data = await self.file_manager.get_recommendations(username, platform)
             if isinstance(rec_data, list):
-                logger.error(f"Recommendations file is a list, expected dict for user: {username}")
+                logger.error(f"Recommendations file is a list, expected dict for user: {username} on {platform}")
                 return
                 
-            profile_data = await self.file_manager.get_profile_data(username)
+            profile_data = await self.file_manager.get_profile_data(username, platform)
             if not profile_data:
                 return
                 
-            logger.info(f"All files retrieved successfully for user: {username}")
+            logger.info(f"All {platform} files retrieved successfully for user: {username}")
             
             # 2. Generate posting strategy
             strategy_prompt = RAGPromptManager.compose_strategy_prompt(
@@ -405,13 +418,13 @@ class GoalRAGHandler:
                 strategy_prompt, goal_data
             )
             
-            logger.info(f"Strategy generated for {username}: {num_posts} posts with {delay_hours}h delay. Rationale: {rationale}")
+            logger.info(f"Strategy generated for {username} on {platform}: {num_posts} posts with {delay_hours}h delay. Rationale: {rationale}")
             
-            # 3. Upload posting delay information
-            await self.file_manager.upload_posting_delay(username, delay_hours, only_once=True)
+            # 3. Upload posting delay information with platform awareness
+            await self.file_manager.upload_posting_delay(username, delay_hours, platform, only_once=True)
             
-            # 4. Generate and upload individual post plans
-            await self.generate_post_plans(username, num_posts, goal_data, prophet_data, rec_data, profile_data)
+            # 4. Generate and upload individual post plans with platform awareness
+            await self.generate_post_plans(username, num_posts, goal_data, prophet_data, rec_data, profile_data, platform)
             
             # 5. Mark goal file as processed
             await self.file_manager.mark_goal_processed(goal_key, goal_data)
@@ -426,7 +439,8 @@ class GoalRAGHandler:
         goal_data: Dict,
         prophet_data: Dict, 
         rec_data: Dict,
-        profile_data: Dict
+        profile_data: Dict,
+        platform: str
     ) -> None:
         """Generate and upload multiple post plans based on strategy."""
         for i in range(1, num_posts + 1):
@@ -436,7 +450,7 @@ class GoalRAGHandler:
             
             post_data = await RAGProcessor.generate_post_plan(post_prompt)
             
-            await self.file_manager.upload_post_plan(username, i, post_data)
+            await self.file_manager.upload_post_plan(username, i, post_data, platform)
             
             # Brief pause to avoid API rate limits
             await asyncio.sleep(0.5)
@@ -466,31 +480,39 @@ class GoalFileEventHandler(FileSystemEventHandler):
 
 # --- Scan existing files function ---
 async def scan_existing_goal_files(rag_handler: GoalRAGHandler) -> None:
-    """Scan and process all existing unprocessed goal files."""
-    logger.info("Scanning for existing unprocessed goal files...")
-    prefix = "goal/"
-    objects = await rag_handler.r2_tasks.list_objects(prefix)
+    """Scan and process all existing unprocessed goal files across all platforms."""
+    logger.info("Scanning for existing unprocessed goal files across all platforms...")
     
-    count = 0
+    total_processed = 0
+    platforms = ["instagram", "twitter"]
+    
+    for platform in platforms:
+        platform_prefix = f"goal/{platform}/"
+        objects = await rag_handler.r2_tasks.list_objects(platform_prefix)
+        platform_count = 0
+        
     for obj in objects:
         key = obj["Key"]
         if key.endswith(".json") and "goal_" in key:
-            logger.info(f"Found goal file: {key}")
+                logger.info(f"Found {platform} goal file: {key}")
             goal_data = await rag_handler.r2_tasks.read_json(key)
             
             if not goal_data:
-                logger.warning(f"Could not read goal file: {key}")
+                    logger.warning(f"Could not read {platform} goal file: {key}")
                 continue
                 
             if goal_data.get("status") == "processed":
-                logger.info(f"Goal file already processed (skipped): {key}")
+                    logger.info(f"{platform} goal file already processed (skipped): {key}")
                 continue
                 
-            logger.info(f"Processing existing goal file: {key}")
+                logger.info(f"Processing existing {platform} goal file: {key}")
             await rag_handler.process_goal_file(key)
-            count += 1
+                platform_count += 1
+        
+        logger.info(f"Processed {platform_count} existing {platform} goal files.")
+        total_processed += platform_count
     
-    logger.info(f"Processed {count} existing goal files.")
+    logger.info(f"Total processed {total_processed} existing goal files across all platforms.")
 
 
 # --- Main Entrypoint ---
