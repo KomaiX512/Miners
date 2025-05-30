@@ -3175,72 +3175,41 @@ class ContentRecommendationSystem:
             skipped_tweets = {}
             
             # Process tweets to extract user info and posts
+            # CRITICAL FIX: Find profile data from posts belonging to the authoritative user, not just the first post
+            primary_user_posts = []
+            
+            # First pass: collect all posts from the authoritative user
             for item in raw_data:
-                # NEW FORMAT: Check for 'author' field (current Twitter scraper format)
-                if 'author' in item and not profile_data:
-                    # Extract profile data from the first tweet's author info
-                    author_info = item['author']
+                if 'text' in item and item.get('text', '').strip():
+                    tweet_username = None
                     
-                    # CRITICAL: Validate that scraped username matches authoritative username
-                    scraped_username = author_info.get('userName', '').strip()  # NEW FIELD NAME
-                    # Normalize usernames by removing @ symbols for comparison
-                    normalized_scraped = scraped_username.lstrip('@').lower()
-                    normalized_auth = authoritative_username.lstrip('@').lower()
+                    # Check both new 'author' and legacy 'user' formats
+                    if 'author' in item and 'userName' in item['author']:
+                        tweet_username = item['author']['userName'].strip()
+                    elif 'user' in item and 'username' in item['user']:
+                        tweet_username = item['user']['username'].strip()
                     
-                    logger.info(f"🔍 PROFILE EXTRACTION ATTEMPT: scraped='{scraped_username}', auth='{authoritative_username}'")
-                    logger.info(f"🔍 Available author fields: {list(author_info.keys())}")
-                    
-                    if scraped_username and normalized_scraped != normalized_auth:
-                        logger.error(f"❌ PROFILE DATA MISMATCH: Scraped username '{scraped_username}' doesn't match authoritative username '{authoritative_username}'")
-                        logger.error(f"❌ This indicates the scraper returned data for the wrong account!")
-                        logger.error(f"❌ Scraped fullName: '{author_info.get('name', '')}' for username mismatch")
+                    # Only collect posts from the authoritative user
+                    if tweet_username:
+                        normalized_tweet_user = tweet_username.lstrip('@').lower()
+                        normalized_auth = authoritative_username.lstrip('@').lower()
+                        if normalized_tweet_user == normalized_auth:
+                            primary_user_posts.append(item)
+            
+            logger.info(f"🔍 Found {len(primary_user_posts)} posts from authoritative user {authoritative_username} out of {len(raw_data)} total posts")
+            
+            # Extract profile data from the authoritative user's posts
+            for item in primary_user_posts:
+                if not profile_data:  # Only extract once
+                    # NEW FORMAT: Check for 'author' field (current Twitter scraper format)
+                    if 'author' in item:
+                        author_info = item['author']
+                        scraped_username = author_info.get('userName', '').strip()
                         
-                        # Create profile with authoritative data only
-                        profile_data = {
-                            'username': authoritative_username,  # Use authoritative username
-                            'fullName': '',  # Don't use mismatched name
-                            'followersCount': 0,  # Don't use mismatched counts  
-                            'followsCount': 0,  # Don't use mismatched counts
-                            'postsCount': 0,  # Don't use mismatched counts
-                            'biography': '',  # Don't use mismatched bio
-                            'verified': False,  # Don't use mismatched verification
-                            'private': False,  # Default value
-                            'profilePicUrl': '',  # Don't use mismatched URL
-                            'profilePicUrlHD': '',  # Don't use mismatched URL
-                            'externalUrl': '',  # Default value
-                            'account_type': account_type,
-                            'posting_style': posting_style,
-                            'data_mismatch_detected': True,
-                            'scraped_username': scraped_username,
-                            'scraped_fullName': author_info.get('name', '')
-                        }
-                        logger.warning(f"⚠️ Created profile with authoritative username only due to data mismatch")
-                    elif not scraped_username:
-                        logger.error(f"❌ NO PROFILE DATA FOUND: Author info missing 'userName' field")
-                        logger.error(f"❌ Available author fields: {list(author_info.keys())}")
-                        logger.error(f"❌ Raw author data: {author_info}")
+                        logger.info(f"🔍 EXTRACTING PROFILE DATA from authoritative user's post: {scraped_username}")
+                        logger.info(f"🔍 Available author fields: {list(author_info.keys())}")
                         
-                        # Create profile with authoritative data only (no scraped data available)
-                        profile_data = {
-                            'username': authoritative_username,  # Use authoritative username
-                            'fullName': '',  # No scraped data available
-                            'followersCount': 0,  # No scraped data available
-                            'followsCount': 0,  # No scraped data available
-                            'postsCount': 0,  # No scraped data available
-                            'biography': '',  # No scraped data available
-                            'verified': False,  # No scraped data available
-                            'private': False,  # Default value
-                            'profilePicUrl': '',  # No scraped data available
-                            'profilePicUrlHD': '',  # No scraped data available
-                            'externalUrl': '',  # Default value
-                            'account_type': account_type,
-                            'posting_style': posting_style,
-                            'no_profile_data_found': True,
-                            'extraction_error': 'Missing userName field in author data'
-                        }
-                        logger.error(f"❌ CRITICAL: No real profile data found for {authoritative_username} - author data incomplete")
-                    else:
-                        # Data matches - use scraped profile data with CORRECT FIELD MAPPING
+                        # Since we filtered for authoritative user posts, this should match
                         profile_data = {
                             'username': authoritative_username,  # Always use authoritative username
                             'fullName': author_info.get('name', ''),  # FIXED: 'name' not 'userFullName'
@@ -3256,47 +3225,18 @@ class ContentRecommendationSystem:
                             'account_type': account_type,
                             'posting_style': posting_style,
                         }
-                        logger.info(f"✅ Created Twitter profile for VERIFIED username: {authoritative_username} (scraped: {scraped_username})")
+                        logger.info(f"✅ Successfully extracted Twitter profile from authoritative user's post: {authoritative_username}")
                         logger.info(f"✅ Profile data - Name: '{profile_data['fullName']}', Followers: {profile_data['followersCount']}, Following: {profile_data['followsCount']}")
+                        break
                     
-                    logger.info(f"✅ Profile validation complete for {authoritative_username}")
-                
-                # LEGACY FORMAT: Check for 'user' field (old Twitter scraper format)
-                elif 'user' in item and not profile_data:
-                    # Extract profile data from the first tweet's user info (legacy format)
-                    user_info = item['user']
-                    
-                    # CRITICAL: Validate that scraped username matches authoritative username
-                    scraped_username = user_info.get('username', '').strip()
-                    # Normalize usernames by removing @ symbols for comparison
-                    normalized_scraped = scraped_username.lstrip('@').lower()
-                    normalized_auth = authoritative_username.lstrip('@').lower()
-                    
-                    if scraped_username and normalized_scraped != normalized_auth:
-                        logger.error(f"❌ LEGACY FORMAT - PROFILE DATA MISMATCH: Scraped username '{scraped_username}' doesn't match authoritative username '{authoritative_username}'")
+                    # LEGACY FORMAT: Check for 'user' field (old Twitter scraper format)
+                    elif 'user' in item:
+                        user_info = item['user']
+                        scraped_username = user_info.get('username', '').strip()
                         
-                        # Create profile with authoritative data only
-                        profile_data = {
-                            'username': authoritative_username,  # Use authoritative username
-                            'fullName': '',  # Don't use mismatched name
-                            'followersCount': 0,  # Don't use mismatched counts  
-                            'followsCount': 0,  # Don't use mismatched counts
-                            'postsCount': 0,  # Don't use mismatched counts
-                            'biography': '',  # Don't use mismatched bio
-                            'verified': False,  # Don't use mismatched verification
-                            'private': False,  # Default value
-                            'profilePicUrl': '',  # Don't use mismatched URL
-                            'profilePicUrlHD': '',  # Don't use mismatched URL
-                            'externalUrl': '',  # Default value
-                            'account_type': account_type,
-                            'posting_style': posting_style,
-                            'data_mismatch_detected': True,
-                            'scraped_username': scraped_username,
-                            'scraped_fullName': user_info.get('userFullName', '')
-                        }
-                        logger.warning(f"⚠️ LEGACY FORMAT - Created profile with authoritative username only due to data mismatch")
-                    else:
-                        # Data matches - use scraped profile data (legacy format)
+                        logger.info(f"🔍 LEGACY - EXTRACTING PROFILE DATA from authoritative user's post: {scraped_username}")
+                        
+                        # Since we filtered for authoritative user posts, this should match
                         profile_data = {
                             'username': authoritative_username,  # Always use authoritative username
                             'fullName': user_info.get('userFullName', ''),
@@ -3312,32 +3252,72 @@ class ContentRecommendationSystem:
                             'account_type': account_type,
                             'posting_style': posting_style,
                         }
-                        logger.info(f"✅ LEGACY FORMAT - Created Twitter profile for VERIFIED username: {authoritative_username} (scraped: {scraped_username})")
-                    
-                    logger.info(f"✅ LEGACY FORMAT - Profile validation complete for {authoritative_username}")
+                        logger.info(f"✅ LEGACY - Successfully extracted Twitter profile from authoritative user's post: {authoritative_username}")
+                        break
+            
+            # If no profile data found from primary user posts, try ProfileInfo bucket fallback
+            if not profile_data:
+                logger.warning(f"⚠️ No profile data found in posts from authoritative user {authoritative_username}")
+                logger.info(f"🔄 FALLBACK: Attempting to retrieve profile data from ProfileInfo bucket")
                 
-                # Process tweet data (handles both new and legacy formats)
+                try:
+                    existing_profile = self._retrieve_profile_info(authoritative_username, platform="twitter")
+                    if existing_profile and isinstance(existing_profile, dict):
+                        logger.info(f"✅ Retrieved existing profile data from ProfileInfo bucket for {authoritative_username}")
+                        
+                        # Use existing profile data but ensure account_type and posting_style are preserved
+                        profile_data = {
+                            'username': authoritative_username,  # Always use authoritative username
+                            'fullName': existing_profile.get('fullName', ''),
+                            'followersCount': existing_profile.get('followersCount', 0),
+                            'followsCount': existing_profile.get('followsCount', 0),
+                            'postsCount': existing_profile.get('postsCount', 0),
+                            'biography': existing_profile.get('biography', ''),
+                            'verified': existing_profile.get('verified', False),
+                            'private': existing_profile.get('private', False),
+                            'profilePicUrl': existing_profile.get('profilePicUrl', ''),
+                            'profilePicUrlHD': existing_profile.get('profilePicUrlHD', ''),
+                            'externalUrl': existing_profile.get('externalUrl', ''),
+                            'account_type': account_type,  # Always use current account_type
+                            'posting_style': posting_style,  # Always use current posting_style
+                            'data_source': 'profileinfo_fallback'
+                        }
+                        logger.info(f"✅ Successfully used ProfileInfo fallback for {authoritative_username}")
+                        logger.info(f"✅ Fallback profile data - Name: '{profile_data['fullName']}', Followers: {profile_data['followersCount']}, Following: {profile_data['followsCount']}")
+                    else:
+                        logger.warning(f"⚠️ No existing profile data found in ProfileInfo bucket for {authoritative_username}")
+                        profile_data = None
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to retrieve profile from ProfileInfo bucket: {str(e)}")
+                    profile_data = None
+            
+            # Ultimate fallback: create minimal profile with account info only
+            if not profile_data:
+                logger.warning(f"⚠️ Creating minimal profile with account info only for {authoritative_username}")
+                profile_data = {
+                    'username': authoritative_username,  # Use authoritative username
+                    'fullName': '',  # No scraped data available
+                    'followersCount': 0,  # No scraped data available
+                    'followsCount': 0,  # No scraped data available
+                    'postsCount': 0,  # No scraped data available
+                    'biography': '',  # No scraped data available
+                    'verified': False,  # No scraped data available
+                    'private': False,  # Default value
+                    'profilePicUrl': '',  # No scraped data available
+                    'profilePicUrlHD': '',  # No scraped data available
+                    'externalUrl': '',  # Default value
+                    'account_type': account_type,
+                    'posting_style': posting_style,
+                    'no_primary_user_posts_found': True,
+                    'extraction_warning': f'No posts found from authoritative user {authoritative_username} in scraped data'
+                }
+            
+            logger.info(f"✅ Profile extraction complete for {authoritative_username}")
+            
+            # Second pass: Process all posts from authoritative user for content analysis
+            for item in primary_user_posts:
                 if 'text' in item and item.get('text', '').strip():
-                    # CRITICAL: Validate tweet ownership if user info is available
-                    tweet_username = None
-                    
-                    # Check both new 'author' and legacy 'user' formats
-                    if 'author' in item and 'userName' in item['author']:
-                        tweet_username = item['author']['userName'].strip()
-                    elif 'user' in item and 'username' in item['user']:
-                        tweet_username = item['user']['username'].strip()
-                    
-                    # Skip tweets that don't belong to the authoritative user (REDUCED LOGGING)
-                    if tweet_username:
-                        normalized_tweet_user = tweet_username.lstrip('@').lower()
-                        normalized_auth = authoritative_username.lstrip('@').lower()
-                        if normalized_tweet_user != normalized_auth:
-                            # Count skipped tweets by username instead of logging each one
-                            if tweet_username not in skipped_tweets:
-                                skipped_tweets[tweet_username] = 0
-                            skipped_tweets[tweet_username] += 1
-                            continue  # Skip without individual logging
-                    
+                    # Since these are all from the authoritative user, no need to validate ownership
                     tweet_text = item.get('text', '').strip()
                     
                     # Handle both new and legacy engagement field names
@@ -3379,12 +3359,27 @@ class ContentRecommendationSystem:
                             'timestamp': timestamp,
                             'engagement': engagement
                         })
-
-            # Log summary of skipped tweets (much cleaner than individual warnings)
-            if skipped_tweets:
-                total_skipped = sum(skipped_tweets.values())
-                logger.info(f"🔍 COMPETITIVE DATA FILTERING: Skipped {total_skipped} tweets from {len(skipped_tweets)} competitors:")
-                for username, count in skipped_tweets.items():
+            
+            # Log summary of processed posts and any competitor data that was filtered out
+            competitor_posts_count = len(raw_data) - len(primary_user_posts)
+            if competitor_posts_count > 0:
+                # Count posts by competitor
+                competitor_breakdown = {}
+                for item in raw_data:
+                    if item not in primary_user_posts:
+                        tweet_username = None
+                        if 'author' in item and 'userName' in item['author']:
+                            tweet_username = item['author']['userName'].strip()
+                        elif 'user' in item and 'username' in item['user']:
+                            tweet_username = item['user']['username'].strip()
+                        
+                        if tweet_username:
+                            if tweet_username not in competitor_breakdown:
+                                competitor_breakdown[tweet_username] = 0
+                            competitor_breakdown[tweet_username] += 1
+                
+                logger.info(f"🔍 COMPETITIVE DATA FILTERING: Skipped {competitor_posts_count} tweets from {len(competitor_breakdown)} competitors:")
+                for username, count in competitor_breakdown.items():
                     logger.info(f"  • {username}: {count} tweets skipped (competitor data)")
                 logger.info(f"✅ Successfully filtered competitive data - processing only {authoritative_username} tweets")
 

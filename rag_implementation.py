@@ -312,7 +312,7 @@ class RagImplementation:
                 if engagement_patterns:
                     viral_intelligence += f"\n⚡ HIGH-ENGAGEMENT PATTERNS:\n" + "\n".join(engagement_patterns)
             else:
-                viral_intelligence = f"�� PRIMARY ACCOUNT INTELLIGENCE: {primary_username}\n"
+                viral_intelligence = f"🎯 PRIMARY ACCOUNT INTELLIGENCE: {primary_username}\n"
                 viral_intelligence += f"• Total tweets analyzed: {len(tweets_with_meta)}\n"
                 viral_intelligence += f"• No viral content (>1000 engagement) identified in current dataset\n"
                 viral_intelligence += f"• Analysis based on available content patterns\n"
@@ -323,7 +323,7 @@ class RagImplementation:
         
         if competitor_performance_data:
             detailed_competitor_intel += f"\n🔥 REAL COMPETITOR INTELLIGENCE (SCRAPED DATA ANALYSIS):\n"
-            
+        
             for competitor_username, perf_data in competitor_performance_data.items():
                 detailed_competitor_intel += f"\n📊 {competitor_username.upper()} - PERFORMANCE BREAKDOWN:\n"
                 detailed_competitor_intel += f"• Performance Level: {perf_data['performance_level']}\n"
@@ -355,8 +355,7 @@ class RagImplementation:
                     competitive_advantage_analysis += f"• ADVANTAGE vs {comp_name}: +{advantage:.0f} engagement\n"
                 else:
                     competitive_advantage_analysis += f"• DEFICIT vs {comp_name}: {advantage:.0f} engagement (IMPROVE NEEDED)\n"
-        
-        else:
+            
             detailed_competitor_intel = f"\n🔍 COMPETITIVE SURVEILLANCE: {', '.join(secondary_usernames)}\n"
             detailed_competitor_intel += "• Real-time data collection and analysis in progress\n"
             detailed_competitor_intel += "• Strategic positioning analysis framework deployed\n"
