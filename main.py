@@ -596,6 +596,11 @@ class ContentRecommendationSystem:
             account_type = data.get('account_type', 'personal')
             posting_style = data.get('posting_style', 'casual')
             
+            # 🔥 FIXED: Determine is_branding from account_type
+            if not is_branding:  # Only override if not explicitly set
+                is_branding = any(term in account_type.lower() for term in ['business', 'brand', 'company', 'corporate'])
+                logger.info(f"🔧 Determined is_branding={is_branding} from account_type='{account_type}'")
+            
             logger.info(f"Generating modular {platform} content plan for {primary_username} ({account_type}, {posting_style})")
             
             # 🔥 CRITICAL: COLLECT COMPETITOR DATA FIRST FOR REAL COMPETITIVE INTELLIGENCE
@@ -4004,9 +4009,20 @@ class ContentRecommendationSystem:
                     # Scrape competitor data
                     competitor_data = self._scrape_competitor_data(competitor_username, platform)
                     
-                    if competitor_data and competitor_data.get('posts'):
+                    # 🔥 FIXED: Handle both raw posts list and processed data structure
+                    competitor_posts = []
+                    if competitor_data:
+                        if isinstance(competitor_data, list):
+                            # Raw posts data - use directly
+                            competitor_posts = competitor_data
+                            logger.info(f"📊 Using raw competitor posts data: {len(competitor_posts)} posts for {competitor_username}")
+                        elif isinstance(competitor_data, dict) and competitor_data.get('posts'):
+                            # Processed data structure - extract posts
+                            competitor_posts = competitor_data['posts']
+                            logger.info(f"📊 Extracted competitor posts from structure: {len(competitor_posts)} posts for {competitor_username}")
+                    
+                    if competitor_posts:
                         # Store competitor posts in vector database with their username
-                        competitor_posts = competitor_data['posts']
                         self.vector_db.add_posts(competitor_posts, competitor_username)
                         logger.info(f"✅ Stored {len(competitor_posts)} competitor posts for {competitor_username} in vector DB")
                         
@@ -4097,103 +4113,128 @@ class ContentRecommendationSystem:
             return None
     
     def _analyze_competitor_performance(self, competitor_posts, competitor_username, primary_username):
-        """Analyze competitor performance and generate detailed intelligence."""
+        """
+        Analyze competitor performance data with proper data handling.
+        FIXED: Handle both raw posts list and processed data object.
+        """
         try:
-            logger.info(f"📊 Analyzing performance for competitor {competitor_username}")
+            logger.info(f"🔍 Analyzing performance for competitor: {competitor_username}")
             
-            if not competitor_posts:
-                return {
-                    "overview": f"No posts available for analysis of {competitor_username}",
-                    "intelligence_source": "no_data"
-                }
+            # 🔥 FIXED: Handle different data formats
+            posts_to_analyze = []
             
-            # Calculate engagement metrics
-            engagements = [post.get('engagement', 0) for post in competitor_posts]
-            total_engagement = sum(engagements)
-            avg_engagement = total_engagement / len(engagements) if engagements else 0
-            max_engagement = max(engagements) if engagements else 0
+            # Check if we received raw posts (list) or processed data (dict)
+            if isinstance(competitor_posts, list):
+                # Raw posts - use directly
+                posts_to_analyze = competitor_posts
+                logger.info(f"📊 Processing {len(posts_to_analyze)} raw posts for {competitor_username}")
+            elif isinstance(competitor_posts, dict):
+                # Processed data object - extract posts
+                posts_to_analyze = competitor_posts.get('posts', [])
+                logger.info(f"📊 Processing {len(posts_to_analyze)} posts from processed data for {competitor_username}")
+            else:
+                logger.warning(f"⚠️ Unexpected data format for {competitor_username}: {type(competitor_posts)}")
+                return None
             
-            # Find top performing posts
-            sorted_posts = sorted(competitor_posts, key=lambda x: x.get('engagement', 0), reverse=True)
-            top_posts = sorted_posts[:3]
+            if not posts_to_analyze:
+                logger.warning(f"⚠️ No posts found for competitor {competitor_username}")
+                return None
             
-            # Analyze content themes
+            # Extract engagement metrics from posts
+            engagements = []
             content_themes = []
-            for post in top_posts:
-                content = post.get('caption', post.get('text', ''))[:100]
-                if content:
-                    content_themes.append(content)
+            viral_threshold = 1000  # Define what constitutes "viral"
+            viral_posts = 0
             
-            # Analyze posting frequency
-            timestamps = [post.get('timestamp') for post in competitor_posts if post.get('timestamp')]
-            posting_frequency = self._calculate_posting_frequency(timestamps)
+            for post in posts_to_analyze:
+                # Handle different engagement field names
+                engagement = 0
+                if isinstance(post, dict):
+                    # Try various engagement field names
+                    engagement = (
+                        post.get('engagement', 0) or 
+                        post.get('total_engagement', 0) or
+                        post.get('likes', 0) + post.get('retweets', 0) + post.get('replies', 0) or
+                        post.get('likeCount', 0) + post.get('retweetCount', 0) + post.get('replyCount', 0)
+                    )
+                    
+                    # Extract content themes
+                    content = post.get('text', '') or post.get('caption', '') or post.get('content', '')
+                    if content and len(content) > 10:  # Only meaningful content
+                        content_themes.append(content[:100])  # First 100 chars as theme
+                    
+                    # Count viral posts
+                    if engagement > viral_threshold:
+                        viral_posts += 1
+                        
+                engagements.append(engagement)
             
-            # Identify strengths and vulnerabilities
+            # Calculate metrics
+            avg_engagement = sum(engagements) / len(engagements) if engagements else 0
+            max_engagement = max(engagements) if engagements else 0
+            total_posts = len(posts_to_analyze)
+            
+            # Analyze posting frequency (simplified)
+            posting_frequency_desc = "Unknown"
+            if total_posts > 50:
+                posting_frequency_desc = "High frequency"
+            elif total_posts > 20:
+                posting_frequency_desc = "Medium frequency"
+            else:
+                posting_frequency_desc = "Low frequency"
+            
+            # Generate insights
             strengths = []
             vulnerabilities = []
-            
-            if avg_engagement > 1000:
-                strengths.append(f"High engagement rate (avg: {avg_engagement:.0f})")
-            elif avg_engagement < 100:
-                vulnerabilities.append(f"Low engagement rate (avg: {avg_engagement:.0f})")
-            
-            if len(competitor_posts) > 10:
-                strengths.append(f"Consistent content creation ({len(competitor_posts)} posts analyzed)")
-            else:
-                vulnerabilities.append("Limited content volume")
-            
-            if posting_frequency and posting_frequency > 0.5:
-                strengths.append(f"Active posting schedule ({posting_frequency:.1f} posts/day)")
-            elif posting_frequency and posting_frequency < 0.2:
-                vulnerabilities.append(f"Infrequent posting ({posting_frequency:.1f} posts/day)")
-            
-            # Generate counter-strategies
             counter_strategies = []
-            if avg_engagement > 500:
-                counter_strategies.append(f"Study {competitor_username}'s high-engagement content patterns and create improved versions")
             
-            if content_themes:
-                counter_strategies.append(f"Create content in similar themes but with unique angle: {', '.join(content_themes[:2])}")
+            if avg_engagement > 5000:
+                strengths.append("High average engagement rate")
+            elif avg_engagement < 500:
+                vulnerabilities.append("Low engagement rate")
+                counter_strategies.append("Focus on higher engagement content formats")
             
-            counter_strategies.append(f"Engage with {competitor_username}'s audience through thoughtful comments and interactions")
+            if viral_posts > 5:
+                strengths.append(f"Strong viral content creation ({viral_posts} viral posts)")
+            else:
+                vulnerabilities.append("Limited viral content success")
+                counter_strategies.append("Study viral content patterns for improvement")
             
-            # Create comprehensive analysis
-            analysis = {
-                "overview": f"{competitor_username} shows {'strong' if avg_engagement > 500 else 'moderate' if avg_engagement > 100 else 'weak'} engagement performance with an average of {avg_engagement:.0f} interactions per post. Analysis of {len(competitor_posts)} posts reveals {len(strengths)} key strengths and {len(vulnerabilities)} potential vulnerabilities.",
-                "intelligence_source": "scraped_data_analysis",
-                "engagement_metrics": {
-                    "average_engagement": avg_engagement,
-                    "total_engagement": total_engagement,
-                    "max_engagement": max_engagement,
-                    "posts_analyzed": len(competitor_posts)
+            # Top content themes (most common themes)
+            top_themes = list(set(content_themes[:5]))  # Unique top 5 themes
+            
+            result = {
+                'engagement_metrics': {
+                    'average_engagement': avg_engagement,
+                    'max_engagement': max_engagement,
+                    'posts_analyzed': total_posts,
+                    'viral_posts': viral_posts
                 },
-                "top_content_themes": content_themes,
-                "posting_frequency": posting_frequency,
-                "posting_frequency_description": f"{posting_frequency:.1f} posts per day" if posting_frequency else "Unable to calculate",
-                "strengths": strengths if strengths else ["Needs further analysis"],
-                "vulnerabilities": vulnerabilities if vulnerabilities else ["Solid performance across metrics"],
-                "recommended_counter_strategies": counter_strategies,
-                "top_performing_posts": [
-                    {
-                        "content": post.get('caption', post.get('text', ''))[:150] + "...",
-                        "engagement": post.get('engagement', 0),
-                        "post_type": post.get('type', 'unknown')
-                    }
-                    for post in top_posts
-                ]
+                'posting_frequency_description': posting_frequency_desc,
+                'strengths': strengths,
+                'vulnerabilities': vulnerabilities,
+                'recommended_counter_strategies': counter_strategies,
+                'top_content_themes': top_themes,
+                'overview': f"REAL DATA ANALYSIS: {competitor_username} demonstrates {avg_engagement:.0f} average engagement across {total_posts} analyzed posts."
             }
             
-            logger.info(f"✅ Generated comprehensive analysis for {competitor_username}")
-            return analysis
+            logger.info(f"✅ Successfully analyzed {competitor_username}: {avg_engagement:.0f} avg engagement, {viral_posts} viral posts")
+            return result
             
         except Exception as e:
-            logger.error(f"Error analyzing competitor performance: {str(e)}")
+            logger.error(f"❌ Error analyzing competitor {competitor_username}: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
             return {
-                "overview": f"Analysis error for {competitor_username}: {str(e)[:100]}",
-                "intelligence_source": "analysis_error",
-                "error": str(e)
+                'engagement_metrics': {'average_engagement': 0, 'posts_analyzed': 0},
+                'overview': f"Analysis failed for {competitor_username}. Error: {str(e)}",
+                'strengths': [],
+                'vulnerabilities': [],
+                'recommended_counter_strategies': [],
+                'top_content_themes': [],
+                'posting_frequency_description': 'Unknown'
             }
-    
+
     def _calculate_posting_frequency(self, timestamps):
         """Calculate posting frequency from timestamps."""
         try:
