@@ -27,17 +27,25 @@ class TimeSeriesAnalyzer:
         self.forecast = None
         self.primary_username = None  # To track primary username
         
-        # Initialize R2 storage if not provided
-        if r2_storage is None:
-            try:
+        # Initialize R2 storage if available
+        try:
+            if r2_storage:
+                self.r2_storage = r2_storage
+            else:
                 from r2_storage_manager import R2StorageManager
                 self.r2_storage = R2StorageManager()
-            except ImportError:
-                logger.warning("R2StorageManager not available, export functions will not work")
-                self.r2_storage = None
-        else:
-            self.r2_storage = r2_storage
+        except Exception as e:
+            logger.warning(f"R2 storage initialization failed: {str(e)}")
+            self.r2_storage = None
         
+    def _clean_username(self, username):
+        """Remove '@' symbol and other special characters from username for export compatibility."""
+        if not username:
+            return username
+        # Remove '@' symbol and any other special characters that cause retrieval issues
+        cleaned = username.replace('@', '').strip()
+        return cleaned
+
     def prepare_data(self, data, timestamp_col='timestamp', value_col='engagement', primary_username=None):
         """
         Prepare time series data for analysis, distinguishing primary and secondary sources.
@@ -428,17 +436,21 @@ class TimeSeriesAnalyzer:
             logger.error("R2 storage not available, cannot export Prophet analysis")
             return False
 
+        # CRITICAL FIX: Clean username to remove '@' symbols
+        clean_username = self._clean_username(primary_username)
+        logger.info(f"🧹 Cleaned username for prophet analysis export: '{primary_username}' -> '{clean_username}'")
+
         # Ensure platform-specific directory exists
-        self._ensure_directory_exists(f"prophet_analysis/{platform}/{primary_username}/")
+        self._ensure_directory_exists(f"prophet_analysis/{platform}/{clean_username}/")
 
         # Get next file number with platform-specific path
-        file_num = self._get_next_file_number(f"prophet_analysis/{platform}", primary_username, "analysis")
+        file_num = self._get_next_file_number(f"prophet_analysis/{platform}", clean_username, "analysis")
         
         # Create export structure
         export_data = {
             "generated_date": datetime.now().isoformat(),
             "platform": platform,
-            "primary_username": primary_username,
+            "primary_username": clean_username,  # Use cleaned username
             "analysis_type": "time_series_prophet",
             "model_performance": analysis_result.get('model_performance', {}),
             "forecast_summary": analysis_result.get('forecast_summary', {}),
@@ -454,7 +466,7 @@ class TimeSeriesAnalyzer:
         file_obj = io.BytesIO(json_bytes)
 
         # Upload to R2
-        file_key = f"prophet_analysis/{platform}/{primary_username}/analysis_{file_num}.json"
+        file_key = f"prophet_analysis/{platform}/{clean_username}/analysis_{file_num}.json"
         
         try:
             result = self.r2_storage.upload_file(

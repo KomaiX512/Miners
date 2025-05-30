@@ -19,7 +19,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Apify API token for Twitter scraper - UPDATED with fresh token
-APIFY_API_TOKEN = "apify_api_HJjuynFqfZO0LigrxbReTxBBCn4oO30PrRSp"
+APIFY_API_TOKEN = "apify_api_CNVCRSUNgOxRlcXdPYe0p6RIAmP76V2gbGVl"
 TWITTER_ACTOR_ID = "web.harvester/twitter-scraper"  # Most reliable and popular actor
 
 class TwitterScraper:

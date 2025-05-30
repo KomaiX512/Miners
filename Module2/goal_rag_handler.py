@@ -491,22 +491,22 @@ async def scan_existing_goal_files(rag_handler: GoalRAGHandler) -> None:
         objects = await rag_handler.r2_tasks.list_objects(platform_prefix)
         platform_count = 0
         
-    for obj in objects:
-        key = obj["Key"]
-        if key.endswith(".json") and "goal_" in key:
+        for obj in objects:
+            key = obj["Key"]
+            if key.endswith(".json") and "goal_" in key:
                 logger.info(f"Found {platform} goal file: {key}")
-            goal_data = await rag_handler.r2_tasks.read_json(key)
-            
-            if not goal_data:
+                goal_data = await rag_handler.r2_tasks.read_json(key)
+                
+                if not goal_data:
                     logger.warning(f"Could not read {platform} goal file: {key}")
-                continue
-                
-            if goal_data.get("status") == "processed":
+                    continue
+                    
+                if goal_data.get("status") == "processed":
                     logger.info(f"{platform} goal file already processed (skipped): {key}")
-                continue
-                
+                    continue
+                    
                 logger.info(f"Processing existing {platform} goal file: {key}")
-            await rag_handler.process_goal_file(key)
+                await rag_handler.process_goal_file(key)
                 platform_count += 1
         
         logger.info(f"Processed {platform_count} existing {platform} goal files.")

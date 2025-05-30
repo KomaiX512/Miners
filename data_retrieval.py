@@ -21,6 +21,14 @@ class R2DataRetriever:
         self.config = config
         self.client = self._create_client()
         
+    def _clean_username(self, username):
+        """Remove '@' symbol and other special characters from username for export compatibility."""
+        if not username:
+            return username
+        # Remove '@' symbol and any other special characters that cause retrieval issues
+        cleaned = username.replace('@', '').strip()
+        return cleaned
+    
     def _create_client(self):
         """Create and return an S3 client configured for R2."""
         try:
@@ -213,17 +221,17 @@ class R2DataRetriever:
                 return False
             
             # Define the key (path) for the recommendations with platform support
-            key = f"recommendations/{platform.lower()}/{username}/recommendation_{index}.json"
+            key = f"recommendations/{platform.lower()}/{self._clean_username(username)}/recommendation_{index}.json"
             
             # Add platform information to recommendations data
             if isinstance(recommendations, dict):
                 recommendations['platform'] = platform.lower()
-                recommendations['username'] = username
+                recommendations['username'] = self._clean_username(username)
             
-            logger.info(f"Exporting {platform} recommendations for {username} to {key}")
+            logger.info(f"Exporting {platform} recommendations for {self._clean_username(username)} to {key}")
             return self.put_object(key, content=recommendations)
         except Exception as e:
-            logger.error(f"Error exporting recommendations for {username}: {str(e)}")
+            logger.error(f"Error exporting recommendations for {self._clean_username(username)}: {str(e)}")
             return False
     
     def export_competitor_analysis(self, username, analysis, platform="instagram"):
@@ -244,17 +252,17 @@ class R2DataRetriever:
                 return False
             
             # Define the key (path) for the analysis with platform support
-            key = f"competitor_analysis/{platform.lower()}/{username}/analysis.json"
+            key = f"competitor_analysis/{platform.lower()}/{self._clean_username(username)}/analysis.json"
             
             # Add platform information to analysis data
             if isinstance(analysis, dict):
                 analysis['platform'] = platform.lower()
-                analysis['username'] = username
+                analysis['username'] = self._clean_username(username)
             
-            logger.info(f"Exporting {platform} competitor analysis for {username} to {key}")
+            logger.info(f"Exporting {platform} competitor analysis for {self._clean_username(username)} to {key}")
             return self.put_object(key, content=analysis)
         except Exception as e:
-            logger.error(f"Error exporting competitor analysis for {username}: {str(e)}")
+            logger.error(f"Error exporting competitor analysis for {self._clean_username(username)}: {str(e)}")
             return False
     
     def export_engagement_strategies(self, username, strategies, platform="instagram"):
@@ -275,24 +283,24 @@ class R2DataRetriever:
                 return False
             
             # Define the key (path) for the strategies with platform support
-            key = f"engagement_strategies/{platform.lower()}/{username}/strategies.json"
+            key = f"engagement_strategies/{platform.lower()}/{self._clean_username(username)}/strategies.json"
             
             # Add platform information to strategies data
             if isinstance(strategies, dict):
                 strategies['platform'] = platform.lower()
-                strategies['username'] = username
+                strategies['username'] = self._clean_username(username)
             elif isinstance(strategies, list):
                 # If strategies is a list, wrap it in a dict with metadata
                 strategies = {
                     'strategies': strategies,
                     'platform': platform.lower(),
-                    'username': username
+                    'username': self._clean_username(username)
                 }
             
-            logger.info(f"Exporting {platform} engagement strategies for {username} to {key}")
+            logger.info(f"Exporting {platform} engagement strategies for {self._clean_username(username)} to {key}")
             return self.put_object(key, content=strategies)
         except Exception as e:
-            logger.error(f"Error exporting engagement strategies for {username}: {str(e)}")
+            logger.error(f"Error exporting engagement strategies for {self._clean_username(username)}: {str(e)}")
             return False
     
     def export_next_post(self, username, post_data, platform="instagram"):
@@ -313,17 +321,17 @@ class R2DataRetriever:
                 return False
             
             # Define the key (path) for the next post with platform support
-            key = f"next_posts/{platform.lower()}/{username}/next_post.json"
+            key = f"next_posts/{platform.lower()}/{self._clean_username(username)}/next_post.json"
             
             # Add platform information to post data
             if isinstance(post_data, dict):
                 post_data['platform'] = platform.lower()
-                post_data['username'] = username
+                post_data['username'] = self._clean_username(username)
             
-            logger.info(f"Exporting {platform} next post prediction for {username} to {key}")
+            logger.info(f"Exporting {platform} next post prediction for {self._clean_username(username)} to {key}")
             return self.put_object(key, content=post_data)
         except Exception as e:
-            logger.error(f"Error exporting next post prediction for {username}: {str(e)}")
+            logger.error(f"Error exporting next post prediction for {self._clean_username(username)}: {str(e)}")
             return False
 
 # Function to test the data retrieval
