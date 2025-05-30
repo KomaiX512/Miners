@@ -3187,6 +3187,9 @@ class ContentRecommendationSystem:
                     normalized_scraped = scraped_username.lstrip('@').lower()
                     normalized_auth = authoritative_username.lstrip('@').lower()
                     
+                    logger.info(f"🔍 PROFILE EXTRACTION ATTEMPT: scraped='{scraped_username}', auth='{authoritative_username}'")
+                    logger.info(f"🔍 Available author fields: {list(author_info.keys())}")
+                    
                     if scraped_username and normalized_scraped != normalized_auth:
                         logger.error(f"❌ PROFILE DATA MISMATCH: Scraped username '{scraped_username}' doesn't match authoritative username '{authoritative_username}'")
                         logger.error(f"❌ This indicates the scraper returned data for the wrong account!")
@@ -3212,6 +3215,30 @@ class ContentRecommendationSystem:
                             'scraped_fullName': author_info.get('name', '')
                         }
                         logger.warning(f"⚠️ Created profile with authoritative username only due to data mismatch")
+                    elif not scraped_username:
+                        logger.error(f"❌ NO PROFILE DATA FOUND: Author info missing 'userName' field")
+                        logger.error(f"❌ Available author fields: {list(author_info.keys())}")
+                        logger.error(f"❌ Raw author data: {author_info}")
+                        
+                        # Create profile with authoritative data only (no scraped data available)
+                        profile_data = {
+                            'username': authoritative_username,  # Use authoritative username
+                            'fullName': '',  # No scraped data available
+                            'followersCount': 0,  # No scraped data available
+                            'followsCount': 0,  # No scraped data available
+                            'postsCount': 0,  # No scraped data available
+                            'biography': '',  # No scraped data available
+                            'verified': False,  # No scraped data available
+                            'private': False,  # Default value
+                            'profilePicUrl': '',  # No scraped data available
+                            'profilePicUrlHD': '',  # No scraped data available
+                            'externalUrl': '',  # Default value
+                            'account_type': account_type,
+                            'posting_style': posting_style,
+                            'no_profile_data_found': True,
+                            'extraction_error': 'Missing userName field in author data'
+                        }
+                        logger.error(f"❌ CRITICAL: No real profile data found for {authoritative_username} - author data incomplete")
                     else:
                         # Data matches - use scraped profile data with CORRECT FIELD MAPPING
                         profile_data = {
@@ -4007,7 +4034,7 @@ class ContentRecommendationSystem:
                 
                 try:
                     # Scrape competitor data
-                    competitor_data = self._scrape_competitor_data(competitor_username, platform)
+                    competitor_data = self._scrape_competitor_data(competitor_username, platform, primary_username)
                     
                     # 🔥 FIXED: Handle both raw posts list and processed data structure
                     competitor_posts = []
@@ -4059,59 +4086,189 @@ class ContentRecommendationSystem:
             logger.error(f"❌ Critical error in competitor data collection: {str(e)}")
             return {}
     
-    def _scrape_competitor_data(self, competitor_username, platform="twitter"):
+    def _scrape_competitor_data(self, competitor_username, platform="twitter", primary_username=None):
         """
         Scrape or retrieve competitor data for analysis.
-        FIXED: Look for competitor data in the correct storage location.
+        FIXED: Use correct schema - twitter/primary_username/secondary_username.json
         """
         try:
-            logger.info(f"🔄 Scraping competitor data for {competitor_username} on {platform}")
+            logger.info(f"🔄 Searching for competitor data: {competitor_username} on {platform}")
             
-            # 🔥 FIXED: Try multiple storage locations where competitor data might be stored
-            potential_paths = [
-                # Method 1: Individual competitor storage (if exists)
-                f"{platform}/{competitor_username}/{competitor_username}.json",
+            # FIXED: Use correct schema paths according to user's policy
+            potential_individual_paths = []
+            
+            if primary_username:
+                # CORRECT SCHEMA: twitter/primary_username/secondary_username.json
+                potential_individual_paths.extend([
+                    f"{platform}/{primary_username}/{competitor_username}.json",  # CORRECT schema path
+                    f"{platform}/{primary_username}/{competitor_username}",  # Alternative without extension
+                ])
+                logger.info(f"🔧 Using correct schema with primary_username: {primary_username}")
+            
+            # Fallback paths (old format for backward compatibility)
+            potential_individual_paths.extend([
+                f"{platform}/{competitor_username}/{competitor_username}.json",  # Standard individual format
+                f"{platform}/{competitor_username}.json",  # Alternative format
                 
-                # Method 2: Look in recent batch uploads (most likely location)
-                # We need to find which primary user batch contains this competitor
-                f"{platform}/*/info.json"  # Check info.json files to find the batch
-            ]
+                # FIXED: Use correct ProfileInfo schema ONLY - NEVER profile_data
+                f"ProfileInfo/{platform}/{competitor_username}.json",  # Correct schema path
+                f"ProfileInfo/{platform}/{competitor_username}/profileinfo.json",  # Alternative format
+            ])
             
-            # First, try direct individual storage
+            # First, try direct individual storage paths
+            for path in potential_individual_paths:
+                try:
+                    competitor_data = self.data_retriever.get_json_data(path)
+                    if competitor_data:
+                        logger.info(f"📦 Found individual competitor data at: {path}")
+                        return competitor_data
+                except Exception as e:
+                    logger.debug(f"Path {path} not found: {str(e)}")
+                    continue
+            
+            # 🔥 ENHANCED: Search through ALL batch data storage more comprehensively
             try:
-                competitor_data = self.data_retriever.get_json_data(potential_paths[0])
-                if competitor_data:
-                    logger.info(f"📦 Found existing individual data for competitor {competitor_username}")
-                    return competitor_data
+                # Access the R2 storage manager directly for comprehensive listing
+                if hasattr(self.data_retriever, 'r2_storage_manager'):
+                    r2_manager = self.data_retriever.r2_storage_manager
+                elif hasattr(self.data_retriever, 'r2_client'):
+                    # Fallback to direct R2 client access
+                    from r2_storage import R2StorageManager
+                    r2_manager = R2StorageManager()
+                else:
+                    logger.warning("No R2 storage manager available for batch search")
+                    return None
+                
+                # Search with multiple prefixes for comprehensive coverage
+                search_prefixes = [
+                    f"{platform}/",
+                    f"ProfileInfo/{platform}/",  # FIXED: Use correct ProfileInfo schema ONLY
+                    "",  # Search all files
+                ]
+                
+                for prefix in search_prefixes:
+                    try:
+                        logger.debug(f"🔍 Searching with prefix: '{prefix}' for {competitor_username}")
+                        all_objects = r2_manager.list_objects(prefix=prefix)
+                        
+                        # Look for competitor data in any file that contains the username
+                        for obj_key in all_objects:
+                            # Check if this object contains our competitor username
+                            if competitor_username in obj_key.lower():
+                                logger.info(f"🎯 Found potential competitor data in: {obj_key}")
+                                try:
+                                    competitor_data = self.data_retriever.get_json_data(obj_key)
+                                    if competitor_data:
+                                        # Verify this actually contains data for our competitor
+                                        if self._validate_competitor_data(competitor_data, competitor_username):
+                                            logger.info(f"✅ Validated competitor data in batch: {obj_key}")
+                                            return competitor_data
+                                        else:
+                                            logger.debug(f"Data validation failed for {obj_key}")
+                                except Exception as e:
+                                    logger.debug(f"Failed to retrieve {obj_key}: {str(e)}")
+                                    continue
+                        
+                        logger.debug(f"No matches found with prefix: {prefix}")
+                        
+                    except Exception as search_error:
+                        logger.debug(f"Search failed for prefix '{prefix}': {str(search_error)}")
+                        continue
+                
             except Exception as e:
-                logger.info(f"📦 No individual storage found for {competitor_username}: {str(e)}")
+                logger.warning(f"📦 Enhanced batch search failed for {competitor_username}: {str(e)}")
             
-            # 🔥 ENHANCED: Search through recent batch data storage
+            # 🔥 FINAL ATTEMPT: Check if competitor might be in a combined batch file
             try:
-                # Get list of all recent platform directories using R2 storage manager
-                r2_manager = self.data_retriever.r2_storage_manager
-                all_objects = r2_manager.list_objects(prefix=f"{platform}/")
+                # Look for recent batch files that might contain multiple users
+                recent_batch_patterns = [
+                    f"{platform}/*/batch_*.json",
+                    f"{platform}/*/combined_*.json", 
+                    f"{platform}/batch_*.json",
+                    "batch_*.json"
+                ]
                 
-                # Look for competitor data in batch directories
-                for obj_key in all_objects:
-                    if f"/{competitor_username}.json" in obj_key:
-                        logger.info(f"🎯 Found competitor data in batch: {obj_key}")
-                        competitor_data = self.data_retriever.get_json_data(obj_key)
-                        if competitor_data:
-                            logger.info(f"📦 Found existing data for competitor {competitor_username}")
-                            return competitor_data
-                
+                for pattern in recent_batch_patterns:
+                    try:
+                        if hasattr(self.data_retriever, 'r2_storage_manager'):
+                            all_objects = self.data_retriever.r2_storage_manager.list_objects()
+                            for obj_key in all_objects:
+                                if 'batch' in obj_key.lower() or 'combined' in obj_key.lower():
+                                    logger.debug(f"🔍 Checking batch file: {obj_key}")
+                                    try:
+                                        batch_data = self.data_retriever.get_json_data(obj_key)
+                                        if batch_data and self._validate_competitor_data(batch_data, competitor_username):
+                                            logger.info(f"✅ Found competitor in batch file: {obj_key}")
+                                            return batch_data
+                                    except Exception as e:
+                                        logger.debug(f"Batch file check failed for {obj_key}: {str(e)}")
+                                        continue
+                    except Exception as pattern_error:
+                        logger.debug(f"Pattern search failed for {pattern}: {str(pattern_error)}")
+                        continue
+                        
             except Exception as e:
-                logger.warning(f"📦 Batch search failed for {competitor_username}: {str(e)}")
+                logger.debug(f"Batch file search failed: {str(e)}")
             
-            # 🔥 FALLBACK: If no existing data found, the competitor data doesn't exist
-            logger.warning(f"⚠️ No existing data found for competitor {competitor_username}")
+            # If no existing data found, competitor data doesn't exist
+            logger.warning(f"⚠️ No existing data found for competitor {competitor_username} after comprehensive search")
             return None
             
         except Exception as e:
             logger.error(f"❌ Error retrieving competitor data for {competitor_username}: {str(e)}")
             return None
     
+    def _validate_competitor_data(self, data, competitor_username):
+        """Validate that the data actually contains information for the specified competitor."""
+        try:
+            if not data:
+                return False
+            
+            # Check if it's a list of posts
+            if isinstance(data, list):
+                # Check if any posts belong to the competitor
+                for item in data[:5]:  # Check first 5 items
+                    if isinstance(item, dict):
+                        # Check various username fields
+                        item_username = (
+                            item.get('username') or 
+                            item.get('author', {}).get('userName') if isinstance(item.get('author'), dict) else None or
+                            item.get('user', {}).get('username') if isinstance(item.get('user'), dict) else None
+                        )
+                        if item_username and competitor_username.lower() in item_username.lower():
+                            return True
+                return False
+            
+            # Check if it's a structured data object
+            elif isinstance(data, dict):
+                # Check profile information
+                profile = data.get('profile', {})
+                if isinstance(profile, dict):
+                    profile_username = profile.get('username', '')
+                    if profile_username and competitor_username.lower() in profile_username.lower():
+                        return True
+                
+                # Check posts within structured data
+                posts = data.get('posts', [])
+                if isinstance(posts, list) and posts:
+                    for post in posts[:3]:  # Check first 3 posts
+                        if isinstance(post, dict):
+                            post_username = post.get('username', '')
+                            if post_username and competitor_username.lower() in post_username.lower():
+                                return True
+                
+                # Check if the data structure itself indicates this competitor
+                if competitor_username.lower() in str(data).lower()[:500]:  # Check first 500 chars
+                    return True
+                
+                return False
+            
+            return False
+            
+        except Exception as e:
+            logger.debug(f"Data validation error for {competitor_username}: {str(e)}")
+            return False
+
     def _analyze_competitor_performance(self, competitor_posts, competitor_username, primary_username):
         """
         Analyze competitor performance data with proper data handling.
@@ -4190,15 +4347,55 @@ class ContentRecommendationSystem:
             
             if avg_engagement > 5000:
                 strengths.append("High average engagement rate")
+                counter_strategies.append("Study their viral content patterns and create superior content in similar themes")
             elif avg_engagement < 500:
-                vulnerabilities.append("Low engagement rate")
-                counter_strategies.append("Focus on higher engagement content formats")
+                vulnerabilities.append("Low engagement rate - audience not responding well")
+                counter_strategies.append("Target their audience with more engaging, interactive content")
             
             if viral_posts > 5:
                 strengths.append(f"Strong viral content creation ({viral_posts} viral posts)")
+                counter_strategies.append("Analyze their viral content timing and create counter-narrative content")
             else:
-                vulnerabilities.append("Limited viral content success")
-                counter_strategies.append("Study viral content patterns for improvement")
+                vulnerabilities.append("Limited viral content success - struggling to create breakout posts")
+                counter_strategies.append("Exploit their content gaps with trend-focused, viral-optimized content")
+            
+            # Analyze content diversity
+            unique_themes = len(set(content_themes))
+            if unique_themes < total_posts * 0.3:
+                vulnerabilities.append("Content repetition - limited theme diversity")
+                counter_strategies.append("Differentiate with diverse content themes they're neglecting")
+            
+            # Analyze consistency  
+            if max_engagement > avg_engagement * 5:
+                vulnerabilities.append("Inconsistent performance - high variance in engagement")
+                counter_strategies.append("Maintain consistent quality while they struggle with performance swings")
+            
+            # Posting frequency vulnerabilities
+            if total_posts < 20:
+                vulnerabilities.append("Low posting frequency - missing audience engagement opportunities")
+                counter_strategies.append("Increase posting frequency to capture their missed audience moments")
+            elif total_posts > 100:
+                vulnerabilities.append("Potential over-posting - may dilute content quality")
+                counter_strategies.append("Focus on quality over quantity to stand out from their content noise")
+            
+            # Engagement rate based vulnerabilities
+            if avg_engagement < 1000 and total_posts > 50:
+                vulnerabilities.append("Poor engagement-to-content ratio despite volume")
+                counter_strategies.append("Focus on high-engagement content formats they're missing")
+            
+            # Add strategic counter-strategies based on performance gaps
+            if avg_engagement < 2000:
+                counter_strategies.append(f"Outperform {competitor_username} by targeting 2000+ engagement per post")
+            
+            if viral_posts == 0:
+                counter_strategies.append("Dominate viral content space they're failing to capture")
+            
+            # Ensure we always have actionable insights
+            if not vulnerabilities:
+                vulnerabilities.append("Strong competitor - requires strategic differentiation approach")
+                
+            if not counter_strategies:
+                counter_strategies.append(f"Monitor {competitor_username}'s content patterns and create superior alternatives")
             
             # Top content themes (most common themes)
             top_themes = list(set(content_themes[:5]))  # Unique top 5 themes

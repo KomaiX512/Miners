@@ -563,11 +563,11 @@ class RecommendationGenerator:
             # Method 3: Try to fetch profile data from R2 storage as enhanced fallback
             if not real_profile_data:
                 try:
-                    # Try multiple profile storage locations
+                    # FIXED: Use correct schema paths only - NEVER use profile_data
                     profile_paths = [
-                        f"ProfileInfo/{platform}/{username}.json",
-                        f"profile_data/{platform}/{username}.json",
-                        f"{platform}/{username}/profile.json"
+                        f"ProfileInfo/{platform}/{username}.json",  # Correct schema path
+                        f"ProfileInfo/{platform}/{username}/profileinfo.json",  # Alternative format
+                        f"{platform}/{username}/profile.json"  # Legacy format
                     ]
                     
                     for profile_path in profile_paths:
@@ -584,6 +584,46 @@ class RecommendationGenerator:
                             
                 except Exception as e:
                     logger.warning(f"Profile R2 retrieval failed: {str(e)}")
+            
+            # ENHANCED: Extract profile data from scraped posts if not found in profile storage
+            if not real_profile_data and posts:
+                logger.info(f"🔧 Attempting to extract profile data from scraped {platform} posts for {username}")
+                
+                for post in posts[:3]:  # Check first 3 posts for profile data
+                    if platform == "twitter" and isinstance(post, dict) and 'author' in post:
+                        # Twitter format: profile data is in the 'author' field
+                        author_data = post['author']
+                        if isinstance(author_data, dict) and author_data.get('userName') == username:
+                            real_profile_data = {
+                                'username': author_data.get('userName', username),
+                                'fullName': author_data.get('name', ''),
+                                'biography': author_data.get('description', ''),
+                                'verified': author_data.get('isVerified', False),
+                                'followersCount': author_data.get('followers', 0),
+                                'followsCount': author_data.get('following', 0),
+                                'profilePicUrl': author_data.get('profilePicture', ''),
+                                'extractedAt': datetime.now().isoformat(),
+                                'source': 'extracted_from_posts'
+                            }
+                            logger.info(f"✅ Successfully extracted Twitter profile data from post author field for {username}")
+                            break
+                    elif platform == "instagram" and isinstance(post, dict):
+                        # Instagram format: check for user field or embedded profile
+                        user_data = post.get('user', {})
+                        if isinstance(user_data, dict) and user_data.get('username') == username:
+                            real_profile_data = {
+                                'username': user_data.get('username', username),
+                                'fullName': user_data.get('full_name', ''),
+                                'biography': user_data.get('biography', ''),
+                                'verified': user_data.get('is_verified', False),
+                                'followersCount': user_data.get('follower_count', 0),
+                                'followsCount': user_data.get('following_count', 0),
+                                'profilePicUrl': user_data.get('profile_pic_url', ''),
+                                'extractedAt': datetime.now().isoformat(),
+                                'source': 'extracted_from_posts'
+                            }
+                            logger.info(f"✅ Successfully extracted Instagram profile data from post user field for {username}")
+                            break
             
             # Log real profile data for verification
             if real_profile_data:
