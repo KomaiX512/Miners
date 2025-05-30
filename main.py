@@ -585,16 +585,48 @@ class ContentRecommendationSystem:
             # CRITICAL: Store primary username for use in all modules
             self._current_primary_username = primary_username
             
+            # FIXED: Store processed data in recommendation generator for profile access
+            self.recommendation_generator._current_processed_data = data
+            
+            # 🔥 ENHANCED: Also provide data retriever access for R2 profile lookups
+            if not hasattr(self.recommendation_generator, 'data_retriever'):
+                self.recommendation_generator.data_retriever = self.data_retriever
+            
             # Get account info
             account_type = data.get('account_type', 'personal')
             posting_style = data.get('posting_style', 'casual')
             
             logger.info(f"Generating modular {platform} content plan for {primary_username} ({account_type}, {posting_style})")
             
-            # Create intelligent query for RAG
+            # 🔥 CRITICAL: COLLECT COMPETITOR DATA FIRST FOR REAL COMPETITIVE INTELLIGENCE
+            competitor_analysis_data = {}
+            if secondary_usernames and len(secondary_usernames) > 0:
+                logger.info(f"🔍 COLLECTING REAL COMPETITOR DATA: {secondary_usernames}")
+                competitor_analysis_data = self.collect_and_analyze_competitor_data(
+                    primary_username, 
+                    secondary_usernames, 
+                    platform
+                )
+                logger.info(f"✅ Competitor data collection complete: {len(competitor_analysis_data)} competitors analyzed")
+            else:
+                logger.info("ℹ️ No competitors specified - generating primary account analysis only")
+            
+            # Create intelligent query for RAG with competitor context
             query = self._generate_intelligent_query(data, primary_username, platform)
             
-            # Generate the main RAG recommendation
+            # 🔥 ENHANCED: Add competitor context to query if available
+            if competitor_analysis_data:
+                competitor_context = []
+                for comp_name, comp_data in competitor_analysis_data.items():
+                    if comp_data.get('engagement_metrics'):
+                        avg_eng = comp_data['engagement_metrics'].get('average_engagement', 0)
+                        competitor_context.append(f"{comp_name}(avg_engagement:{avg_eng:.0f})")
+                
+                if competitor_context:
+                    query += f" | COMPETITOR_INTELLIGENCE: {', '.join(competitor_context[:3])}"
+                    logger.info(f"🎯 Enhanced query with real competitor data")
+            
+            # Generate the main RAG recommendation with competitor intelligence
             main_recommendation = self.recommendation_generator.rag.generate_recommendation(
                 primary_username=primary_username,
                 secondary_usernames=secondary_usernames,
@@ -632,9 +664,14 @@ class ContentRecommendationSystem:
                 "trending_topics": self._generate_trending_module(posts),
             }
             
-            # Add competitive analysis module for branding accounts
+            # 🔥 ENHANCED: Add REAL competitive analysis module with scraped data
             if is_branding and secondary_usernames:
-                content_plan["competitor_analysis"] = self._generate_competitor_analysis_module(main_recommendation, secondary_usernames, primary_username)
+                content_plan["competitor_analysis"] = self._generate_enhanced_competitor_analysis_module(
+                    main_recommendation, 
+                    secondary_usernames, 
+                    primary_username,
+                    competitor_analysis_data  # Pass the real analyzed data
+                )
             
             logger.info(f"Successfully generated modular content plan with {len(content_plan)} modules")
             return content_plan
@@ -642,6 +679,66 @@ class ContentRecommendationSystem:
         except Exception as e:
             logger.error(f"Error generating modular content plan: {str(e)}")
             raise Exception(f"Content plan generation failed: {str(e)}")
+
+    def _generate_enhanced_competitor_analysis_module(self, main_recommendation, secondary_usernames, primary_username, competitor_analysis_data):
+        """Generate enhanced competitor analysis module with REAL scraped data."""
+        try:
+            logger.info(f"🔥 GENERATING ENHANCED COMPETITOR ANALYSIS with real data for {len(secondary_usernames)} competitors")
+            
+            competitor_analysis = {}
+            
+            for competitor_username in secondary_usernames:
+                if competitor_username in competitor_analysis_data:
+                    # Use REAL analyzed data
+                    real_data = competitor_analysis_data[competitor_username]
+                    
+                    # Extract key insights
+                    engagement_avg = real_data.get('engagement_metrics', {}).get('average_engagement', 0)
+                    strengths = real_data.get('strengths', [])
+                    vulnerabilities = real_data.get('vulnerabilities', [])
+                    counter_strategies = real_data.get('recommended_counter_strategies', [])
+                    top_themes = real_data.get('top_content_themes', [])
+                    posting_freq = real_data.get('posting_frequency_description', 'Unknown')
+                    
+                    # Create comprehensive competitor profile
+                    competitor_profile = {
+                        "overview": f"REAL DATA ANALYSIS: {competitor_username} demonstrates {engagement_avg:.0f} average engagement across {real_data.get('engagement_metrics', {}).get('posts_analyzed', 0)} analyzed posts. {real_data.get('overview', '')}",
+                        "intelligence_source": "scraped_data_analysis",
+                        "performance_metrics": {
+                            "average_engagement": engagement_avg,
+                            "posting_frequency": posting_freq,
+                            "content_volume": real_data.get('engagement_metrics', {}).get('posts_analyzed', 0)
+                        },
+                        "competitive_strengths": strengths,
+                        "exploitable_vulnerabilities": vulnerabilities,
+                        "recommended_counter_strategies": counter_strategies,
+                        "top_content_themes": top_themes[:3] if top_themes else [],
+                        "strategic_recommendations": [
+                            f"Monitor {competitor_username}'s engagement patterns for content timing optimization",
+                            f"Analyze their top-performing content themes: {', '.join(top_themes[:2]) if top_themes else 'N/A'}",
+                            f"Exploit their vulnerabilities: {', '.join(vulnerabilities[:2]) if vulnerabilities else 'Strong competitor'}"
+                        ]
+                    }
+                    
+                    competitor_analysis[competitor_username] = competitor_profile
+                    logger.info(f"✅ Created enhanced profile for {competitor_username} with real data")
+                    
+                else:
+                    # Fallback if no real data available
+                    competitor_analysis[competitor_username] = {
+                        "overview": f"Data collection in progress for {competitor_username}. Limited analysis available.",
+                        "intelligence_source": "data_collection_pending",
+                        "status": "Requires additional data collection for comprehensive analysis"
+                    }
+                    logger.warning(f"⚠️ No real data available for {competitor_username}")
+            
+            logger.info(f"✅ Enhanced competitor analysis complete with real data for {len([k for k, v in competitor_analysis.items() if v.get('intelligence_source') == 'scraped_data_analysis'])} competitors")
+            return competitor_analysis
+            
+        except Exception as e:
+            logger.error(f"Error generating enhanced competitor analysis: {str(e)}")
+            # Fallback to basic analysis
+            return self._generate_competitor_analysis_module(main_recommendation, secondary_usernames, primary_username)
 
     def _extract_main_intelligence_module(self, recommendation, is_branding, platform):
         """Extract and format the main intelligence module from RAG response."""
@@ -3063,16 +3160,78 @@ class ContentRecommendationSystem:
             
             logger.info(f"🔧 AUTHORITATIVE PRIMARY USERNAME FROM info.json: '{authoritative_username}'")
             
-            # With the new actor format, each item is a tweet with user info
+            # With the new actor format, each item is a tweet with user info in 'author' field
             posts = []
             engagement_history = []
             primary_username = authoritative_username  # Use authoritative username ALWAYS
             profile_data = {}
             
+            # Track skipped tweets for summary logging (reduces noise)
+            skipped_tweets = {}
+            
             # Process tweets to extract user info and posts
             for item in raw_data:
-                if 'user' in item and not profile_data:
-                    # Extract profile data from the first tweet's user info
+                # NEW FORMAT: Check for 'author' field (current Twitter scraper format)
+                if 'author' in item and not profile_data:
+                    # Extract profile data from the first tweet's author info
+                    author_info = item['author']
+                    
+                    # CRITICAL: Validate that scraped username matches authoritative username
+                    scraped_username = author_info.get('userName', '').strip()  # NEW FIELD NAME
+                    # Normalize usernames by removing @ symbols for comparison
+                    normalized_scraped = scraped_username.lstrip('@').lower()
+                    normalized_auth = authoritative_username.lstrip('@').lower()
+                    
+                    if scraped_username and normalized_scraped != normalized_auth:
+                        logger.error(f"❌ PROFILE DATA MISMATCH: Scraped username '{scraped_username}' doesn't match authoritative username '{authoritative_username}'")
+                        logger.error(f"❌ This indicates the scraper returned data for the wrong account!")
+                        logger.error(f"❌ Scraped fullName: '{author_info.get('name', '')}' for username mismatch")
+                        
+                        # Create profile with authoritative data only
+                        profile_data = {
+                            'username': authoritative_username,  # Use authoritative username
+                            'fullName': '',  # Don't use mismatched name
+                            'followersCount': 0,  # Don't use mismatched counts  
+                            'followsCount': 0,  # Don't use mismatched counts
+                            'postsCount': 0,  # Don't use mismatched counts
+                            'biography': '',  # Don't use mismatched bio
+                            'verified': False,  # Don't use mismatched verification
+                            'private': False,  # Default value
+                            'profilePicUrl': '',  # Don't use mismatched URL
+                            'profilePicUrlHD': '',  # Don't use mismatched URL
+                            'externalUrl': '',  # Default value
+                            'account_type': account_type,
+                            'posting_style': posting_style,
+                            'data_mismatch_detected': True,
+                            'scraped_username': scraped_username,
+                            'scraped_fullName': author_info.get('name', '')
+                        }
+                        logger.warning(f"⚠️ Created profile with authoritative username only due to data mismatch")
+                    else:
+                        # Data matches - use scraped profile data with CORRECT FIELD MAPPING
+                        profile_data = {
+                            'username': authoritative_username,  # Always use authoritative username
+                            'fullName': author_info.get('name', ''),  # FIXED: 'name' not 'userFullName'
+                            'followersCount': author_info.get('followers', 0),  # FIXED: 'followers' not 'totalFollowers'
+                            'followsCount': author_info.get('following', 0),  # FIXED: 'following' not 'totalFollowing'
+                            'postsCount': author_info.get('statusesCount', 0),  # FIXED: 'statusesCount' for tweets
+                            'biography': author_info.get('description', ''),  # CORRECT: 'description'
+                            'verified': author_info.get('isVerified', False) or author_info.get('isBlueVerified', False),  # FIXED: check both verification types
+                            'private': author_info.get('protected', False),  # FIXED: 'protected' not 'private'
+                            'profilePicUrl': author_info.get('profilePicture', ''),  # FIXED: 'profilePicture'
+                            'profilePicUrlHD': author_info.get('coverPicture', ''),  # FIXED: use 'coverPicture' for HD
+                            'externalUrl': '',  # Twitter doesn't provide external URL in this format
+                            'account_type': account_type,
+                            'posting_style': posting_style,
+                        }
+                        logger.info(f"✅ Created Twitter profile for VERIFIED username: {authoritative_username} (scraped: {scraped_username})")
+                        logger.info(f"✅ Profile data - Name: '{profile_data['fullName']}', Followers: {profile_data['followersCount']}, Following: {profile_data['followsCount']}")
+                    
+                    logger.info(f"✅ Profile validation complete for {authoritative_username}")
+                
+                # LEGACY FORMAT: Check for 'user' field (old Twitter scraper format)
+                elif 'user' in item and not profile_data:
+                    # Extract profile data from the first tweet's user info (legacy format)
                     user_info = item['user']
                     
                     # CRITICAL: Validate that scraped username matches authoritative username
@@ -3082,9 +3241,7 @@ class ContentRecommendationSystem:
                     normalized_auth = authoritative_username.lstrip('@').lower()
                     
                     if scraped_username and normalized_scraped != normalized_auth:
-                        logger.error(f"❌ PROFILE DATA MISMATCH: Scraped username '{scraped_username}' doesn't match authoritative username '{authoritative_username}'")
-                        logger.error(f"❌ This indicates the scraper returned data for the wrong account!")
-                        logger.error(f"❌ Scraped fullName: '{user_info.get('userFullName', '')}' for username mismatch")
+                        logger.error(f"❌ LEGACY FORMAT - PROFILE DATA MISMATCH: Scraped username '{scraped_username}' doesn't match authoritative username '{authoritative_username}'")
                         
                         # Create profile with authoritative data only
                         profile_data = {
@@ -3092,51 +3249,70 @@ class ContentRecommendationSystem:
                             'fullName': '',  # Don't use mismatched name
                             'followersCount': 0,  # Don't use mismatched counts  
                             'followsCount': 0,  # Don't use mismatched counts
+                            'postsCount': 0,  # Don't use mismatched counts
                             'biography': '',  # Don't use mismatched bio
                             'verified': False,  # Don't use mismatched verification
+                            'private': False,  # Default value
+                            'profilePicUrl': '',  # Don't use mismatched URL
+                            'profilePicUrlHD': '',  # Don't use mismatched URL
+                            'externalUrl': '',  # Default value
                             'account_type': account_type,
                             'posting_style': posting_style,
                             'data_mismatch_detected': True,
                             'scraped_username': scraped_username,
                             'scraped_fullName': user_info.get('userFullName', '')
                         }
-                        logger.warning(f"⚠️ Created profile with authoritative username only due to data mismatch")
+                        logger.warning(f"⚠️ LEGACY FORMAT - Created profile with authoritative username only due to data mismatch")
                     else:
-                        # Data matches - use scraped profile data
+                        # Data matches - use scraped profile data (legacy format)
                         profile_data = {
                             'username': authoritative_username,  # Always use authoritative username
                             'fullName': user_info.get('userFullName', ''),
                             'followersCount': user_info.get('totalFollowers', 0),
                             'followsCount': user_info.get('totalFollowing', 0),
+                            'postsCount': user_info.get('totalTweets', 0),
                             'biography': user_info.get('description', ''),
                             'verified': user_info.get('verified', False),
+                            'private': user_info.get('private', False),
+                            'profilePicUrl': user_info.get('profilePicUrl', ''),
+                            'profilePicUrlHD': user_info.get('profilePicUrlHD', ''),
+                            'externalUrl': user_info.get('externalUrl', ''),
                             'account_type': account_type,
                             'posting_style': posting_style,
                         }
-                        logger.info(f"✅ Created Twitter profile for VERIFIED username: {authoritative_username} (scraped: {scraped_username})")
+                        logger.info(f"✅ LEGACY FORMAT - Created Twitter profile for VERIFIED username: {authoritative_username} (scraped: {scraped_username})")
                     
-                    logger.info(f"✅ Profile validation complete for {authoritative_username}")
+                    logger.info(f"✅ LEGACY FORMAT - Profile validation complete for {authoritative_username}")
                 
-                # Process tweet data
+                # Process tweet data (handles both new and legacy formats)
                 if 'text' in item and item.get('text', '').strip():
                     # CRITICAL: Validate tweet ownership if user info is available
                     tweet_username = None
-                    if 'user' in item and 'username' in item['user']:
+                    
+                    # Check both new 'author' and legacy 'user' formats
+                    if 'author' in item and 'userName' in item['author']:
+                        tweet_username = item['author']['userName'].strip()
+                    elif 'user' in item and 'username' in item['user']:
                         tweet_username = item['user']['username'].strip()
                     
-                    # Skip tweets that don't belong to the authoritative user
+                    # Skip tweets that don't belong to the authoritative user (REDUCED LOGGING)
                     if tweet_username:
                         normalized_tweet_user = tweet_username.lstrip('@').lower()
                         normalized_auth = authoritative_username.lstrip('@').lower()
                         if normalized_tweet_user != normalized_auth:
-                            logger.warning(f"⚠️ Skipping tweet from wrong user: '{tweet_username}' (expected: '{authoritative_username}')")
-                            continue
+                            # Count skipped tweets by username instead of logging each one
+                            if tweet_username not in skipped_tweets:
+                                skipped_tweets[tweet_username] = 0
+                            skipped_tweets[tweet_username] += 1
+                            continue  # Skip without individual logging
                     
                     tweet_text = item.get('text', '').strip()
-                    likes = item.get('likes', 0)
-                    retweets = item.get('retweets', 0)
-                    replies = item.get('replies', 0)
-                    quotes = item.get('quotes', 0)
+                    
+                    # Handle both new and legacy engagement field names
+                    likes = item.get('likeCount', item.get('likes', 0))
+                    retweets = item.get('retweetCount', item.get('retweets', 0))
+                    replies = item.get('replyCount', item.get('replies', 0))
+                    quotes = item.get('quoteCount', item.get('quotes', 0))
                     
                     engagement = likes + retweets + replies + quotes
                     
@@ -3149,7 +3325,7 @@ class ContentRecommendationSystem:
                         'retweets': retweets,
                         'replies': replies,
                         'quotes': quotes,
-                        'timestamp': item.get('timestamp', ''),
+                        'timestamp': item.get('createdAt', item.get('timestamp', '')),  # Handle both field names
                         'url': item.get('url', ''),
                         'type': 'tweet',
                         'username': authoritative_username,  # Always use authoritative username
@@ -3165,11 +3341,20 @@ class ContentRecommendationSystem:
                     posts.append(post_obj)
                     
                     # Add to engagement history if timestamp exists
-                    if item.get('timestamp'):
+                    timestamp = item.get('createdAt', item.get('timestamp', ''))
+                    if timestamp:
                         engagement_history.append({
-                            'timestamp': item.get('timestamp'),
+                            'timestamp': timestamp,
                             'engagement': engagement
                         })
+
+            # Log summary of skipped tweets (much cleaner than individual warnings)
+            if skipped_tweets:
+                total_skipped = sum(skipped_tweets.values())
+                logger.info(f"🔍 COMPETITIVE DATA FILTERING: Skipped {total_skipped} tweets from {len(skipped_tweets)} competitors:")
+                for username, count in skipped_tweets.items():
+                    logger.info(f"  • {username}: {count} tweets skipped (competitor data)")
+                logger.info(f"✅ Successfully filtered competitive data - processing only {authoritative_username} tweets")
 
             logger.info(f"Processed {len(posts)} Twitter posts with content for authoritative username: {authoritative_username}")
 
@@ -3801,6 +3986,255 @@ class ContentRecommendationSystem:
         """Stop the sequential multi-platform processing loop gracefully."""
         logger.info("Stopping sequential multi-platform processing loop")
         self.running = False
+
+    def collect_and_analyze_competitor_data(self, primary_username, secondary_usernames, platform="twitter"):
+        """
+        CRITICAL: Collect and analyze competitor data for real competitive intelligence.
+        This function scrapes competitor data, stores it in vector DB, and provides detailed analysis.
+        """
+        try:
+            logger.info(f"🔍 COLLECTING COMPETITOR DATA for {primary_username} vs {len(secondary_usernames)} competitors on {platform}")
+            
+            competitor_analysis_results = {}
+            
+            for competitor_username in secondary_usernames:
+                logger.info(f"📊 ANALYZING COMPETITOR: {competitor_username}")
+                
+                try:
+                    # Scrape competitor data
+                    competitor_data = self._scrape_competitor_data(competitor_username, platform)
+                    
+                    if competitor_data and competitor_data.get('posts'):
+                        # Store competitor posts in vector database with their username
+                        competitor_posts = competitor_data['posts']
+                        self.vector_db.add_posts(competitor_posts, competitor_username)
+                        logger.info(f"✅ Stored {len(competitor_posts)} competitor posts for {competitor_username} in vector DB")
+                        
+                        # Analyze competitor performance
+                        analysis = self._analyze_competitor_performance(competitor_posts, competitor_username, primary_username)
+                        competitor_analysis_results[competitor_username] = analysis
+                        
+                        logger.info(f"✅ Completed analysis for {competitor_username}")
+                    else:
+                        logger.warning(f"⚠️ No usable data for competitor {competitor_username}")
+                        competitor_analysis_results[competitor_username] = {
+                            "overview": f"Limited data available for {competitor_username}. Additional data collection needed.",
+                            "intelligence_source": "data_collection_limited",
+                            "engagement_average": 0,
+                            "top_content_themes": [],
+                            "posting_frequency": "unknown",
+                            "strengths": ["Needs more data for analysis"],
+                            "vulnerabilities": ["Data collection incomplete"],
+                            "recommended_counter_strategies": ["Monitor for future analysis"]
+                        }
+                
+                except Exception as competitor_error:
+                    logger.error(f"❌ Error analyzing competitor {competitor_username}: {str(competitor_error)}")
+                    competitor_analysis_results[competitor_username] = {
+                        "overview": f"Analysis failed for {competitor_username}. Error: {str(competitor_error)[:100]}",
+                        "intelligence_source": "analysis_failed",
+                        "error": str(competitor_error)
+                    }
+            
+            logger.info(f"✅ COMPETITOR DATA COLLECTION COMPLETE: {len(competitor_analysis_results)} competitors analyzed")
+            return competitor_analysis_results
+            
+        except Exception as e:
+            logger.error(f"❌ Critical error in competitor data collection: {str(e)}")
+            return {}
+    
+    def _scrape_competitor_data(self, competitor_username, platform="twitter"):
+        """
+        Scrape or retrieve competitor data for analysis.
+        FIXED: Look for competitor data in the correct storage location.
+        """
+        try:
+            logger.info(f"🔄 Scraping competitor data for {competitor_username} on {platform}")
+            
+            # 🔥 FIXED: Try multiple storage locations where competitor data might be stored
+            potential_paths = [
+                # Method 1: Individual competitor storage (if exists)
+                f"{platform}/{competitor_username}/{competitor_username}.json",
+                
+                # Method 2: Look in recent batch uploads (most likely location)
+                # We need to find which primary user batch contains this competitor
+                f"{platform}/*/info.json"  # Check info.json files to find the batch
+            ]
+            
+            # First, try direct individual storage
+            try:
+                competitor_data = self.data_retriever.get_json_data(potential_paths[0])
+                if competitor_data:
+                    logger.info(f"📦 Found existing individual data for competitor {competitor_username}")
+                    return competitor_data
+            except Exception as e:
+                logger.info(f"📦 No individual storage found for {competitor_username}: {str(e)}")
+            
+            # 🔥 ENHANCED: Search through recent batch data storage
+            try:
+                # Get list of all recent platform directories using R2 storage manager
+                r2_manager = self.data_retriever.r2_storage_manager
+                all_objects = r2_manager.list_objects(prefix=f"{platform}/")
+                
+                # Look for competitor data in batch directories
+                for obj_key in all_objects:
+                    if f"/{competitor_username}.json" in obj_key:
+                        logger.info(f"🎯 Found competitor data in batch: {obj_key}")
+                        competitor_data = self.data_retriever.get_json_data(obj_key)
+                        if competitor_data:
+                            logger.info(f"📦 Found existing data for competitor {competitor_username}")
+                            return competitor_data
+                
+            except Exception as e:
+                logger.warning(f"📦 Batch search failed for {competitor_username}: {str(e)}")
+            
+            # 🔥 FALLBACK: If no existing data found, the competitor data doesn't exist
+            logger.warning(f"⚠️ No existing data found for competitor {competitor_username}")
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Error retrieving competitor data for {competitor_username}: {str(e)}")
+            return None
+    
+    def _analyze_competitor_performance(self, competitor_posts, competitor_username, primary_username):
+        """Analyze competitor performance and generate detailed intelligence."""
+        try:
+            logger.info(f"📊 Analyzing performance for competitor {competitor_username}")
+            
+            if not competitor_posts:
+                return {
+                    "overview": f"No posts available for analysis of {competitor_username}",
+                    "intelligence_source": "no_data"
+                }
+            
+            # Calculate engagement metrics
+            engagements = [post.get('engagement', 0) for post in competitor_posts]
+            total_engagement = sum(engagements)
+            avg_engagement = total_engagement / len(engagements) if engagements else 0
+            max_engagement = max(engagements) if engagements else 0
+            
+            # Find top performing posts
+            sorted_posts = sorted(competitor_posts, key=lambda x: x.get('engagement', 0), reverse=True)
+            top_posts = sorted_posts[:3]
+            
+            # Analyze content themes
+            content_themes = []
+            for post in top_posts:
+                content = post.get('caption', post.get('text', ''))[:100]
+                if content:
+                    content_themes.append(content)
+            
+            # Analyze posting frequency
+            timestamps = [post.get('timestamp') for post in competitor_posts if post.get('timestamp')]
+            posting_frequency = self._calculate_posting_frequency(timestamps)
+            
+            # Identify strengths and vulnerabilities
+            strengths = []
+            vulnerabilities = []
+            
+            if avg_engagement > 1000:
+                strengths.append(f"High engagement rate (avg: {avg_engagement:.0f})")
+            elif avg_engagement < 100:
+                vulnerabilities.append(f"Low engagement rate (avg: {avg_engagement:.0f})")
+            
+            if len(competitor_posts) > 10:
+                strengths.append(f"Consistent content creation ({len(competitor_posts)} posts analyzed)")
+            else:
+                vulnerabilities.append("Limited content volume")
+            
+            if posting_frequency and posting_frequency > 0.5:
+                strengths.append(f"Active posting schedule ({posting_frequency:.1f} posts/day)")
+            elif posting_frequency and posting_frequency < 0.2:
+                vulnerabilities.append(f"Infrequent posting ({posting_frequency:.1f} posts/day)")
+            
+            # Generate counter-strategies
+            counter_strategies = []
+            if avg_engagement > 500:
+                counter_strategies.append(f"Study {competitor_username}'s high-engagement content patterns and create improved versions")
+            
+            if content_themes:
+                counter_strategies.append(f"Create content in similar themes but with unique angle: {', '.join(content_themes[:2])}")
+            
+            counter_strategies.append(f"Engage with {competitor_username}'s audience through thoughtful comments and interactions")
+            
+            # Create comprehensive analysis
+            analysis = {
+                "overview": f"{competitor_username} shows {'strong' if avg_engagement > 500 else 'moderate' if avg_engagement > 100 else 'weak'} engagement performance with an average of {avg_engagement:.0f} interactions per post. Analysis of {len(competitor_posts)} posts reveals {len(strengths)} key strengths and {len(vulnerabilities)} potential vulnerabilities.",
+                "intelligence_source": "scraped_data_analysis",
+                "engagement_metrics": {
+                    "average_engagement": avg_engagement,
+                    "total_engagement": total_engagement,
+                    "max_engagement": max_engagement,
+                    "posts_analyzed": len(competitor_posts)
+                },
+                "top_content_themes": content_themes,
+                "posting_frequency": posting_frequency,
+                "posting_frequency_description": f"{posting_frequency:.1f} posts per day" if posting_frequency else "Unable to calculate",
+                "strengths": strengths if strengths else ["Needs further analysis"],
+                "vulnerabilities": vulnerabilities if vulnerabilities else ["Solid performance across metrics"],
+                "recommended_counter_strategies": counter_strategies,
+                "top_performing_posts": [
+                    {
+                        "content": post.get('caption', post.get('text', ''))[:150] + "...",
+                        "engagement": post.get('engagement', 0),
+                        "post_type": post.get('type', 'unknown')
+                    }
+                    for post in top_posts
+                ]
+            }
+            
+            logger.info(f"✅ Generated comprehensive analysis for {competitor_username}")
+            return analysis
+            
+        except Exception as e:
+            logger.error(f"Error analyzing competitor performance: {str(e)}")
+            return {
+                "overview": f"Analysis error for {competitor_username}: {str(e)[:100]}",
+                "intelligence_source": "analysis_error",
+                "error": str(e)
+            }
+    
+    def _calculate_posting_frequency(self, timestamps):
+        """Calculate posting frequency from timestamps."""
+        try:
+            if not timestamps or len(timestamps) < 2:
+                return None
+            
+            import pandas as pd
+            from datetime import datetime
+            
+            # Convert timestamps to datetime objects
+            valid_timestamps = []
+            for ts in timestamps:
+                try:
+                    if isinstance(ts, str):
+                        # Try different timestamp formats
+                        for fmt in ['%Y-%m-%dT%H:%M:%S.%fZ', '%Y-%m-%dT%H:%M:%SZ', '%a %b %d %H:%M:%S %z %Y']:
+                            try:
+                                dt = datetime.strptime(ts.replace('+0000', ''), fmt.replace(' %z', ''))
+                                valid_timestamps.append(dt)
+                                break
+                            except ValueError:
+                                continue
+                except:
+                    continue
+            
+            if len(valid_timestamps) < 2:
+                return None
+            
+            # Calculate time span and frequency
+            valid_timestamps.sort()
+            time_span = valid_timestamps[-1] - valid_timestamps[0]
+            days = time_span.days
+            
+            if days > 0:
+                return len(valid_timestamps) / days
+            else:
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error calculating posting frequency: {str(e)}")
+            return None
 
 def create_content_plan():
     """Create content plan without using sample data."""

@@ -542,27 +542,48 @@ class RecommendationGenerator:
             if not account_analysis:
                 account_analysis = self.analyze_account_type(posts)
             
-            # For Twitter, use REAL profile data from posts to understand the authentic account
-            # Extract REAL profile information for authentic voice analysis
-            real_profile_data = {}
-            if posts:
-                # Get profile data from the first post if available
-                first_post = posts[0]
-                if 'user_profile' in first_post:
-                    real_profile_data = first_post['user_profile']
-                elif 'profile' in first_post:
-                    real_profile_data = first_post['profile']
-                
-                # For Twitter, also look for embedded profile data
-                if platform.lower() == "twitter" and not real_profile_data:
-                    # Try to reconstruct profile from post metadata
-                    if 'fullname' in first_post or 'fullName' in first_post:
-                        real_profile_data = {
-                            'username': username,
-                            'fullName': first_post.get('fullName', first_post.get('fullname', '')),
-                            'verified': first_post.get('verified', False),
-                            'bio': first_post.get('bio', first_post.get('biography', ''))
-                        }
+            # 🔥 FIXED: Enhanced profile data retrieval with multiple methods
+            real_profile_data = None
+            
+            # Method 1: Use processed data if available (highest priority)
+            if hasattr(self, '_current_processed_data') and self._current_processed_data:
+                profile_from_processed = self._current_processed_data.get('profile', {})
+                if profile_from_processed and profile_from_processed.get('username') == username:
+                    real_profile_data = profile_from_processed
+                    logger.info(f"✅ Retrieved profile data from processed data: {username}")
+
+            # Method 2: Try to get from direct profile data passed in posts
+            if not real_profile_data and posts:
+                for post in posts:
+                    if post.get('username') == username and 'profile_data' in post:
+                        real_profile_data = post['profile_data']
+                        logger.info(f"✅ Retrieved profile data from post metadata: {username}")
+                        break
+
+            # Method 3: Try to fetch profile data from R2 storage as enhanced fallback
+            if not real_profile_data:
+                try:
+                    # Try multiple profile storage locations
+                    profile_paths = [
+                        f"ProfileInfo/{platform}/{username}.json",
+                        f"profile_data/{platform}/{username}.json",
+                        f"{platform}/{username}/profile.json"
+                    ]
+                    
+                    for profile_path in profile_paths:
+                        try:
+                            if hasattr(self, 'data_retriever'):
+                                profile_data = self.data_retriever.get_json_data(profile_path)
+                                if profile_data:
+                                    real_profile_data = profile_data
+                                    logger.info(f"✅ Retrieved profile data from R2 storage: {profile_path}")
+                                    break
+                        except Exception as e:
+                            logger.debug(f"Profile path {profile_path} not found: {str(e)}")
+                            continue
+                            
+                except Exception as e:
+                    logger.warning(f"Profile R2 retrieval failed: {str(e)}")
             
             # Log real profile data for verification
             if real_profile_data:

@@ -19,8 +19,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Apify API token for Twitter scraper - UPDATED with fresh token
-APIFY_API_TOKEN = "apify_api_CNVCRSUNgOxRlcXdPYe0p6RIAmP76V2gbGVl"
-TWITTER_ACTOR_ID = "web.harvester/twitter-scraper"  # Most reliable and popular actor
+APIFY_API_TOKEN = "apify_api_79fdmR14idvIPBMoV9lvT9i6nbJ37E14E6Ie"
+TWITTER_ACTOR_ID = "memo23/apify-twitter-profile-scraper"  # New reliable actor
 
 class TwitterScraper:
     """Class for scraping Twitter profiles and uploading to R2 storage."""
@@ -48,7 +48,7 @@ class TwitterScraper:
         self.last_check_time = None
     
     def scrape_profile(self, username, results_limit=10):
-        """Scrape Twitter profile using the web.harvester/twitter-scraper actor with bulletproof configuration."""
+        """Scrape Twitter profile using the memo23/apify-twitter-profile-scraper actor with bulletproof configuration."""
         if not username or not isinstance(username, str):
             logger.error(f"Invalid username: {username}")
             return None
@@ -62,19 +62,16 @@ class TwitterScraper:
         if clean_username.startswith('@'):
             clean_username = clean_username[1:]
         
-        # BULLETPROOF CONFIGURATION - EXACT MATCH TO USER'S WORKING DASHBOARD CONFIG
+        # BULLETPROOF CONFIGURATION - NEW ACTOR FORMAT
         run_input = {
-            "handles": [clean_username],
-            "includeUserInfo": True,
-            "profilesDesired": 1,
-            "proxyConfig": {
+            "proxy": {
                 "useApifyProxy": True,
                 "apifyProxyGroups": ["RESIDENTIAL"]
             },
-            "storeUserIfNoTweets": False,
-            "tweetsDesired": max(results_limit, 30),  # Use at least 30 tweets like successful run
-            "withReplies": True,
-            "startUrls": []
+            "startUrls": [clean_username],
+            "maxConcurrency": 10,
+            "minConcurrency": 1,
+            "maxRequestRetries": 100
         }
         
         logger.info(f"BULLETPROOF Twitter scraping for {clean_username} with input: {run_input}")
@@ -142,12 +139,12 @@ class TwitterScraper:
                             logger.info(f"✅ Data validation passed for {username}")
                             logger.debug(f"First item keys: {list(first_item.keys())}")
                             
-                            # Check for user information
+                            # Check for user information in the new format
                             has_user_info = False
-                            if 'user' in first_item:
-                                logger.info(f"✅ User info found in 'user' field for {username}")
+                            if 'author' in first_item and isinstance(first_item['author'], dict):
+                                logger.info(f"✅ User info found in 'author' field for {username}")
                                 has_user_info = True
-                            elif any(field in first_item for field in ['username', 'userFullName', 'totalFollowers']):
+                            elif any(field in first_item for field in ['userName', 'name', 'followers']):
                                 logger.info(f"✅ User info found in item fields for {username}")
                                 has_user_info = True
                             
@@ -172,10 +169,10 @@ class TwitterScraper:
                         if attempt < 3:
                             # Modify configuration for retry
                             if attempt == 2:
-                                # Try with fewer tweets and without replies
-                                run_input["tweetsDesired"] = 10
-                                run_input["withReplies"] = False
-                                logger.info(f"🔄 Retry {attempt+1}: Trying simplified config for {username}")
+                                # Try with different concurrency settings
+                                run_input["maxConcurrency"] = 5
+                                run_input["minConcurrency"] = 1
+                                logger.info(f"🔄 Retry {attempt+1}: Trying modified config for {username}")
                             
                             time.sleep(15)  # Wait before retry
                             continue
@@ -396,7 +393,7 @@ class TwitterScraper:
         }
     
     def extract_short_profile_info(self, profile_data):
-        """Extract short profile information from scraped data - BULLETPROOF with graceful degradation."""
+        """Extract short profile information from scraped data - BULLETPROOF with graceful degradation for NEW ACTOR FORMAT."""
         try:
             # BULLETPROOF HANDLING - Handle all edge cases
             if not profile_data:
@@ -413,21 +410,22 @@ class TwitterScraper:
             
             logger.info(f"✅ Extracting profile info from {len(profile_data)} items")
             
-            # Based on the actual output format from web.harvester/twitter-scraper
+            # NEW ACTOR FORMAT: Data structure is different
+            # Each item is a tweet with author field containing user information
             user_data = None
             tweets = []
             
-            # Find user info and collect tweets from the actual data structure
+            # Find user info and collect tweets from the NEW actor format
             for item in profile_data:
                 if isinstance(item, dict):
-                    # Check if this item has user information (from actual API response)
-                    if 'user' in item and isinstance(item['user'], dict):
+                    # NEW FORMAT: Check if this item has user information in 'author' field
+                    if 'author' in item and isinstance(item['author'], dict):
                         if user_data is None:
-                            user_data = item['user']
-                            logger.info("✅ Found user profile data in 'user' field")
+                            user_data = item['author']
+                            logger.info("✅ Found user profile data in 'author' field (NEW FORMAT)")
                     
-                    # This is a tweet (based on actual output structure)
-                    if any(field in item for field in ['id', 'text', 'url', 'likes', 'retweets', 'timestamp']):
+                    # This is a tweet in the new format
+                    if item.get('type') == 'tweet' or any(field in item for field in ['id', 'text', 'url', 'likeCount', 'retweetCount', 'createdAt']):
                         tweets.append(item)
                         
             # GRACEFUL FALLBACK - If no user data found, extract from first item
@@ -435,10 +433,10 @@ class TwitterScraper:
                 logger.warning("⚠️ No user data found in expected format - trying fallback extraction")
                 first_item = profile_data[0] if profile_data else None
                 if first_item and isinstance(first_item, dict):
-                    if 'user' in first_item:
-                        user_data = first_item['user']
-                        logger.info("✅ Extracted user data from first item 'user' field")
-                    elif any(field in first_item for field in ['userFullName', 'totalFollowers', 'totalFollowing']):
+                    if 'author' in first_item and isinstance(first_item['author'], dict):
+                        user_data = first_item['author']
+                        logger.info("✅ Extracted user data from first item 'author' field")
+                    elif any(field in first_item for field in ['userName', 'name', 'followers']):
                         user_data = first_item
                         logger.info("✅ Using first item as user data")
                     else:
@@ -449,20 +447,20 @@ class TwitterScraper:
                     logger.warning("🔒 Could not extract user data - creating default profile")
                     return self._create_default_profile_info("private_account")
             
-            # BULLETPROOF FIELD EXTRACTION with multiple fallbacks
+            # BULLETPROOF FIELD EXTRACTION with NEW ACTOR field mappings
             logger.info(f"✅ Processing user data with fields: {list(user_data.keys())}")
             
-            # Extract metrics using multiple field name variations
+            # Extract metrics using NEW ACTOR field names
             follower_count = self._safe_extract_count(user_data, [
-                'totalFollowers', 'followers', 'followersCount', 'follower_count'
+                'followers', 'totalFollowers', 'followersCount', 'follower_count'
             ])
             
             following_count = self._safe_extract_count(user_data, [
-                'totalFollowing', 'following', 'followingCount', 'follows_count'
+                'following', 'totalFollowing', 'followingCount', 'follows_count'
             ])
             
             tweet_count = self._safe_extract_count(user_data, [
-                'totalTweets', 'statusesCount', 'tweets', 'tweet_count', 'posts_count'
+                'statusesCount', 'totalTweets', 'tweets', 'tweet_count', 'posts_count'
             ])
             
             # If no tweet count from user data, use actual tweets collected
@@ -470,7 +468,7 @@ class TwitterScraper:
                 tweet_count = len(tweets)
                 logger.info(f"✅ Using actual tweets count: {tweet_count}")
             
-            # BULLETPROOF ENGAGEMENT CALCULATION
+            # BULLETPROOF ENGAGEMENT CALCULATION with NEW ACTOR field names
             total_likes = 0
             total_retweets = 0
             total_replies = 0
@@ -478,20 +476,20 @@ class TwitterScraper:
             
             for tweet in tweets:
                 if isinstance(tweet, dict):
-                    total_likes += self._safe_extract_count(tweet, ['likes', 'like_count', 'likeCount'])
-                    total_retweets += self._safe_extract_count(tweet, ['retweets', 'retweet_count', 'retweetCount'])
-                    total_replies += self._safe_extract_count(tweet, ['replies', 'reply_count', 'replyCount'])
-                    total_quotes += self._safe_extract_count(tweet, ['quotes', 'quote_count', 'quoteCount'])
+                    total_likes += self._safe_extract_count(tweet, ['likeCount', 'likes', 'like_count'])
+                    total_retweets += self._safe_extract_count(tweet, ['retweetCount', 'retweets', 'retweet_count'])
+                    total_replies += self._safe_extract_count(tweet, ['replyCount', 'replies', 'reply_count'])
+                    total_quotes += self._safe_extract_count(tweet, ['quoteCount', 'quotes', 'quote_count'])
             
             engagement_per_post = (total_likes + total_retweets + total_replies + total_quotes) / len(tweets) if tweets else 0
             
-            # BULLETPROOF STRING FIELD EXTRACTION
+            # BULLETPROOF STRING FIELD EXTRACTION with NEW ACTOR field names
             screen_name = self._safe_extract_string(user_data, [
-                'username', 'userName', 'screen_name', 'screenName'
+                'userName', 'username', 'screen_name', 'screenName'
             ])
             
             full_name = self._safe_extract_string(user_data, [
-                'userFullName', 'name', 'displayName', 'fullName'
+                'name', 'userFullName', 'displayName', 'fullName'
             ])
             
             bio = self._safe_extract_string(user_data, [
@@ -499,23 +497,35 @@ class TwitterScraper:
             ])
             
             profile_image = self._safe_extract_string(user_data, [
-                'avatar', 'profilePicture', 'profileImageUrl', 'profile_image_url'
+                'profilePicture', 'avatar', 'profileImageUrl', 'profile_image_url'
             ])
             
-            website = self._safe_extract_string(user_data, [
-                'website', 'url', 'externalUrl'
-            ])
+            # NEW ACTOR: Extract website from entities structure
+            website = ""
+            if 'entities' in user_data and isinstance(user_data['entities'], dict):
+                if 'url' in user_data['entities'] and isinstance(user_data['entities']['url'], dict):
+                    urls = user_data['entities']['url'].get('urls', [])
+                    if urls and isinstance(urls, list) and len(urls) > 0:
+                        website = urls[0].get('expanded_url', '') or urls[0].get('url', '')
+            
+            # Fallback to direct website field
+            if not website:
+                website = self._safe_extract_string(user_data, [
+                    'website', 'url', 'externalUrl'
+                ])
             
             location = self._safe_extract_string(user_data, [
                 'location', 'geo_location'
             ])
             
-            # BULLETPROOF BOOLEAN EXTRACTION
-            verified = user_data.get('verified', False) or user_data.get('isVerified', False)
+            # BULLETPROOF BOOLEAN EXTRACTION with NEW ACTOR field names
+            verified = (user_data.get('isVerified', False) or 
+                       user_data.get('isBlueVerified', False) or 
+                       user_data.get('verified', False))
             
-            # BULLETPROOF DATE EXTRACTION
+            # BULLETPROOF DATE EXTRACTION with NEW ACTOR field names
             created_at = self._safe_extract_string(user_data, [
-                'joinDate', 'createdAt', 'created_at'
+                'createdAt', 'joinDate', 'created_at'
             ])
             
             # Create bulletproof profile info
@@ -539,14 +549,14 @@ class TwitterScraper:
                     'engagement_per_post': engagement_per_post
                 },
                 'recent_posts': [],
-                'data_source': 'twitter_scraper',
+                'data_source': 'twitter_scraper_new_actor',
                 'extraction_timestamp': datetime.now().isoformat()
             }
             
-            # BULLETPROOF RECENT POSTS EXTRACTION (limit to 5)
+            # BULLETPROOF RECENT POSTS EXTRACTION (limit to 5) with NEW ACTOR format
             for i, tweet in enumerate(tweets[:5]):
                 if isinstance(tweet, dict):
-                    post_data = self._extract_tweet_data(tweet, i)
+                    post_data = self._extract_tweet_data_new_format(tweet, i)
                     if post_data:
                         profile_info['recent_posts'].append(post_data)
             
@@ -589,22 +599,67 @@ class TwitterScraper:
         return ""
 
     def _extract_minimal_user_data(self, item):
-        """Extract minimal user data from any available fields."""
+        """Extract minimal user data from any available fields for NEW ACTOR FORMAT."""
         minimal_data = {}
         
-        # Try to find any username-like field
-        for username_field in ['username', 'userName', 'screen_name', 'handle']:
+        # Try to find any username-like field with NEW ACTOR field names
+        for username_field in ['userName', 'username', 'screen_name', 'handle']:
             if username_field in item:
-                minimal_data['username'] = item[username_field]
+                minimal_data['userName'] = item[username_field]
                 break
         
-        # Try to find any count fields
+        # Try to find any count fields with NEW ACTOR field names
         for follower_field in ['followers', 'follower_count', 'totalFollowers']:
             if follower_field in item:
-                minimal_data['totalFollowers'] = item[follower_field]
+                minimal_data['followers'] = item[follower_field]
                 break
                 
         return minimal_data
+
+    def _extract_tweet_data_new_format(self, tweet, index):
+        """Extract tweet data safely for NEW ACTOR FORMAT."""
+        try:
+            tweet_text = self._safe_extract_string(tweet, ['text', 'content', 'tweet_text'])
+            created_at = self._safe_extract_string(tweet, ['createdAt', 'timestamp', 'created_at'])
+            
+            # Extract media safely from NEW ACTOR format
+            media_list = []
+            if 'extendedEntities' in tweet and isinstance(tweet['extendedEntities'], dict):
+                media = tweet['extendedEntities'].get('media', [])
+                if isinstance(media, list):
+                    for media_item in media:
+                        if isinstance(media_item, dict):
+                            media_url = media_item.get('media_url', '') or media_item.get('url', '')
+                            if media_url:
+                                media_list.append(media_url)
+            
+            # Fallback to direct media field
+            if 'media' in tweet and isinstance(tweet['media'], list):
+                for media in tweet['media']:
+                    if isinstance(media, dict):
+                        media_url = media.get('url', '') or media.get('src', '')
+                        if media_url:
+                            media_list.append(media_url)
+                    elif isinstance(media, str):
+                        media_list.append(media)
+                    
+            return {
+                'id': str(tweet.get('id', f'tweet_{index}')),
+                'text': tweet_text,
+                'created_at': created_at,
+                'likes': self._safe_extract_count(tweet, ['likeCount', 'likes', 'like_count']),
+                'retweets': self._safe_extract_count(tweet, ['retweetCount', 'retweets', 'retweet_count']),
+                'replies': self._safe_extract_count(tweet, ['replyCount', 'replies', 'reply_count']),
+                'quotes': self._safe_extract_count(tweet, ['quoteCount', 'quotes', 'quote_count']),
+                'is_retweet': tweet.get('isRetweet', False),
+                'is_quote': tweet.get('isQuote', False),
+                'is_reply': tweet.get('isReply', False),
+                'media': media_list,
+                'url': self._safe_extract_string(tweet, ['url', 'twitterUrl', 'tweet_url'])
+            }
+        except Exception as e:
+            logger.warning(f"Error extracting tweet data: {str(e)}")
+            return None
 
     def _create_default_profile_info(self, username_hint):
         """Create a default profile info structure for failed extractions."""
@@ -633,43 +688,6 @@ class TwitterScraper:
             'note': 'Default profile created due to data extraction issues'
         }
 
-    def _extract_tweet_data(self, tweet, index):
-        """Extract tweet data safely."""
-        try:
-            tweet_text = self._safe_extract_string(tweet, ['text', 'content', 'tweet_text'])
-            created_at = self._safe_extract_string(tweet, ['timestamp', 'createdAt', 'created_at'])
-            
-            # Extract media safely
-            media_list = []
-            if 'images' in tweet and isinstance(tweet['images'], list):
-                media_list.extend(tweet['images'])
-            if 'media' in tweet and isinstance(tweet['media'], list):
-                for media in tweet['media']:
-                    if isinstance(media, dict):
-                        media_url = media.get('url', '') or media.get('src', '')
-                        if media_url:
-                            media_list.append(media_url)
-                    elif isinstance(media, str):
-                        media_list.append(media)
-                    
-            return {
-                'id': str(tweet.get('id', f'tweet_{index}')),
-                'text': tweet_text,
-                'created_at': created_at,
-                'likes': self._safe_extract_count(tweet, ['likes', 'like_count']),
-                'retweets': self._safe_extract_count(tweet, ['retweets', 'retweet_count']),
-                'replies': self._safe_extract_count(tweet, ['replies', 'reply_count']),
-                'quotes': self._safe_extract_count(tweet, ['quotes', 'quote_count']),
-                'is_retweet': tweet.get('isRetweet', False),
-                'is_quote': tweet.get('isQuote', False),
-                'is_reply': tweet.get('isReply', False),
-                'media': media_list,
-                'url': self._safe_extract_string(tweet, ['url', 'tweet_url'])
-            }
-        except Exception as e:
-            logger.warning(f"Error extracting tweet data: {str(e)}")
-            return None
-    
     def retrieve_and_process_twitter_usernames(self):
         """
         Retrieve and process ONE pending profileinfo.json from tasks/AccountInfo/twitter/<username>/info.json 

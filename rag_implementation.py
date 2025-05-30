@@ -153,6 +153,14 @@ class RagImplementation:
         **STRATEGIC FOCUS**: {query}
         **ANALYSIS DATE**: {datetime.now().strftime('%B %d, %Y')}
 
+        **CRITICAL ANALYSIS PROTOCOLS**:
+        ⚠️ STRICT DATA-ONLY ANALYSIS REQUIREMENTS:
+        1. DO NOT ASSUME real names or identities unless explicitly stated in scraped data
+        2. DO NOT use external knowledge about usernames or make identity assumptions
+        3. ONLY analyze based on actual scraped content, engagement patterns, and posting behavior
+        4. If real name/identity is not in scraped data, refer to users ONLY by their username
+        5. Focus analysis on content strategy, engagement patterns, and observable posting behavior
+
         **ACCOUNT PERFORMANCE DATA**:
         {engagement_insights}
 
@@ -162,70 +170,70 @@ class RagImplementation:
         **COMPETITIVE INTELLIGENCE**:
         {competitive_intel if competitive_intel else "Competitor data being analyzed through alternative methods"}
 
-        Your mission is to provide a strategic intelligence report that demonstrates deep understanding of {primary_username}'s unique positioning and creates actionable recommendations that are specifically tailored to their content style, audience, and market position.
+        Your mission is to provide a strategic intelligence report that demonstrates deep understanding of {primary_username}'s unique positioning and creates actionable recommendations that are specifically tailored to their content style, audience, and market position based SOLELY on scraped data.
 
         **CRITICAL ANALYSIS REQUIREMENTS**:
 
         1. **DEEP PROFILE INTELLIGENCE** [PRIMARY ACCOUNT ANALYSIS]
-           - Identify the account's unique content DNA by analyzing posting patterns, themes, and engagement drivers
-           - Determine their authentic voice, visual style, and core messaging pillars
+           - Identify the account's unique content DNA by analyzing posting patterns, themes, and engagement drivers FROM SCRAPED DATA ONLY
+           - Determine their authentic voice, visual style, and core messaging pillars based on actual posts
            - Map their content ecosystem: what topics drive engagement, what formats work best
-           - Identify their competitive advantages and market positioning gaps
+           - Identify their competitive advantages and market positioning gaps from observable data
            - Analyze audience response patterns to determine optimal content strategies
 
         2. **COMPETITIVE WARFARE ANALYSIS** [STRATEGIC INTELLIGENCE]
-           - For each competitor, conduct deep behavioral analysis:
-             * Reverse-engineer their most successful content strategies
-             * Identify their content vulnerabilities and strategic blind spots
-             * Map their posting rhythms, engagement tactics, and audience manipulation techniques
-             * Discover their untapped market segments that {primary_username} could capture
-             * Analyze their recent strategic shifts and predict their next moves
-           - Create a competitive advantage matrix showing exactly where {primary_username} can outmaneuver each competitor
+           - For each competitor, conduct analysis based ONLY on their scraped content:
+             * Analyze their content strategies from actual posts
+             * Identify their content vulnerabilities and posting pattern gaps
+             * Map their posting rhythms, engagement tactics, and content themes
+             * Discover their untapped content areas that {primary_username} could explore
+             * Analyze their recent content trends from scraped data
+           - Create a competitive advantage matrix showing exactly where {primary_username} can outperform based on content analysis
 
         3. **STRATEGIC EXPLOITATION PLAN** [ACTIONABLE WARFARE]
-           - Design specific content strategies that exploit competitor weaknesses while amplifying {primary_username}'s strengths
-           - Create 5 high-impact content pillars that position {primary_username} as the market leader
-           - Develop counter-strategies for each major competitor threat
+           - Design specific content strategies that exploit competitor content gaps while amplifying {primary_username}'s strengths
+           - Create 5 high-impact content pillars based on {primary_username}'s actual posting patterns
+           - Develop counter-strategies for each major competitor content approach
            - Recommend timing strategies that capitalize on competitor posting gaps
-           - Design audience capture techniques that pull followers from competitor accounts
+           - Design content capture techniques based on actual engagement patterns
 
         4. **NEXT POST MASTERPIECE** [IMMEDIATE EXECUTION]
-           - Craft a post that perfectly embodies {primary_username}'s authentic voice while incorporating strategic intelligence
-           - The content must feel 100% authentic to their established style and themes
-           - Include strategic elements that subtly outposition competitors
+           - Craft a post that perfectly embodies {primary_username}'s authentic voice from their actual posting history
+           - The content must feel 100% authentic to their established style and themes from scraped data
+           - Include strategic elements based on competitor content gap analysis
            - Provide detailed execution guidance including:
-             * Caption that matches their exact writing style and tone
-             * Hashtag strategy that exploits competitor gaps
-             * Visual concept that aligns with their aesthetic while standing out
-             * Engagement hooks designed for their specific audience psychology
+             * Caption that matches their exact writing style from actual posts
+             * Hashtag strategy based on their actual usage patterns
+             * Visual concept that aligns with their aesthetic from scraped content
+             * Engagement hooks designed based on their actual audience interaction patterns
 
         **INTELLIGENCE STANDARDS**:
         - Every recommendation must be backed by specific data points from the post analysis
-        - No generic advice - everything must be tailored to {primary_username}'s unique situation
+        - No generic advice - everything must be tailored to {primary_username}'s unique content patterns
         - Include specific examples from their post history to justify recommendations
-        - Provide concrete metrics and benchmarks for measuring success
-        - Reference competitor-specific tactics that can be adapted or countered
+        - Provide concrete metrics and benchmarks based on actual performance data
+        - Reference competitor-specific content tactics that can be adapted or countered based on scraped data
 
         **OUTPUT REQUIREMENTS**:
         Format as a comprehensive JSON intelligence report with the following structure:
 
         {{
-            "primary_analysis": "Deep dive into {primary_username}'s content DNA, engagement patterns, unique strengths, and strategic positioning opportunities based on their actual post performance data",
+            "primary_analysis": "Deep dive into {primary_username}'s content DNA, engagement patterns, unique strengths, and strategic positioning opportunities based ONLY on their actual post performance data and scraped content",
             "competitor_analysis": {{
-                "{secondary_usernames[0] if secondary_usernames else 'competitor1'}": "Detailed strategic analysis of their content approach, vulnerabilities, and how {primary_username} can outmaneuver them, including specific recent activities and strategic opportunities",
-                "{secondary_usernames[1] if len(secondary_usernames) > 1 else 'competitor2'}": "Comprehensive competitive intelligence including their engagement tactics, content gaps, and exploitation opportunities for {primary_username}",
-                "{secondary_usernames[2] if len(secondary_usernames) > 2 else 'competitor3'}": "Strategic breakdown of their market position, content weaknesses, and specific tactics {primary_username} should deploy against them"
+                "{secondary_usernames[0] if secondary_usernames else 'competitor1'}": "Analysis of their content approach, posting patterns, and content gaps based ONLY on scraped data - NO EXTERNAL ASSUMPTIONS about identity or role",
+                "{secondary_usernames[1] if len(secondary_usernames) > 1 else 'competitor2'}": "Content intelligence based on actual posting behavior, engagement patterns, and observable content strategy",
+                "{secondary_usernames[2] if len(secondary_usernames) > 2 else 'competitor3'}": "Strategic breakdown of their content positioning, posting patterns, and specific content tactics {primary_username} should deploy based on scraped data analysis"
             }},
-            "recommendations": "5 highly specific, data-driven content strategies that leverage {primary_username}'s unique strengths while exploiting identified competitor vulnerabilities. Each recommendation must include specific execution details and expected impact metrics.",
+            "recommendations": "5 highly specific, data-driven content strategies that leverage {primary_username}'s unique posting patterns while exploiting identified competitor content vulnerabilities. Each recommendation must include specific execution details based on actual content performance.",
             "next_post": {{
-                "caption": "A caption written in {primary_username}'s authentic voice that incorporates strategic elements and feels completely natural to their established style and themes",
-                "hashtags": ["#strategic", "#hashtags", "#that", "#exploit", "#gaps"],
-                "call_to_action": "An engagement prompt that matches their audience psychology and drives specific actions",
-                "visual_prompt": "Detailed visual concept that perfectly aligns with {primary_username}'s aesthetic while incorporating strategic positioning elements against competitors"
+                "caption": "A caption written in {primary_username}'s authentic voice based on their actual posting style and incorporating strategic elements from content analysis",
+                "hashtags": ["#strategic", "#hashtags", "#based", "#on", "#actual", "#usage"],
+                "call_to_action": "An engagement prompt that matches their actual audience interaction patterns",
+                "visual_prompt": "Detailed visual concept that perfectly aligns with {primary_username}'s actual aesthetic from scraped content while incorporating strategic positioning elements"
             }}
         }}
 
-        Remember: This is not generic content creation - this is strategic intelligence warfare. Every element must demonstrate deep understanding of {primary_username}'s unique position and provide tactical advantages over their competition.
+        Remember: This is not generic content creation - this is strategic intelligence based on scraped data analysis. Every element must demonstrate deep understanding of {primary_username}'s unique content patterns and provide tactical advantages based on actual competitive content analysis.
         """
         return prompt
     
@@ -234,17 +242,46 @@ class RagImplementation:
         # Get comprehensive Twitter data about the primary account
         primary_data = self.vector_db.query_similar(query, n_results=15, filter_username=primary_username)
         
-        # Get DETAILED competitive intelligence for EACH competitor individually
+        # 🔥 CRITICAL: Get REAL competitor data from vector database for each competitor
         individual_competitor_intel = {}
+        competitor_performance_data = {}
+        
         for competitor_username in secondary_usernames[:3]:  # Analyze top 3 competitors max
             competitor_data = self.vector_db.query_similar(query, n_results=10, filter_username=competitor_username)
             individual_competitor_intel[competitor_username] = competitor_data
+            
+            # 🔥 ENHANCED: Calculate real competitor performance metrics
+            if competitor_data and 'documents' in competitor_data and competitor_data['documents'][0]:
+                competitor_posts = list(zip(competitor_data['documents'][0], competitor_data['metadatas'][0]))
+                
+                # Real performance analysis
+                engagements = [meta['engagement'] for doc, meta in competitor_posts if 'engagement' in meta]
+                total_engagement = sum(engagements) if engagements else 0
+                avg_engagement = total_engagement / len(engagements) if engagements else 0
+                max_engagement = max(engagements) if engagements else 0
+                
+                # Content theme analysis
+                top_content = sorted(competitor_posts, key=lambda x: x[1].get('engagement', 0), reverse=True)[:3]
+                content_themes = [doc[:80] + "..." for doc, meta in top_content]
+                
+                competitor_performance_data[competitor_username] = {
+                    'avg_engagement': avg_engagement,
+                    'max_engagement': max_engagement,
+                    'total_posts': len(competitor_posts),
+                    'top_content': content_themes,
+                    'performance_level': 'HIGH' if avg_engagement > 1000 else 'MEDIUM' if avg_engagement > 100 else 'LOW'
+                }
+                
+                logger.info(f"🔥 REAL COMPETITOR DATA: {competitor_username} - Avg: {avg_engagement:.0f}, Posts: {len(competitor_posts)}")
         
         # Extract comprehensive engagement intelligence for PRIMARY account
         primary_context = ""
         viral_intelligence = ""
         engagement_patterns = []
         strategic_themes = []
+        viral_tweets = []
+        high_engagement = []
+        avg_top_engagement = 0
         
         if primary_data and 'documents' in primary_data and primary_data['documents'][0]:
             tweets_with_meta = list(zip(primary_data['documents'][0], primary_data['metadatas'][0]))
@@ -274,125 +311,129 @@ class RagImplementation:
                     viral_intelligence += f"\n🔥 VIRAL CONTENT PATTERNS:\n" + "\n".join(strategic_themes)
                 if engagement_patterns:
                     viral_intelligence += f"\n⚡ HIGH-ENGAGEMENT PATTERNS:\n" + "\n".join(engagement_patterns)
-        
-        # Build DETAILED competitive intelligence for EACH competitor
-        detailed_competitor_intel = ""
-        competitor_vulnerabilities = {}
-        competitor_strengths = {}
-        
-        for competitor_username, competitor_data in individual_competitor_intel.items():
-            detailed_competitor_intel += f"\n🔍 DEEP INTEL: {competitor_username}\n"
-            
-            if competitor_data and 'documents' in competitor_data and competitor_data['documents'][0]:
-                competitor_tweets = list(zip(competitor_data['documents'][0], competitor_data['metadatas'][0]))
-                if competitor_tweets:
-                    # Calculate detailed metrics
-                    total_engagement = sum(t[1]['engagement'] for t in competitor_tweets)
-                    avg_engagement = total_engagement / len(competitor_tweets)
-                    max_engagement = max(t[1]['engagement'] for t in competitor_tweets)
-                    best_tweet = max(competitor_tweets, key=lambda x: x[1]['engagement'])
-                    
-                    # Analyze content patterns
-                    viral_count = len([t for t in competitor_tweets if t[1]['engagement'] > 1000])
-                    high_count = len([t for t in competitor_tweets if 200 <= t[1]['engagement'] <= 1000])
-                    
-                    # Extract top performing content themes
-                    top_tweets = sorted(competitor_tweets, key=lambda x: x[1]['engagement'], reverse=True)[:3]
-                    
-                    detailed_competitor_intel += f"• Posts analyzed: {len(competitor_tweets)}\n"
-                    detailed_competitor_intel += f"• Average engagement: {avg_engagement:.0f}\n"
-                    detailed_competitor_intel += f"• Peak engagement: {max_engagement}\n"
-                    detailed_competitor_intel += f"• Viral tweets: {viral_count} | High-engagement: {high_count}\n"
-                    detailed_competitor_intel += f"• Best tweet: {best_tweet[0][:100]}... (E:{best_tweet[1]['engagement']})\n"
-                    
-                    # Identify strengths and vulnerabilities
-                    if viral_count > 0:
-                        competitor_strengths[competitor_username] = f"Strong viral content creation ({viral_count} viral tweets)"
-                    elif avg_engagement > 500:
-                        competitor_strengths[competitor_username] = f"Consistent high engagement (avg: {avg_engagement:.0f})"
-                    else:
-                        competitor_vulnerabilities[competitor_username] = f"Low engagement performance (avg: {avg_engagement:.0f})"
-                    
-                    # Add content pattern analysis
-                    detailed_competitor_intel += f"• Top content themes:\n"
-                    for i, (tweet, meta) in enumerate(top_tweets, 1):
-                        detailed_competitor_intel += f"  #{i}: {tweet[:80]}... (E:{meta['engagement']})\n"
-                else:
-                    detailed_competitor_intel += f"• No tweet data available for analysis\n"
-                    competitor_vulnerabilities[competitor_username] = "Insufficient content data for competitive assessment"
             else:
-                detailed_competitor_intel += f"• Data collection incomplete - limited competitive visibility\n"
-                competitor_vulnerabilities[competitor_username] = "Limited data availability creates blind spots"
+                viral_intelligence = f"�� PRIMARY ACCOUNT INTELLIGENCE: {primary_username}\n"
+                viral_intelligence += f"• Total tweets analyzed: {len(tweets_with_meta)}\n"
+                viral_intelligence += f"• No viral content (>1000 engagement) identified in current dataset\n"
+                viral_intelligence += f"• Analysis based on available content patterns\n"
         
-        # If no detailed competitor data, create strategic framework
-        if not detailed_competitor_intel.strip():
+        # 🔥 ENHANCED: Build DETAILED competitive intelligence with REAL scraped data
+        detailed_competitor_intel = ""
+        competitive_advantage_analysis = ""
+        
+        if competitor_performance_data:
+            detailed_competitor_intel += f"\n🔥 REAL COMPETITOR INTELLIGENCE (SCRAPED DATA ANALYSIS):\n"
+            
+            for competitor_username, perf_data in competitor_performance_data.items():
+                detailed_competitor_intel += f"\n📊 {competitor_username.upper()} - PERFORMANCE BREAKDOWN:\n"
+                detailed_competitor_intel += f"• Performance Level: {perf_data['performance_level']}\n"
+                detailed_competitor_intel += f"• Average Engagement: {perf_data['avg_engagement']:.0f}\n"
+                detailed_competitor_intel += f"• Peak Engagement: {perf_data['max_engagement']}\n"
+                detailed_competitor_intel += f"• Content Volume: {perf_data['total_posts']} posts analyzed\n"
+                
+                if perf_data['top_content']:
+                    detailed_competitor_intel += f"• TOP PERFORMING CONTENT:\n"
+                    for i, content in enumerate(perf_data['top_content'], 1):
+                        detailed_competitor_intel += f"  {i}. {content}\n"
+                
+                # Strategic insights based on real data
+                if perf_data['avg_engagement'] > 1000:
+                    detailed_competitor_intel += f"• THREAT LEVEL: HIGH - Strong engagement performance\n"
+                    detailed_competitor_intel += f"• VULNERABILITY: May be over-reliant on high-engagement content themes\n"
+                elif perf_data['avg_engagement'] < 100:
+                    detailed_competitor_intel += f"• OPPORTUNITY: Weak engagement - easy to outperform\n"
+                    detailed_competitor_intel += f"• STRATEGY: Target their audience with superior content\n"
+            
+            # Competitive advantage analysis
+            primary_avg = avg_top_engagement if viral_tweets or high_engagement else 0
+            competitive_advantage_analysis = f"\n🎯 COMPETITIVE ADVANTAGE ANALYSIS:\n"
+            competitive_advantage_analysis += f"• {primary_username} average: {primary_avg:.0f}\n"
+            
+            for comp_name, comp_data in competitor_performance_data.items():
+                advantage = primary_avg - comp_data['avg_engagement']
+                if advantage > 0:
+                    competitive_advantage_analysis += f"• ADVANTAGE vs {comp_name}: +{advantage:.0f} engagement\n"
+                else:
+                    competitive_advantage_analysis += f"• DEFICIT vs {comp_name}: {advantage:.0f} engagement (IMPROVE NEEDED)\n"
+        
+        else:
             detailed_competitor_intel = f"\n🔍 COMPETITIVE SURVEILLANCE: {', '.join(secondary_usernames)}\n"
+            detailed_competitor_intel += "• Real-time data collection and analysis in progress\n"
             detailed_competitor_intel += "• Strategic positioning analysis framework deployed\n"
             detailed_competitor_intel += "• Market gap identification protocol active\n"
-            detailed_competitor_intel += "• Competitive vulnerability scanning in progress\n"
         
         prompt = f"""
 🎯 TWITTER COMPETITIVE INTELLIGENCE BRIEFING 🎯
 
 PRIMARY TARGET: {primary_username}
 COMPETITIVE THREATS: {', '.join(secondary_usernames)}
-MISSION: Deliver spy-level competitive intelligence and tactical dominance strategy
+MISSION: Deliver genius-level competitive intelligence and tactical dominance strategy based on REAL scraped data
 
 === PRIMARY ACCOUNT SURVEILLANCE ===
 {viral_intelligence}
 
-=== COMPETITIVE THREAT ASSESSMENT ===
+=== REAL COMPETITOR INTELLIGENCE (SCRAPED DATA) ===
 {detailed_competitor_intel}
 
-=== STRATEGIC INTELLIGENCE MISSION ===
-You are an elite Twitter competitive intelligence operative conducting deep surveillance analysis for {primary_username}. Your mission is to decode competitor strategies, expose vulnerabilities, and deliver actionable intelligence that establishes market dominance.
+=== COMPETITIVE ADVANTAGE MATRIX ===
+{competitive_advantage_analysis}
+
+=== CRITICAL ANALYSIS PROTOCOLS ===
+⚠️ STRICT DATA-ONLY ANALYSIS REQUIREMENTS:
+1. ALL analysis MUST be based on the REAL scraped data provided above
+2. DO NOT assume identities unless explicitly stated in scraped profile data
+3. Use ONLY the performance metrics, engagement data, and content themes from scraped posts
+4. Base ALL competitive strategies on the actual engagement differences shown in the data
+5. Reference specific content examples from the scraped data in your analysis
+
+=== GENIUS-LEVEL COMPETITIVE INTELLIGENCE MISSION ===
+You are an elite competitive intelligence operative with access to REAL scraped data from all competitors. Your mission is to decode competitor strategies using ACTUAL performance metrics, expose real vulnerabilities found in their scraped content, and deliver actionable intelligence that establishes market dominance.
 
 **CRITICAL INTELLIGENCE REQUIREMENTS:**
-1. Use REAL identity data for {primary_username} - research their actual background, expertise, and authentic positioning
-2. Conduct individual threat assessment for EACH competitor listed: {', '.join(secondary_usernames)}
-3. Identify specific exploitable vulnerabilities and strategic blind spots
-4. Provide tactical recommendations based on actual competitive intelligence
+1. Use the REAL performance data provided for each competitor to identify true strengths and weaknesses
+2. Analyze the actual content themes from scraped posts to find content gaps and opportunities
+3. Base tactical recommendations on measurable engagement differences from the scraped data
+4. Create strategies that exploit the specific vulnerabilities revealed in the competitive analysis
 
 === REQUIRED INTELLIGENCE OUTPUT ===
 {{
     "competitive_intelligence": {{
-        "account_dna": "Deep identity analysis of {primary_username} including REAL background, expertise, market position, and authentic brand elements based on surveillance data",
-        "market_surveillance": "Tactical competitive landscape assessment revealing specific market gaps and strategic opportunities for {primary_username} to exploit",
-        "engagement_warfare": "Advanced psychological analysis of {primary_username}'s audience triggers, viral patterns, and engagement manipulation techniques"
+        "account_dna": "Analysis of {primary_username} based on scraped content performance: {avg_top_engagement:.0f} average on top content, {len(viral_tweets)} viral posts, with specific content themes from actual posts",
+        "market_surveillance": "Competitive landscape analysis based on REAL scraped data: {', '.join([f'{name}({data['avg_engagement']:.0f} avg)' for name, data in competitor_performance_data.items()])} revealing specific performance gaps and content opportunities",
+        "engagement_warfare": "Strategic engagement analysis: {primary_username}'s performance vs competitors with specific tactics based on actual content performance patterns from scraped data"
     }},
     "threat_assessment": {{
-        "competitor_analysis": "Individual threat assessment for each competitor with specific vulnerabilities, strategic weaknesses, and exploitation opportunities",
-        "vulnerability_map": "Detailed map of competitor blind spots, content gaps, and strategic failures that {primary_username} can capitalize on",
-        "market_opportunities": "High-value strategic opportunities discovered through competitive surveillance that align with {primary_username}'s capabilities"
+        "competitor_analysis": "Individual analysis of each competitor based on their REAL scraped performance data: {', '.join([f'{name}: {data['performance_level']} threat level with {data['avg_engagement']:.0f} avg engagement' for name, data in competitor_performance_data.items()])}",
+        "vulnerability_map": "Specific weaknesses identified from actual scraped content analysis and engagement patterns",
+        "market_opportunities": "Strategic opportunities discovered through analysis of real performance gaps and content themes from scraped data"
     }},
     "tactical_recommendations": [
-        "Specific tactical action leveraging {primary_username}'s authentic expertise against identified competitor vulnerabilities",
-        "Strategic positioning move that exploits market gaps while maintaining {primary_username}'s authentic voice",
-        "Advanced engagement manipulation technique based on competitive intelligence and audience psychology analysis"
+        "Specific tactical action based on REAL engagement data showing {primary_username} can outperform {[name for name, data in competitor_performance_data.items() if data['avg_engagement'] < (avg_top_engagement or 500)]}",
+        "Content strategy targeting the specific themes where competitors show weakness in their scraped content",
+        "Engagement optimization based on the actual performance differences revealed in the scraped data analysis"
     ],
     "next_post_prediction": {{
-        "tweet_text": "Strategically engineered tweet that sounds exactly like {primary_username}'s authentic voice while exploiting competitive intelligence insights",
-        "hashtags": ["#strategic", "#relevant", "#hashtags"],
-        "call_to_action": "Precision engagement trigger designed for {primary_username}'s specific audience psychology",
-        "image_prompt": "Visual warfare concept that outmaneuvers competitors while maintaining {primary_username}'s authentic aesthetic",
-        "tactical_timing": "Optimal posting strategy based on competitive gap analysis and {primary_username}'s audience patterns"
+        "tweet_text": "Content that leverages {primary_username}'s strength areas and targets competitor weak spots identified in scraped data",
+        "hashtags": ["#relevant", "#to", "#actual", "#content"],
+        "call_to_action": "Engagement approach based on successful patterns from {primary_username}'s viral content analysis",
+        "image_prompt": "Visual concept that aligns with {primary_username}'s top-performing content themes from scraped data"
     }}
 }}
 
-=== INTELLIGENCE ANALYSIS FRAMEWORK ===
-For each competitor in {secondary_usernames}, you MUST provide:
-- Specific content strategy analysis
-- Identified vulnerabilities and blind spots  
-- Tactical opportunities for {primary_username} to exploit
-- Counter-strategies to neutralize their advantages
+=== GENIUS-LEVEL ANALYSIS FRAMEWORK ===
+For each competitor in {secondary_usernames}, provide analysis based on:
+- ACTUAL average engagement: {', '.join([f'{name}: {data['avg_engagement']:.0f}' for name, data in competitor_performance_data.items()])}
+- REAL content themes from their top posts: Reference specific examples from scraped content
+- MEASURABLE performance gaps: Use the exact engagement differences to create strategies
+- SPECIFIC vulnerabilities: Point to actual weak content areas found in their scraped posts
 
-=== AUTHENTICITY PROTOCOL ===
-- Research and reference {primary_username}'s REAL identity, background, and expertise
-- All recommendations must sound authentically like {primary_username}
-- Exploit competitor weaknesses while maintaining authentic brand voice
-- Focus on actionable intelligence that drives measurable competitive advantage
+=== SCRAPED DATA PROTOCOL ===
+- Reference the SPECIFIC performance metrics provided for each competitor
+- Use the ACTUAL content themes extracted from their scraped posts
+- Base recommendations on the REAL engagement differences shown in the data
+- Create strategies that exploit the SPECIFIC vulnerabilities revealed in the analysis
 
-EXECUTE COMPETITIVE INTELLIGENCE OPERATION:
+EXECUTE GENIUS-LEVEL COMPETITIVE INTELLIGENCE WITH REAL DATA:
 """
         return prompt
     
