@@ -128,11 +128,9 @@ class R2DataRetriever:
             list: Combined list of post data from primary and competitor files, or None if failed
         """
         try:
-            # Define the prefix for the primary username's directory based on platform
-            if platform.lower() == "twitter":
-                prefix = f"twitter/{primary_username}/"
-            else:
-                prefix = f"{primary_username}/"
+            # FIXED: Use consistent schema across platforms - platform/username/
+            # NEW SCHEMA: platform/username/ for both Twitter and Instagram
+            prefix = f"{platform.lower()}/{primary_username}/"
                 
             logger.info(f"Retrieving {platform} data for {primary_username} with prefix '{prefix}'")
             

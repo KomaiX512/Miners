@@ -288,8 +288,14 @@ class ContentRecommendationSystem:
                     path_parts = data_key.split('/')
                     if len(path_parts) >= 2:
                         primary_username = path_parts[1]  # twitter/username/...
+                # Check if it's an Instagram data key (instagram/username/username.json)
+                elif data_key.startswith('instagram/'):
+                    platform = 'instagram'
+                    path_parts = data_key.split('/')
+                    if len(path_parts) >= 2:
+                        primary_username = path_parts[1]  # instagram/username/...
                 else:
-                    # Instagram format: username/username.json
+                    # Legacy Instagram format: username/username.json (backwards compatibility)
                     primary_username = data_key.split('/')[0]
                     
                 logger.info(f"Extracted primary username from data_key: {primary_username} (platform: {platform})")
@@ -337,13 +343,21 @@ class ContentRecommendationSystem:
 
             # Handle competitor data files for Instagram
             if platform == 'instagram' and '/' in data_key:
-                        # Extract the parent directory from the key (e.g., "maccosmetics" from "maccosmetics/maccosmetics.json")
-                        parent_dir = data_key.split('/')[0]
-                        # Load competitor files from the same directory
-                        competitors_data = self._load_competitor_files(parent_dir, data['profile']['username'])
-                        if competitors_data:
-                            data['competitor_posts'] = competitors_data
-                            logger.info(f"Added {len(competitors_data)} competitor posts to the data")
+                # FIXED: Extract the parent directory correctly from new schema
+                # NEW SCHEMA: instagram/username/username.json
+                if data_key.startswith('instagram/'):
+                    path_parts = data_key.split('/')
+                    if len(path_parts) >= 2:
+                        parent_dir = f"instagram/{path_parts[1]}"  # instagram/username
+                else:
+                    # Legacy format: username/username.json
+                    parent_dir = data_key.split('/')[0]
+                
+                # Load competitor files from the same directory
+                competitors_data = self._load_competitor_files(parent_dir, data['profile']['username'])
+                if competitors_data:
+                    data['competitor_posts'] = competitors_data
+                    logger.info(f"Added {len(competitors_data)} competitor posts to the data")
 
             return data
 
@@ -4084,23 +4098,24 @@ class ContentRecommendationSystem:
     def _scrape_competitor_data(self, competitor_username, platform="twitter", primary_username=None):
         """
         Scrape or retrieve competitor data for analysis.
-        FIXED: Use correct schema - twitter/primary_username/secondary_username.json
+        FIXED: Use correct schema - platform/primary_username/secondary_username.json
         """
         try:
             logger.info(f"🔄 Searching for competitor data: {competitor_username} on {platform}")
             
-            # FIXED: Use correct schema paths according to user's policy
+            # FIXED: Use correct schema paths according to new policy
+            # NEW SCHEMA: platform/username/ for both Twitter and Instagram
             potential_individual_paths = []
             
             if primary_username:
-                # CORRECT SCHEMA: twitter/primary_username/secondary_username.json
+                # CORRECT SCHEMA: platform/primary_username/secondary_username.json
                 potential_individual_paths.extend([
                     f"{platform}/{primary_username}/{competitor_username}.json",  # CORRECT schema path
                     f"{platform}/{primary_username}/{competitor_username}",  # Alternative without extension
                 ])
                 logger.info(f"🔧 Using correct schema with primary_username: {primary_username}")
             
-            # Fallback paths (old format for backward compatibility)
+            # Individual competitor paths with new schema
             potential_individual_paths.extend([
                 f"{platform}/{competitor_username}/{competitor_username}.json",  # Standard individual format
                 f"{platform}/{competitor_username}.json",  # Alternative format

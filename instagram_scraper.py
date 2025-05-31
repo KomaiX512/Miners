@@ -19,7 +19,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Apify API token
-APIFY_API_TOKEN = "apify_api_wFKozVJYcTV7EYXD89MfH7kr01hgA11DYk2I"
+APIFY_API_TOKEN = "apify_api_8KMkP56rStepAreTrqzHXVnVAOwH6N2XNNE2"
 
 class InstagramScraper:
     """Class for scraping Instagram profiles and uploading to R2 storage."""
@@ -174,7 +174,7 @@ class InstagramScraper:
             return False
     
     def upload_directory_to_both_buckets(self, local_directory, r2_prefix):
-        """Upload directory to main and personal buckets with conditions."""
+        """Upload directory to main and personal buckets with correct Instagram schema."""
         if not os.path.exists(local_directory):
             logger.error(f"Local directory does not exist: {local_directory}")
             return {"main_uploaded": False, "personal_uploaded": False, "success": False}
@@ -182,19 +182,23 @@ class InstagramScraper:
         main_bucket = self.r2_config['bucket_name']
         personal_bucket = self.r2_config['personal_bucket_name']
         
+        # FIXED: Use correct Instagram schema format
+        # NEW SCHEMA: instagram/username/ for Instagram data
+        instagram_prefix = f"instagram/{r2_prefix}"
+        
         # Delete previous profile data before uploading
-        self.delete_previous_profile_data(r2_prefix, main_bucket)
-        self.delete_previous_profile_data(r2_prefix, personal_bucket)
+        self.delete_previous_profile_data(instagram_prefix, main_bucket)
+        self.delete_previous_profile_data(instagram_prefix, personal_bucket)
         
         # Create directory marker
         try:
-            self.s3.put_object(Bucket=main_bucket, Key=f"{r2_prefix}/")
+            self.s3.put_object(Bucket=main_bucket, Key=f"{instagram_prefix}/")
             
             for filename in os.listdir(local_directory):
                 local_file_path = os.path.join(local_directory, filename)
                 if os.path.isdir(local_file_path):
                     continue
-                object_key = f"{r2_prefix}/{filename}"
+                object_key = f"{instagram_prefix}/{filename}"
                 self.s3.upload_file(
                     local_file_path,
                     main_bucket,
@@ -213,14 +217,14 @@ class InstagramScraper:
             expiration_time = (datetime.now() + timedelta(days=1)).isoformat()
             self.s3.put_object(
                 Bucket=personal_bucket,
-                Key=f"{r2_prefix}/",
+                Key=f"{instagram_prefix}/",
                 Metadata={'expiration-time': expiration_time}
             )
             for filename in os.listdir(local_directory):
                 local_file_path = os.path.join(local_directory, filename)
                 if os.path.isdir(local_file_path):
                     continue
-                object_key = f"{r2_prefix}/{filename}"
+                object_key = f"{instagram_prefix}/{filename}"
                 self.s3.upload_file(
                     local_file_path,
                     personal_bucket,
@@ -230,7 +234,7 @@ class InstagramScraper:
                         'Metadata': {'expiration-time': expiration_time}
                     }
                 )
-            logger.info(f"Successfully uploaded directory to personal bucket: {r2_prefix}/")
+            logger.info(f"Successfully uploaded directory to personal bucket: {instagram_prefix}/")
             personal_uploaded = True
         except Exception as e:
             logger.error(f"Failed to upload directory to personal bucket: {str(e)}")
@@ -616,13 +620,14 @@ class InstagramScraper:
     
     def verify_structure(self, parent_username):
         """Verify the directory structure for a parent account."""
-        structure = {f"{parent_username}/{parent_username}.json": False}
+        # FIXED: Use correct Instagram schema format
+        structure = {f"instagram/{parent_username}/{parent_username}.json": False}
         for i in range(1, 6):
-            structure[f"{parent_username}/competitor{i}.json"] = False
+            structure[f"instagram/{parent_username}/competitor{i}.json"] = False
         try:
             response = self.s3.list_objects_v2(
                 Bucket=self.r2_config['bucket_name'],
-                Prefix=f"{parent_username}/"
+                Prefix=f"instagram/{parent_username}/"
             )
             if 'Contents' in response:
                 for item in response['Contents']:
@@ -844,7 +849,8 @@ class InstagramScraper:
             
             self.cleanup_expired_personal_content()
             
-            object_key = f"{username}/{username}.json"
+            # FIXED: Use correct Instagram schema in object_key
+            object_key = f"instagram/{username}/{username}.json"
             return {
                 "success": upload_result["success"],
                 "message": f"Successfully scraped and uploaded {username}" if upload_result["success"] else f"Failed to upload {username}",
