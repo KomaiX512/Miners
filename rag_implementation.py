@@ -144,97 +144,99 @@ class RagImplementation:
                 competitive_intel += f"\n{username.upper()} INTELLIGENCE:\n"
                 competitive_intel += f"Best performing post: {competitor_best[0][:80]}... (Engagement: {competitor_best[1]['engagement']})\n"
                 competitive_intel += f"Average engagement: {sum(p[1]['engagement'] for p in competitor_posts) / len(competitor_posts):.0f}\n"
-        
+
         prompt = f"""
-        You are an elite social media strategist and account manager with deep expertise in content optimization and competitive intelligence. You have been hired specifically to analyze {primary_username}'s account and create a comprehensive strategy that leverages their unique strengths while exploiting competitor weaknesses.
+🎯 ACCOUNT MANAGEMENT BRIEFING - EXECUTIVE LEVEL 🎯
 
-        **ACCOUNT UNDER ANALYSIS**: {primary_username}
-        **TARGET COMPETITORS**: {', '.join(secondary_usernames)}
-        **STRATEGIC FOCUS**: {query}
-        **ANALYSIS DATE**: {datetime.now().strftime('%B %d, %Y')}
+ACCOUNT UNDER MANAGEMENT: @{primary_username}
+COMPETITIVE LANDSCAPE: {', '.join(secondary_usernames)}
+MISSION: Deliver executive-level account management insights with actionable intelligence
+ANALYSIS DATE: {datetime.now().strftime('%B %d, %Y')}
 
-        **CRITICAL ANALYSIS PROTOCOLS**:
-        ⚠️ STRICT DATA-ONLY ANALYSIS REQUIREMENTS:
-        1. DO NOT ASSUME real names or identities unless explicitly stated in scraped data
-        2. DO NOT use external knowledge about usernames or make identity assumptions
-        3. ONLY analyze based on actual scraped content, engagement patterns, and posting behavior
-        4. If real name/identity is not in scraped data, refer to users ONLY by their username
-        5. Focus analysis on content strategy, engagement patterns, and observable posting behavior
+=== 📊 YOUR ACCOUNT'S RECENT PERFORMANCE INTELLIGENCE ===
+{engagement_insights}
 
-        **ACCOUNT PERFORMANCE DATA**:
-        {engagement_insights}
+=== 📋 COMPLETE CONTENT ANALYSIS ===
+{primary_context if primary_context else "Limited post data available - focusing on strategic recommendations"}
 
-        **COMPLETE POST HISTORY ANALYSIS**:
-        {primary_context if primary_context else "Limited post data available - focusing on strategic recommendations"}
+=== 🔍 COMPETITIVE LANDSCAPE ANALYSIS ===
+{competitive_intel if competitive_intel else "Competitor data being analyzed through alternative methods"}
 
-        **COMPETITIVE INTELLIGENCE**:
-        {competitive_intel if competitive_intel else "Competitor data being analyzed through alternative methods"}
+=== 🎯 EXECUTIVE ACCOUNT MANAGER PROTOCOL ===
 
-        Your mission is to provide a strategic intelligence report that demonstrates deep understanding of {primary_username}'s unique positioning and creates actionable recommendations that are specifically tailored to their content style, audience, and market position based SOLELY on scraped data.
+You are the ELITE ACCOUNT MANAGER for @{primary_username}. You have complete access to all performance data, competitor intelligence, and market analytics. Your role is to provide executive-level strategic guidance with the following deliverables:
 
-        **CRITICAL ANALYSIS REQUIREMENTS**:
+**MODULE 1: 📈 STRATEGIC RECOMMENDATIONS**
+Provide a comprehensive account performance briefing including:
+• 🎯 **Recent Activity Analysis**: Detail @{primary_username}'s latest engagement patterns, top-performing content themes, and audience response metrics
+• 📊 **Performance Dashboard**: Include specific engagement statistics, growth trajectories, and content performance indicators  
+• 🔥 **Competitor Activity Intel**: Analyze competitors' recent successful campaigns, engagement spikes, and strategic moves with specific examples
+• ⚡ **Tactical Advantage Strategies**: Provide 3-5 specific actions to outperform competitors based on identified gaps and opportunities
+• 🚀 **Future Content Roadmap**: Strategic recommendations for upcoming content that will maximize engagement and market positioning
 
-        1. **DEEP PROFILE INTELLIGENCE** [PRIMARY ACCOUNT ANALYSIS]
-           - Identify the account's unique content DNA by analyzing posting patterns, themes, and engagement drivers FROM SCRAPED DATA ONLY
-           - Determine their authentic voice, visual style, and core messaging pillars based on actual posts
-           - Map their content ecosystem: what topics drive engagement, what formats work best
-           - Identify their competitive advantages and market positioning gaps from observable data
-           - Analyze audience response patterns to determine optimal content strategies
+**MODULE 2: 🔍 COMPETITIVE INTELLIGENCE REPORT**
+Deliver detailed competitor analysis featuring:
+• 📊 **Competitor Performance Metrics**: Specific engagement data, successful post examples, and performance patterns for each competitor
+• 🎯 **Content Strategy Analysis**: Break down competitors' winning content formulas with specific posts, engagement numbers, and success factors
+• ⚖️ **Head-to-Head Comparison**: Direct performance comparisons between @{primary_username} and each competitor with statistical backing
+• 🔥 **Competitive Advantages**: Identify specific areas where @{primary_username} can outperform based on competitor weaknesses
+• 💡 **Market Opportunity Map**: Strategic gaps in competitor coverage that @{primary_username} can exploit
 
-        2. **COMPETITIVE WARFARE ANALYSIS** [STRATEGIC INTELLIGENCE]
-           - For each competitor, conduct analysis based ONLY on their scraped content:
-             * Analyze their content strategies from actual posts
-             * Identify their content vulnerabilities and posting pattern gaps
-             * Map their posting rhythms, engagement tactics, and content themes
-             * Discover their untapped content areas that {primary_username} could explore
-             * Analyze their recent content trends from scraped data
-           - Create a competitive advantage matrix showing exactly where {primary_username} can outperform based on content analysis
+**MODULE 3: 🎨 NEXT POST STRATEGIC CREATION**
+Generate the optimal next post with:
+• ✨ **Theme-Aligned Content**: Perfect alignment with @{primary_username}'s successful content patterns and brand voice
+• 📝 **Engagement-Optimized Caption**: Crafted based on analysis of @{primary_username}'s highest-performing posts
+• 🏷️ **Strategic Hashtag Selection**: Research-based hashtag strategy that matches @{primary_username}'s successful patterns
+• 🎨 **Creative Visual Direction**: Detailed image prompt for maximum visual impact and brand consistency
+• 🎯 **Engagement Catalyst**: Call-to-action designed to maximize audience interaction based on performance data
 
-        3. **STRATEGIC EXPLOITATION PLAN** [ACTIONABLE WARFARE]
-           - Design specific content strategies that exploit competitor content gaps while amplifying {primary_username}'s strengths
-           - Create 5 high-impact content pillars based on {primary_username}'s actual posting patterns
-           - Develop counter-strategies for each major competitor content approach
-           - Recommend timing strategies that capitalize on competitor posting gaps
-           - Design content capture techniques based on actual engagement patterns
+=== 📋 EXECUTIVE REPORTING FORMAT ===
 
-        4. **NEXT POST MASTERPIECE** [IMMEDIATE EXECUTION]
-           - Craft a post that perfectly embodies {primary_username}'s authentic voice from their actual posting history
-           - The content must feel 100% authentic to their established style and themes from scraped data
-           - Include strategic elements based on competitor content gap analysis
-           - Provide detailed execution guidance including:
-             * Caption that matches their exact writing style from actual posts
-             * Hashtag strategy based on their actual usage patterns
-             * Visual concept that aligns with their aesthetic from scraped content
-             * Engagement hooks designed based on their actual audience interaction patterns
+Structure your analysis using this EXACT format with engaging presentation:
 
-        **INTELLIGENCE STANDARDS**:
-        - Every recommendation must be backed by specific data points from the post analysis
-        - No generic advice - everything must be tailored to {primary_username}'s unique content patterns
-        - Include specific examples from their post history to justify recommendations
-        - Provide concrete metrics and benchmarks based on actual performance data
-        - Reference competitor-specific content tactics that can be adapted or countered based on scraped data
+{{
+    "primary_analysis": "🎯 **@{primary_username} ACCOUNT PERFORMANCE ANALYSIS**\n\n📊 **Recent Activity Dashboard:**\n• [Include specific metrics and performance data from actual posts]\n• [Engagement trends and patterns analysis]\n• [Top-performing content theme identification]\n\n🔥 **Content Success Patterns:**\n• [List successful content themes with exact engagement data]\n• [Audience response analysis with metrics]\n• [Growth trajectory insights with statistics]\n\n💡 **Strategic Positioning:**\n• [Account's unique competitive advantages]\n• [Market positioning opportunities]\n• [Brand voice and aesthetic consistency analysis]",
+    
+    "competitor_analysis": {{
+        "{secondary_usernames[0] if secondary_usernames else 'competitor1'}": "🔍 **{secondary_usernames[0].upper() if secondary_usernames else 'COMPETITOR1'} INTELLIGENCE REPORT**\n\n📊 **Performance Metrics:**\n• **Average Engagement**: [Specific number based on scraped data]\n• **Top Performing Post**: [Quote specific post with engagement number]\n• **Success Formula**: [Analyze why their content works]\n• **Posting Frequency**: [Pattern analysis]\n\n🎯 **Content Strategy Breakdown:**\n• [Their winning content themes with examples]\n• [Visual style and aesthetic analysis]\n• [Audience engagement tactics they use]\n\n⚖️ **Competitive Comparison:**\n• [Direct performance vs @{primary_username}]\n• [Areas where @{primary_username} can outperform]\n• [Specific vulnerabilities to exploit]",
+        
+        "{secondary_usernames[1] if len(secondary_usernames) > 1 else 'competitor2'}": "🔍 **{secondary_usernames[1].upper() if len(secondary_usernames) > 1 else 'COMPETITOR2'} INTELLIGENCE REPORT**\n\n📊 **Performance Analysis:**\n• [Detailed performance metrics based on scraped data]\n• [Successful content examples with engagement numbers]\n• [Strategic positioning in market]\n\n🎯 **Strategic Intelligence:**\n• [Content approach analysis]\n• [Audience targeting strategy]\n• [Opportunities for @{primary_username} to outmaneuver]",
+        
+        "{secondary_usernames[2] if len(secondary_usernames) > 2 else 'competitor3'}": "🔍 **{secondary_usernames[2].upper() if len(secondary_usernames) > 2 else 'COMPETITOR3'} INTELLIGENCE REPORT**\n\n📈 **Market Position Analysis:**\n• [Performance assessment based on actual data]\n• [Content strategy evaluation]\n• [Specific tactics @{primary_username} should deploy to dominate this competitor]"
+    }},
+    
+    "recommendations": "🚀 **STRATEGIC ACTION PLAN FOR @{primary_username}**\n\n⚡ **IMMEDIATE PRIORITY ACTIONS:**\n• 🎯 **[Action 1]**: [Specific tactical recommendation with expected engagement boost and timeline]\n• 📊 **[Action 2]**: [Data-driven content strategy based on competitor analysis]\n• 🔥 **[Action 3]**: [Engagement optimization tactic based on successful patterns]\n• 💡 **[Action 4]**: [Market positioning move to exploit competitor weaknesses]\n• 🚀 **[Action 5]**: [Future content roadmap for sustained growth]\n\n📈 **PERFORMANCE OPTIMIZATION:**\n• [Specific metrics to track and improve]\n• [Content themes to prioritize based on data]\n• [Posting timing and frequency recommendations]\n\n🎯 **COMPETITIVE ADVANTAGE EXECUTION:**\n• [Strategies to outperform each identified competitor]\n• [Unique positioning opportunities to capture]\n• [Market gaps to fill for maximum impact]",
+    
+    "next_post": {{
+        "caption": "[Craft an engaging caption that perfectly matches @{primary_username}'s successful style, incorporates trending elements, and targets competitor weak spots while maintaining authentic brand voice]",
+        "hashtags": ["#strategic", "#hashtags", "#based", "#on", "#analysis"],
+        "call_to_action": "[Engagement prompt specifically designed for @{primary_username}'s audience based on their highest-performing posts and audience response patterns]",
+        "visual_prompt": "🎨 **CREATIVE VISUAL DIRECTION**: [Detailed, innovative image prompt for maximum visual impact. Include: specific composition style, color palette, visual elements, lighting, mood, props, and design details that align perfectly with @{primary_username}'s successful aesthetic patterns. Make it comprehensive enough for an AI image generator to create stunning, on-brand visuals that will outperform competitor content.]"
+    }}
+}}
 
-        **OUTPUT REQUIREMENTS**:
-        Format as a comprehensive JSON intelligence report with the following structure:
+=== 🎯 ACCOUNT MANAGER EXCELLENCE STANDARDS ===
 
-        {{
-            "primary_analysis": "Deep dive into {primary_username}'s content DNA, engagement patterns, unique strengths, and strategic positioning opportunities based ONLY on their actual post performance data and scraped content",
-            "competitor_analysis": {{
-                "{secondary_usernames[0] if secondary_usernames else 'competitor1'}": "Analysis of their content approach, posting patterns, and content gaps based ONLY on scraped data - NO EXTERNAL ASSUMPTIONS about identity or role",
-                "{secondary_usernames[1] if len(secondary_usernames) > 1 else 'competitor2'}": "Content intelligence based on actual posting behavior, engagement patterns, and observable content strategy",
-                "{secondary_usernames[2] if len(secondary_usernames) > 2 else 'competitor3'}": "Strategic breakdown of their content positioning, posting patterns, and specific content tactics {primary_username} should deploy based on scraped data analysis"
-            }},
-            "recommendations": "5 highly specific, data-driven content strategies that leverage {primary_username}'s unique posting patterns while exploiting identified competitor content vulnerabilities. Each recommendation must include specific execution details based on actual content performance.",
-            "next_post": {{
-                "caption": "A caption written in {primary_username}'s authentic voice based on their actual posting style and incorporating strategic elements from content analysis",
-                "hashtags": ["#strategic", "#hashtags", "#based", "#on", "#actual", "#usage"],
-                "call_to_action": "An engagement prompt that matches their actual audience interaction patterns",
-                "visual_prompt": "Detailed visual concept that perfectly aligns with {primary_username}'s actual aesthetic from scraped content while incorporating strategic positioning elements"
-            }}
-        }}
+✅ **INTELLIGENCE REQUIREMENTS:**
+- Every insight backed by specific performance data from scraped content analysis
+- Competitor analysis includes exact engagement numbers and successful post examples
+- All recommendations target measurable engagement improvements
+- Strategic positioning based on real competitive gaps identified in data
 
-        Remember: This is not generic content creation - this is strategic intelligence based on scraped data analysis. Every element must demonstrate deep understanding of {primary_username}'s unique content patterns and provide tactical advantages based on actual competitive content analysis.
-        """
+✅ **PROFESSIONAL PRESENTATION:**
+- Use emojis strategically for visual engagement and information hierarchy
+- Implement bullet points and structured formatting for executive consumption
+- Include specific statistics, metrics, and data points throughout analysis
+- Maintain highly professional tone while being engaging and actionable
+
+✅ **STRATEGIC DEPTH:**
+- Provide actionable intelligence that @{primary_username} can implement immediately
+- Connect all recommendations to competitive advantages and market opportunities
+- Base all tactical suggestions on proven performance patterns from actual data
+- Deliver insights demonstrating deep understanding of @{primary_username}'s brand, audience, and market position
+
+EXECUTE ELITE ACCOUNT MANAGEMENT ANALYSIS:
+"""
         return prompt
     
     def _construct_twitter_enhanced_prompt(self, primary_username, secondary_usernames, query):
@@ -362,77 +364,105 @@ class RagImplementation:
             detailed_competitor_intel += "• Market gap identification protocol active\n"
         
         prompt = f"""
-🎯 TWITTER COMPETITIVE INTELLIGENCE BRIEFING 🎯
+🎯 ACCOUNT MANAGEMENT BRIEFING - EXECUTIVE LEVEL 🎯
 
-PRIMARY TARGET: {primary_username}
-COMPETITIVE THREATS: {', '.join(secondary_usernames)}
-MISSION: Deliver genius-level competitive intelligence and tactical dominance strategy based on REAL scraped data
+ACCOUNT UNDER MANAGEMENT: @{primary_username}
+COMPETITIVE LANDSCAPE: {', '.join(secondary_usernames)}
+MISSION: Deliver executive-level account management insights with actionable intelligence
 
-=== PRIMARY ACCOUNT SURVEILLANCE ===
+=== 📊 YOUR ACCOUNT'S RECENT PERFORMANCE INTELLIGENCE ===
 {viral_intelligence}
 
-=== REAL COMPETITOR INTELLIGENCE (SCRAPED DATA) ===
+=== 🔍 COMPETITIVE LANDSCAPE ANALYSIS ===
 {detailed_competitor_intel}
 
-=== COMPETITIVE ADVANTAGE MATRIX ===
+=== ⚖️ STRATEGIC POSITIONING MATRIX ===
 {competitive_advantage_analysis}
 
-=== CRITICAL ANALYSIS PROTOCOLS ===
-⚠️ STRICT DATA-ONLY ANALYSIS REQUIREMENTS:
-1. ALL analysis MUST be based on the REAL scraped data provided above
-2. DO NOT assume identities unless explicitly stated in scraped profile data
-3. Use ONLY the performance metrics, engagement data, and content themes from scraped posts
-4. Base ALL competitive strategies on the actual engagement differences shown in the data
-5. Reference specific content examples from the scraped data in your analysis
+=== 🎯 EXECUTIVE ACCOUNT MANAGER PROTOCOL ===
 
-=== GENIUS-LEVEL COMPETITIVE INTELLIGENCE MISSION ===
-You are an elite competitive intelligence operative with access to REAL scraped data from all competitors. Your mission is to decode competitor strategies using ACTUAL performance metrics, expose real vulnerabilities found in their scraped content, and deliver actionable intelligence that establishes market dominance.
+You are the ELITE ACCOUNT MANAGER for @{primary_username}. You have complete access to all performance data, competitor intelligence, and market analytics. Your role is to provide executive-level strategic guidance with the following deliverables:
 
-**CRITICAL INTELLIGENCE REQUIREMENTS:**
-1. Use the REAL performance data provided for each competitor to identify true strengths and weaknesses
-2. Analyze the actual content themes from scraped posts to find content gaps and opportunities
-3. Base tactical recommendations on measurable engagement differences from the scraped data
-4. Create strategies that exploit the specific vulnerabilities revealed in the competitive analysis
+**MODULE 1: 📈 STRATEGIC RECOMMENDATIONS**
+Provide a comprehensive account performance briefing including:
+• 🎯 **Recent Activity Analysis**: Detail @{primary_username}'s latest engagement patterns, top-performing content themes, and audience response metrics
+• 📊 **Performance Dashboard**: Include specific engagement statistics, growth trajectories, and content performance indicators
+• 🔥 **Competitor Activity Intel**: Analyze competitors' recent successful campaigns, engagement spikes, and strategic moves with specific examples
+• ⚡ **Tactical Advantage Strategies**: Provide 3-5 specific actions to outperform competitors based on identified gaps and opportunities
+• 🚀 **Future Content Roadmap**: Strategic recommendations for upcoming content that will maximize engagement and market positioning
 
-=== REQUIRED INTELLIGENCE OUTPUT ===
+**MODULE 2: 🔍 COMPETITIVE INTELLIGENCE REPORT**
+Deliver detailed competitor analysis featuring:
+• 📊 **Competitor Performance Metrics**: Specific engagement data, successful post examples, and performance patterns for each competitor
+• 🎯 **Content Strategy Analysis**: Break down competitors' winning content formulas with specific posts, engagement numbers, and success factors
+• ⚖️ **Head-to-Head Comparison**: Direct performance comparisons between @{primary_username} and each competitor with statistical backing
+• 🔥 **Competitive Advantages**: Identify specific areas where @{primary_username} can outperform based on competitor weaknesses
+• 💡 **Market Opportunity Map**: Strategic gaps in competitor coverage that @{primary_username} can exploit
+
+**MODULE 3: 🎨 NEXT POST STRATEGIC CREATION**
+Generate the optimal next post with:
+• ✨ **Theme-Aligned Content**: Perfect alignment with @{primary_username}'s successful content patterns and brand voice
+• 📝 **Engagement-Optimized Caption**: Crafted based on analysis of @{primary_username}'s highest-performing posts
+• 🏷️ **Strategic Hashtag Selection**: Research-based hashtag strategy that matches @{primary_username}'s successful patterns
+• 🎨 **Creative Visual Direction**: Detailed image prompt for maximum visual impact and brand consistency
+• 🎯 **Engagement Catalyst**: Call-to-action designed to maximize audience interaction based on performance data
+
+=== 📋 EXECUTIVE REPORTING FORMAT ===
+
+Structure your analysis using this EXACT format with engaging presentation:
+
 {{
     "competitive_intelligence": {{
-        "account_dna": "Analysis of {primary_username} based on scraped content performance: {avg_top_engagement:.0f} average on top content, {len(viral_tweets)} viral posts, with specific content themes from actual posts",
-        "market_surveillance": "Competitive landscape analysis based on REAL scraped data: {', '.join([f'{name}({data['avg_engagement']:.0f} avg)' for name, data in competitor_performance_data.items()])} revealing specific performance gaps and content opportunities",
-        "engagement_warfare": "Strategic engagement analysis: {primary_username}'s performance vs competitors with specific tactics based on actual content performance patterns from scraped data"
+        "account_dna": "🎯 **@{primary_username} ACCOUNT PERFORMANCE ANALYSIS**\n\n📊 **Recent Activity Dashboard:**\n• [Include specific metrics and performance data]\n• [Engagement trends and patterns]\n• [Top-performing content analysis]\n\n🔥 **Content Success Patterns:**\n• [List successful content themes with engagement data]\n• [Audience response analysis]\n• [Growth trajectory insights]",
+        
+        "market_surveillance": "🔍 **COMPETITIVE LANDSCAPE INTELLIGENCE**\n\n📈 **Market Overview:**\n• [Overall competitive performance summary]\n• [Market positioning analysis]\n• [Opportunity identification]\n\n⚡ **Competitor Performance Matrix:**\n{', '.join([f'• **{name}**: [Avg engagement, performance level, strategic position]' for name in secondary_usernames]) if secondary_usernames else '• Analysis across identified competitive accounts'}\n\n🎯 **Strategic Market Gaps:**\n• [Specific opportunities for @{primary_username} to dominate]",
+        
+        "engagement_warfare": "⚔️ **COMPETITIVE ENGAGEMENT STRATEGY**\n\n🚀 **Tactical Advantages:**\n• [Specific strategies to outperform competitors]\n• [Content approaches that exploit competitor weaknesses]\n• [Timing and positioning recommendations]\n\n📊 **Performance Optimization:**\n• [Data-driven recommendations for engagement growth]\n• [Strategic content themes for maximum impact]\n• [Audience targeting refinements]"
     }},
+    
     "threat_assessment": {{
-        "competitor_analysis": "Individual analysis of each competitor based on their REAL scraped performance data: {', '.join([f'{name}: {data['performance_level']} threat level with {data['avg_engagement']:.0f} avg engagement' for name, data in competitor_performance_data.items()])}",
-        "vulnerability_map": "Specific weaknesses identified from actual scraped content analysis and engagement patterns",
-        "market_opportunities": "Strategic opportunities discovered through analysis of real performance gaps and content themes from scraped data"
+        "competitor_analysis": "🎯 **INDIVIDUAL COMPETITOR BREAKDOWN**\n\n{chr(10).join([f'🔍 **{name.upper()} INTELLIGENCE:**' + chr(10) + f'• **Performance Level**: [HIGH/MEDIUM/LOW based on data]' + chr(10) + f'• **Recent Success**: [Specific high-performing post with engagement numbers]' + chr(10) + f'• **Success Factors**: [Why their content succeeded - specific analysis]' + chr(10) + f'• **Vulnerability**: [Weakness @{primary_username} can exploit]' + chr(10) + f'• **Counter-Strategy**: [Specific approach to outperform them]' + chr(10) for name in secondary_usernames[:3]]) if secondary_usernames else '• **Comprehensive competitor analysis across identified accounts**'}",
+        
+        "vulnerability_map": "🎯 **COMPETITIVE VULNERABILITY ANALYSIS**\n\n💡 **Exploitable Weaknesses:**\n• [Specific competitor content gaps]\n• [Timing vulnerabilities in posting schedules]\n• [Audience engagement blind spots]\n\n🚀 **Strategic Advantages:**\n• [Areas where @{primary_username} already outperforms]\n• [Unique positioning opportunities]\n• [Content themes competitors are missing]",
+        
+        "market_opportunities": "🌟 **STRATEGIC MARKET OPPORTUNITIES**\n\n🎯 **High-Impact Opportunities:**\n• [Specific content themes with growth potential]\n• [Underexploited audience segments]\n• [Emerging trends @{primary_username} can lead]\n\n📈 **Growth Accelerators:**\n• [Tactical moves for rapid engagement growth]\n• [Strategic partnerships or collaboration opportunities]\n• [Content formats with untapped potential]"
     }},
+    
     "tactical_recommendations": [
-        "Specific tactical action based on REAL engagement data showing {primary_username} can outperform {[name for name, data in competitor_performance_data.items() if data['avg_engagement'] < (avg_top_engagement or 500)]}",
-        "Content strategy targeting the specific themes where competitors show weakness in their scraped content",
-        "Engagement optimization based on the actual performance differences revealed in the scraped data analysis"
+        "🚀 **IMMEDIATE ACTION ITEM**: [Specific tactical recommendation with expected outcome and timeline]",
+        "📊 **CONTENT STRATEGY**: [Strategic content approach based on competitor analysis and performance data]", 
+        "🎯 **ENGAGEMENT OPTIMIZATION**: [Specific tactics to boost engagement based on successful pattern analysis]"
     ],
+    
     "next_post_prediction": {{
-        "tweet_text": "Content that leverages {primary_username}'s strength areas and targets competitor weak spots identified in scraped data",
-        "hashtags": ["#relevant", "#to", "#actual", "#content"],
-        "call_to_action": "Engagement approach based on successful patterns from {primary_username}'s viral content analysis",
-        "image_prompt": "Visual concept that aligns with {primary_username}'s top-performing content themes from scraped data"
+        "tweet_text": "[Craft a tweet that perfectly embodies @{primary_username}'s successful content style, incorporates trending elements, and targets competitor weak spots - maximum 280 characters]",
+        "hashtags": ["#strategic", "#hashtags", "#based", "#on", "#analysis"],
+        "call_to_action": "[Engagement prompt designed specifically for @{primary_username}'s audience based on performance data]",
+        "image_prompt": "🎨 **CREATIVE VISUAL DIRECTION**: [Detailed, creative image prompt for maximum visual impact. Include: composition style, color scheme, visual elements, mood, and specific design details that align with @{primary_username}'s brand and successful post patterns. Make it detailed enough for an AI image generator to create stunning visuals.]"
     }}
 }}
 
-=== GENIUS-LEVEL ANALYSIS FRAMEWORK ===
-For each competitor in {secondary_usernames}, provide analysis based on:
-- ACTUAL average engagement: {', '.join([f'{name}: {data['avg_engagement']:.0f}' for name, data in competitor_performance_data.items()])}
-- REAL content themes from their top posts: Reference specific examples from scraped content
-- MEASURABLE performance gaps: Use the exact engagement differences to create strategies
-- SPECIFIC vulnerabilities: Point to actual weak content areas found in their scraped posts
+=== 🎯 ACCOUNT MANAGER EXCELLENCE STANDARDS ===
 
-=== SCRAPED DATA PROTOCOL ===
-- Reference the SPECIFIC performance metrics provided for each competitor
-- Use the ACTUAL content themes extracted from their scraped posts
-- Base recommendations on the REAL engagement differences shown in the data
-- Create strategies that exploit the SPECIFIC vulnerabilities revealed in the analysis
+✅ **INTELLIGENCE REQUIREMENTS:**
+- Every insight backed by specific performance data from scraped content analysis
+- Competitor analysis includes exact engagement numbers and successful post examples  
+- All recommendations target measurable engagement improvements
+- Strategic positioning based on real competitive gaps identified in data
 
-EXECUTE GENIUS-LEVEL COMPETITIVE INTELLIGENCE WITH REAL DATA:
+✅ **PROFESSIONAL PRESENTATION:**
+- Use emojis strategically for visual engagement and hierarchy
+- Implement bullet points and formatting for easy executive consumption
+- Include specific statistics and metrics throughout analysis
+- Maintain professional tone while being highly engaging and informative
+
+✅ **STRATEGIC DEPTH:**
+- Provide actionable intelligence that @{primary_username} can implement immediately
+- Connect all recommendations to competitive advantages and market opportunities
+- Base all tactical suggestions on proven performance patterns from the data
+- Deliver insights that demonstrate deep understanding of @{primary_username}'s brand and audience
+
+EXECUTE ELITE ACCOUNT MANAGEMENT ANALYSIS:
 """
         return prompt
     
@@ -481,77 +511,91 @@ EXECUTE GENIUS-LEVEL COMPETITIVE INTELLIGENCE WITH REAL DATA:
                 
                 if authentic_themes:
                     personal_insights = f"AUTHENTIC CONTENT THEMES:\n" + "\n".join(authentic_themes[:4])
-        
+
         prompt = f"""
-        You are an elite personal content strategist and authentic voice specialist with deep expertise in personal brand development and individual expression optimization. You have been hired specifically to analyze {primary_username}'s personal account and create content strategies that amplify their authentic voice while maximizing engagement within their unique community.
+🎯 PERSONAL ACCOUNT MANAGEMENT BRIEFING - EXECUTIVE LEVEL 🎯
 
-        **PERSONAL ACCOUNT UNDER ANALYSIS**: {primary_username}
-        **CONTENT FOCUS**: {query}
-        **ANALYSIS DATE**: {datetime.now().strftime('%B %d, %Y')}
+ACCOUNT UNDER MANAGEMENT: @{primary_username} [PERSONAL BRAND]
+STRATEGIC FOCUS: {query}
+MISSION: Authentic voice amplification and strategic personal growth
+ANALYSIS DATE: {datetime.now().strftime('%B %d, %Y')}
 
-        **PERSONAL VOICE DATA**:
-        {writing_style_analysis}
+=== 📊 YOUR ACCOUNT'S AUTHENTIC VOICE ANALYSIS ===
+{writing_style_analysis}
 
-        **AUTHENTIC CONTENT INSIGHTS**:
-        {personal_insights}
+=== 🔥 AUTHENTIC CONTENT INTELLIGENCE ===
+{personal_insights}
 
-        **COMPLETE POSTING HISTORY ANALYSIS**:
-        {primary_context if primary_context else "Limited post data available - focusing on authentic voice development"}
+=== 📋 COMPLETE CONTENT ANALYSIS ===
+{primary_context if primary_context else "Limited post data available - focusing on authentic voice development"}
 
-        Your mission is to provide a comprehensive personal content strategy that demonstrates deep understanding of {primary_username}'s authentic voice, personal interests, and natural communication style, while creating recommendations that feel genuinely personal and engaging.
+=== 🎯 EXECUTIVE PERSONAL ACCOUNT MANAGER PROTOCOL ===
 
-        **CRITICAL PERSONAL ANALYSIS REQUIREMENTS**:
+You are the ELITE PERSONAL ACCOUNT MANAGER for @{primary_username}. You have complete access to their authentic voice patterns, engagement data, and personal brand analytics. Your role is to provide executive-level strategic guidance that amplifies their authentic voice while maximizing genuine engagement and personal growth.
 
-        1. **AUTHENTIC VOICE INTELLIGENCE** [PERSONAL BRAND ANALYSIS]
-           - Decode the account's unique personality signature by analyzing communication patterns, emotional expressions, and topic preferences
-           - Identify their natural storytelling rhythm, conversational tone, and authentic enthusiasm triggers
-           - Map their personal content ecosystem: what subjects they're passionate about, what formats feel natural to them
-           - Determine their community engagement style: how they naturally interact with their audience
-           - Analyze their authentic moments: which posts show genuine personality and resonate most with their community
-           - Identify opportunities to amplify their unique perspective and personal experiences
+**MODULE 1: 📈 PERSONAL GROWTH RECOMMENDATIONS**
+Provide comprehensive personal brand optimization including:
+• 🎯 **Authentic Voice Analysis**: Detail @{primary_username}'s natural communication style, personality traits, and genuine expression patterns
+• 📊 **Personal Engagement Dashboard**: Include specific metrics showing which authentic moments drive the highest engagement
+• 🔥 **Community Connection Intel**: Analyze how @{primary_username} naturally builds relationships and connects with their audience
+• ⚡ **Authentic Growth Strategies**: Provide 3-5 specific tactics to amplify their natural voice and grow genuine engagement
+• 🚀 **Personal Content Roadmap**: Strategic recommendations for authentic content that reflects their true personality, interests, and experiences
 
-        2. **PERSONAL CONTENT STRATEGY** [AUTHENTIC ENGAGEMENT]
-           - Design content pillars that align perfectly with their natural interests and authentic voice
-           - Recommend topics that feel genuine to their personal journey and experiences
-           - Suggest engagement approaches that match their natural communication style
-           - Identify storytelling opportunities that showcase their unique perspective
-           - Recommend ways to share their knowledge or experiences that feel authentic and valuable
-           - Create strategies for building genuine community around their personal interests
+**MODULE 2: 🔍 PERSONAL BRAND INTELLIGENCE**
+Deliver authentic voice optimization featuring:
+• 📊 **Voice Pattern Analysis**: Identify @{primary_username}'s unique communication style, emotional expressions, and authentic storytelling approach
+• 🎯 **Engagement Authenticity**: Break down which genuine moments drive highest audience connection with specific examples and metrics
+• ⚖️ **Personal Brand Positioning**: Strategic positioning opportunities that align perfectly with @{primary_username}'s authentic personality and interests
+• 🔥 **Authentic Advantages**: Identify specific personal qualities, experiences, and perspectives that make @{primary_username} uniquely engaging
+• 💡 **Community Growth Map**: Strategies to build genuine connections and foster authentic community while staying true to their voice
 
-        3. **NEXT POST CREATION** [AUTHENTIC EXPRESSION]
-           - Craft content that feels like a natural extension of their posting history and personality
-           - The content must perfectly match their established voice, tone, and communication style
-           - Include elements that reflect their genuine interests and current experiences
-           - Provide detailed execution guidance including:
-             * A caption written exactly as they would naturally express themselves
-             * Topics and themes that align with their authentic interests
-             * Engagement approaches that feel genuine to their personality
-             * Visual concepts that match their personal aesthetic preferences
+**MODULE 3: 🎨 NEXT POST AUTHENTIC CREATION**
+Generate the optimal authentic next post with:
+• ✨ **Personality-Aligned Content**: Perfect alignment with @{primary_username}'s natural voice, genuine interests, and personal experiences
+• 📝 **Authentic Expression**: Crafted based on analysis of @{primary_username}'s most genuine, engaging, and personally resonant posts
+• 🏷️ **Natural Hashtag Strategy**: Hashtag approach that matches @{primary_username}'s authentic usage patterns and personal interests
+• 🎨 **Personal Visual Direction**: Detailed image prompt reflecting @{primary_username}'s authentic aesthetic, lifestyle, and personal brand
+• 🎯 **Genuine Engagement**: Call-to-action designed for authentic community interaction based on their natural communication style and interests
 
-        **AUTHENTICITY STANDARDS**:
-        - Every recommendation must feel like something {primary_username} would naturally create themselves
-        - No corporate or marketing language - everything must sound personal and genuine
-        - Include specific examples from their posting history to justify authenticity
-        - Reference their natural communication patterns and personality traits
-        - Maintain their unique voice while suggesting strategic improvements
-        - Focus on amplifying what already works for them personally
+=== 📋 EXECUTIVE REPORTING FORMAT ===
 
-        **OUTPUT REQUIREMENTS**:
-        Format as a comprehensive JSON personal content strategy with the following structure:
+Structure your analysis using this EXACT format with engaging presentation:
 
-        {{
-            "account_analysis": "Deep analysis of {primary_username}'s authentic voice, personal communication style, natural interests, and unique personality traits based on their actual posting patterns and engagement data",
-            "content_recommendations": "Personalized content strategy that amplifies their authentic voice while maximizing engagement. Include specific topic suggestions, posting approaches, and community building strategies that align with their natural interests and communication style",
-            "next_post": {{
-                "caption": "A caption written in {primary_username}'s exact natural voice that reflects their authentic style, interests, and way of communicating - it should sound exactly like something they would write themselves",
-                "hashtags": ["#personal", "#authentic", "#hashtags", "#that", "#match"],
-                "call_to_action": "An engagement prompt that feels natural to their communication style and encourages genuine community interaction",
-                "visual_prompt": "A visual concept that perfectly aligns with their personal aesthetic preferences and authentic style, reflecting their genuine interests and personality"
-            }}
-        }}
+{{
+    "account_analysis": "🎯 **@{primary_username} AUTHENTIC PERSONAL BRAND ANALYSIS**\n\n📊 **Personal Voice Intelligence:**\n• [Detailed analysis of their natural communication style and personality traits]\n• [Authentic expression patterns and emotional storytelling approach]\n• [Personal interests and expertise areas that drive engagement]\n\n🔥 **Genuine Engagement Drivers:**\n• [Specific types of authentic content that resonate with their audience]\n• [Personal stories, experiences, and moments that generate highest engagement]\n• [Natural community building approaches and connection tactics they use]\n\n💡 **Authentic Brand Positioning:**\n• [Their unique personal qualities, perspectives, and experiences]\n• [Areas where their authentic voice and personality stand out]\n• [Personal interests, expertise, and lifestyle elements to amplify]\n\n📈 **Growth Potential Analysis:**\n• [Authentic growth opportunities that align with their personality]\n• [Personal content themes with highest engagement and expansion potential]\n• [Community building strategies that feel natural to their voice]",
+    
+    "content_recommendations": "🚀 **STRATEGIC PERSONAL CONTENT PLAN FOR @{primary_username}**\n\n⚡ **IMMEDIATE AUTHENTIC ACTIONS:**\n• 🎯 **Personal Story Amplification**: [Specific approach to share their experiences more effectively with expected engagement boost]\n• 📊 **Voice Optimization Strategy**: [Tactical recommendations to enhance their natural communication style]\n• 🔥 **Community Connection Enhancement**: [Specific tactics to build genuine relationships with their audience]\n• 💡 **Interest-Based Content Expansion**: [Strategic content themes based on their authentic interests and expertise]\n• 🚀 **Authentic Growth Acceleration**: [Personal brand development strategies that maintain genuine voice]\n\n📈 **CONTENT OPTIMIZATION ROADMAP:**\n• [Specific content types and themes to prioritize based on their authentic voice]\n• [Personal storytelling approaches that maximize genuine engagement]\n• [Timing and frequency recommendations that align with their natural patterns]\n\n🎯 **AUTHENTIC ENGAGEMENT STRATEGIES:**\n• [Community interaction approaches that feel natural to their personality]\n• [Personal content formats that showcase their unique voice and interests]\n• [Authentic conversation starters and relationship building tactics]\n\n💡 **PERSONAL BRAND EVOLUTION:**\n• [Ways to grow their reach while maintaining authentic personality]\n• [Personal expertise and interest areas to develop and showcase]\n• [Authentic positioning strategies for long-term personal brand growth]",
+    
+    "next_post": {{
+        "caption": "[Craft an engaging caption that sounds exactly like @{primary_username} would naturally write, incorporating their authentic voice, personal interests, genuine personality, and natural communication style]",
+        "hashtags": ["#authentic", "#personal", "#genuine", "#interests"],
+        "call_to_action": "[Natural engagement prompt that fits perfectly with @{primary_username}'s communication style and encourages genuine community interaction based on their personality]",
+        "visual_prompt": "🎨 **AUTHENTIC VISUAL DIRECTION**: [Detailed, creative image prompt that reflects @{primary_username}'s personal aesthetic, lifestyle, interests, and authentic style. Include: composition style that matches their personality, color palette that aligns with their brand, visual elements that represent their interests, lighting and mood that reflects their authentic voice, props and settings that connect to their lifestyle, and design details that showcase their personal brand. Make it comprehensive enough for an AI image generator to create stunning, authentic visuals that truly represent their personal voice and resonate with their genuine audience.]"
+    }}
+}}
 
-        Remember: This is not about changing who they are - it's about amplifying their authentic voice and helping them connect more effectively with their community while staying true to their genuine personality and interests.
-        """
+=== 🎯 PERSONAL ACCOUNT MANAGER EXCELLENCE STANDARDS ===
+
+✅ **AUTHENTICITY REQUIREMENTS:**
+- Every recommendation based on @{primary_username}'s actual authentic voice and genuine personality patterns from their content
+- All strategies designed to amplify their natural strengths, real interests, and personal experiences
+- Growth tactics that feel completely natural and genuine to their personality and lifestyle
+- Content suggestions that perfectly align with their authentic self-expression and personal brand
+
+✅ **PROFESSIONAL PRESENTATION:**
+- Use emojis strategically to enhance readability, engagement, and visual hierarchy
+- Structure content with bullet points and organized formatting for easy consumption and implementation
+- Include specific metrics, examples, and insights from their authentic content patterns and engagement data
+- Maintain supportive, encouraging, and empowering tone while providing strategic guidance
+
+✅ **STRATEGIC AUTHENTICITY:**
+- Provide growth strategies that enhance and amplify rather than change their authentic voice
+- Connect all recommendations to their genuine interests, natural communication style, and personal experiences
+- Base all suggestions on proven patterns from their most authentic, engaging, and personally resonant content
+- Deliver actionable insights that help them be more effectively themselves while growing their genuine community
+
+EXECUTE AUTHENTIC PERSONAL BRAND MANAGEMENT:
+"""
         return prompt
     
     def _construct_twitter_non_branding_prompt(self, primary_username, query):
@@ -601,60 +645,102 @@ EXECUTE GENIUS-LEVEL COMPETITIVE INTELLIGENCE WITH REAL DATA:
                     authenticity_intelligence += f"• Community connection rate: {(len(question_tweets) + len(community_replies))/total_tweets*100:.1f}%\n"
         
         prompt = f"""
-🎯 TWITTER PERSONAL BRAND INTELLIGENCE 🎯
+🎯 PERSONAL ACCOUNT MANAGEMENT BRIEFING - EXECUTIVE LEVEL 🎯
 
-TARGET ACCOUNT: {primary_username} [PERSONAL BRAND]
+ACCOUNT UNDER MANAGEMENT: @{primary_username} [PERSONAL BRAND]
 MISSION: Authentic voice amplification and strategic personal growth
 
-=== AUTHENTIC VOICE ANALYSIS ===
+=== 📊 YOUR ACCOUNT'S AUTHENTIC VOICE ANALYSIS ===
 {voice_fingerprint}
 
+=== 📈 ENGAGEMENT INTELLIGENCE ===
 {authenticity_intelligence}
 
-=== STRATEGIC MISSION ===
-You are a personal Twitter growth strategist specializing in authentic voice amplification. Your mission is to decode {primary_username}'s genuine personality, identify what makes their authentic content resonate, and craft strategic recommendations that amplify their natural voice for maximum genuine engagement.
+=== 🎯 EXECUTIVE PERSONAL ACCOUNT MANAGER PROTOCOL ===
 
-**CRITICAL**: You MUST use the EXACT real name and authentic details about {primary_username} in your analysis. Research and reference their actual background, expertise, and authentic personality. Do NOT use generic descriptions - demonstrate deep knowledge of who {primary_username} actually is as a real person.
+You are the ELITE PERSONAL ACCOUNT MANAGER for @{primary_username}. You have complete access to their authentic voice patterns, engagement data, and personal brand analytics. Your role is to provide executive-level strategic guidance that amplifies their authentic voice while maximizing genuine engagement.
 
-=== REQUIRED OUTPUT FORMAT ===
-Analyze personal engagement patterns and deliver strategic recommendations in this EXACT JSON format:
+**MODULE 1: 📈 PERSONAL GROWTH RECOMMENDATIONS**
+Provide comprehensive personal brand optimization including:
+• 🎯 **Authentic Voice Analysis**: Detail @{primary_username}'s natural communication style, personality traits, and authentic expression patterns
+• 📊 **Personal Engagement Dashboard**: Include specific metrics showing which authentic moments drive the highest engagement
+• 🔥 **Community Connection Intel**: Analyze how @{primary_username} naturally builds relationships and connects with their audience
+• ⚡ **Authentic Growth Strategies**: Provide 3-5 specific tactics to amplify their natural voice and grow genuine engagement
+• 🚀 **Personal Content Roadmap**: Strategic recommendations for authentic content that reflects their true personality and interests
+
+**MODULE 2: 🔍 PERSONAL BRAND INTELLIGENCE**
+Deliver authentic voice optimization featuring:
+• 📊 **Voice Pattern Analysis**: Identify @{primary_username}'s unique communication style, emotional expressions, and authentic storytelling approach
+• 🎯 **Engagement Authenticity**: Break down which genuine moments drive highest audience connection with specific examples
+• ⚖️ **Personal Brand Positioning**: Strategic positioning opportunities that align perfectly with @{primary_username}'s authentic personality
+• 🔥 **Authentic Advantages**: Identify specific personal qualities and experiences that make @{primary_username} unique
+• 💡 **Community Growth Map**: Strategies to build genuine connections while staying true to their authentic voice
+
+**MODULE 3: 🎨 NEXT POST AUTHENTIC CREATION**
+Generate the optimal authentic next post with:
+• ✨ **Personality-Aligned Content**: Perfect alignment with @{primary_username}'s natural voice and genuine interests
+• 📝 **Authentic Expression**: Crafted based on analysis of @{primary_username}'s most genuine and engaging posts
+• 🏷️ **Natural Hashtag Strategy**: Hashtag approach that matches @{primary_username}'s authentic usage patterns and personal interests
+• 🎨 **Personal Visual Direction**: Image prompt reflecting @{primary_username}'s authentic aesthetic and interests
+• 🎯 **Genuine Engagement**: Call-to-action designed for authentic community interaction based on their natural communication style
+
+=== 📋 EXECUTIVE REPORTING FORMAT ===
+
+Structure your analysis using this EXACT format with engaging presentation:
 
 {{
     "personal_intelligence": {{
-        "voice_dna": "Deep analysis of {primary_username}'s genuine Twitter personality, including their real background, authentic communication style, and unique personal brand based on actual content patterns",
-        "engagement_personality": "Analysis of what authentic content types drive real engagement for {primary_username}'s personal brand, based on their actual interests and expertise",
-        "audience_connection": "How {primary_username}'s followers respond to different aspects of their authentic personality and real-world interests"
+        "voice_dna": "🎯 **@{primary_username} AUTHENTIC VOICE ANALYSIS**\n\n📊 **Personal Communication Style:**\n• [Detailed analysis of their natural way of expressing themselves]\n• [Personality traits that shine through in their content]\n• [Authentic storytelling patterns and emotional expressions]\n\n🔥 **Genuine Engagement Drivers:**\n• [Specific types of authentic content that resonate with their audience]\n• [Personal stories and experiences that generate highest engagement]\n• [Natural community building approaches they use]\n\n💡 **Authentic Brand Positioning:**\n• [Their unique personal qualities and perspectives]\n• [Areas where their authentic voice stands out]\n• [Personal interests and expertise areas to amplify]",
+        
+        "engagement_personality": "📈 **PERSONAL ENGAGEMENT INTELLIGENCE**\n\n🎯 **Authentic Connection Patterns:**\n• [How their genuine personality drives engagement]\n• [Which personal topics and interests resonate most]\n• [Natural conversation starters and community building tactics]\n\n📊 **Voice Authenticity Metrics:**\n• [Engagement levels on personal vs general content]\n• [Audience response to their authentic moments]\n• [Growth patterns when being genuinely themselves]\n\n⚡ **Natural Growth Opportunities:**\n• [Areas to expand while maintaining authenticity]\n• [Personal interests that could drive more engagement]\n• [Authentic story angles to explore]",
+        
+        "audience_connection": "🤝 **COMMUNITY CONNECTION ANALYSIS**\n\n💬 **Natural Interaction Style:**\n• [How @{primary_username} naturally engages with their audience]\n• [Their authentic response patterns and conversation approach]\n• [Community building tactics that feel genuine to them]\n\n🎯 **Audience Relationship Dynamics:**\n• [What their followers appreciate most about their authentic voice]\n• [Types of content that drive genuine community interaction]\n• [Personal elements that build strongest connections]\n\n🚀 **Authentic Growth Strategies:**\n• [Ways to scale their genuine personality]\n• [Personal content themes with highest growth potential]\n• [Community engagement approaches that feel natural]"
     }},
+    
     "growth_opportunities": {{
-        "authentic_expansion": "Natural ways for {primary_username} to grow their reach while staying true to their actual personality and expertise",
-        "engagement_amplification": "Strategies to increase interaction on {primary_username}'s genuine content based on their real interests and background",
-        "content_diversification": "New content types that align perfectly with {primary_username}'s authentic voice and actual areas of expertise"
+        "authentic_expansion": "🌟 **NATURAL GROWTH OPPORTUNITIES FOR @{primary_username}**\n\n🎯 **Personality Amplification:**\n• [Specific ways to amplify their natural strengths and interests]\n• [Personal expertise areas to showcase more prominently]\n• [Authentic story angles that could resonate with broader audiences]\n\n📈 **Genuine Reach Extension:**\n• [Strategies to grow while maintaining authentic voice]\n• [Personal content themes with viral potential]\n• [Community collaboration opportunities that align with their interests]",
+        
+        "engagement_amplification": "🚀 **AUTHENTIC ENGAGEMENT BOOST STRATEGIES**\n\n⚡ **Natural Interaction Enhancement:**\n• [Ways to increase genuine audience interaction]\n• [Personal storytelling approaches for higher engagement]\n• [Authentic conversation starters based on their interests]\n\n🎯 **Voice Optimization:**\n• [Refinements to amplify their natural communication style]\n• [Personal content formats that maximize authentic engagement]\n• [Timing strategies that align with their natural posting patterns]",
+        
+        "content_diversification": "🎨 **AUTHENTIC CONTENT EXPANSION**\n\n💡 **Personal Interest Exploration:**\n• [New content types that align with their authentic interests]\n• [Personal expertise areas to explore more deeply]\n• [Authentic formats that could showcase their personality]\n\n🔥 **Natural Content Evolution:**\n• [Ways to evolve their content while staying true to themselves]\n• [Personal themes with untapped potential]\n• [Authentic approaches to trending topics]"
     }},
+    
     "tactical_recommendations": [
-        "Personality-based strategy that feels completely natural to {primary_username}'s authentic voice and real background",
-        "Engagement tactic that amplifies {primary_username}'s genuine expertise and interests",
-        "Growth strategy based on {primary_username}'s actual content patterns and authentic personality traits"
+        "🎯 **AUTHENTIC VOICE AMPLIFICATION**: [Specific strategy to enhance their natural communication style with expected engagement impact]",
+        "📊 **PERSONAL STORY OPTIMIZATION**: [Tactical approach to share their experiences more effectively for community building]",
+        "🚀 **GENUINE GROWTH ACCELERATION**: [Strategic move to expand reach while maintaining authentic personality]"
     ],
+    
     "next_post_prediction": {{
-        "tweet_text": "Perfectly authentic tweet that sounds exactly like {primary_username} would naturally write, incorporating their real expertise and personality",
-        "hashtags": ["#authentic", "#personal", "#relevant"],
-        "call_to_action": "Natural engagement prompt that perfectly fits {primary_username}'s personality and communication style",
-        "image_prompt": "Visual concept that complements {primary_username}'s authentic personal brand and real interests",
-        "personality_note": "Explanation of why this tweet aligns perfectly with {primary_username}'s natural voice and actual background"
+        "tweet_text": "[Craft a tweet that sounds exactly like @{primary_username} would naturally write, incorporating their authentic voice, personal interests, and genuine personality - maximum 280 characters]",
+        "hashtags": ["#authentic", "#personal", "#genuine"],
+        "call_to_action": "[Natural engagement prompt that fits perfectly with @{primary_username}'s communication style and encourages genuine community interaction]",
+        "image_prompt": "🎨 **AUTHENTIC VISUAL DIRECTION**: [Detailed image prompt that reflects @{primary_username}'s personal aesthetic, interests, and authentic style. Include: personal elements, mood that matches their personality, visual style that feels genuine to them, and design details that represent their authentic brand. Make it specific enough for creating visuals that truly represent their personal voice.]",
+        "personality_note": "[Brief explanation of why this tweet perfectly aligns with @{primary_username}'s authentic voice and natural interests]"
     }}
 }}
 
-=== AUTHENTICITY GUIDELINES ===
-- Reference {primary_username}'s REAL identity, background, and authentic expertise
-- Recommendations must feel completely natural to their actual personality
-- Build on existing genuine engagement patterns from their real content
-- Maintain 100% authenticity while optimizing for natural growth
-- Provide specific advice that fits {primary_username}'s actual personal brand and interests
+=== 🎯 PERSONAL ACCOUNT MANAGER EXCELLENCE STANDARDS ===
 
-=== AUTHENTICITY REQUIREMENT ===
-Your analysis must demonstrate genuine knowledge of {primary_username}'s real identity and background. Every recommendation should sound like something they would naturally do based on who they actually are.
+✅ **AUTHENTICITY REQUIREMENTS:**
+- Every recommendation based on @{primary_username}'s actual authentic voice and genuine personality patterns
+- All strategies designed to amplify their natural strengths and real interests
+- Growth tactics that feel completely natural and genuine to their personality
+- Content suggestions that align perfectly with their authentic self-expression
 
-EXECUTE AUTHENTIC GROWTH STRATEGY:
+✅ **PROFESSIONAL PRESENTATION:**
+- Use emojis strategically to enhance readability and engagement hierarchy
+- Structure content with bullet points and formatting for easy consumption
+- Include specific metrics and examples from their authentic content patterns
+- Maintain supportive, encouraging tone while providing strategic guidance
+
+✅ **STRATEGIC AUTHENTICITY:**
+- Provide growth strategies that enhance rather than change their authentic voice
+- Connect all recommendations to their genuine interests and natural communication style
+- Base all suggestions on proven patterns from their most authentic and engaging content
+- Deliver insights that help them be more effectively themselves while growing their community
+
+EXECUTE AUTHENTIC PERSONAL BRAND MANAGEMENT:
 """
         return prompt
     
