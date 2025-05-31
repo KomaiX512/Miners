@@ -1301,12 +1301,16 @@ class ContentRecommendationSystem:
                 file_num = self._get_next_file_number(f"next_posts/{platform}", username, "post")
                 next_post_path = f"{base_dirs['next_posts']}post_{file_num}.json"
                 
+                # 🎯 BULLETPROOF: Ensure next_post has image_prompt for Image Generator compatibility
+                standardized_next_post = self._standardize_next_post_format(next_post, platform, username)
+                
                 next_post_data = {
                     "module_type": "next_post_prediction",
                     "platform": platform,
                     "username": username,
-                    "post_data": next_post,
-                    "generated_at": datetime.now().isoformat()
+                    "post_data": standardized_next_post,
+                    "generated_at": datetime.now().isoformat(),
+                    "status": "pending"  # Required for Image Generator
                 }
                 
                 export_results['next_post'] = self.r2_storage.upload_file(
@@ -1314,7 +1318,7 @@ class ContentRecommendationSystem:
                     file_obj=io.BytesIO(json.dumps(next_post_data, indent=2).encode('utf-8')),
                     bucket='tasks'
                 )
-                logger.info(f"Next post module exported: {next_post_path}")
+                logger.info(f"Next post module exported with standardized format: {next_post_path}")
             
             # MODULE 3: Export Improvement Recommendations Module
             improvement_recs = content_plan.get('improvement_recommendations', {})
@@ -4483,6 +4487,138 @@ class ContentRecommendationSystem:
         except Exception as e:
             logger.error(f"Error calculating posting frequency: {str(e)}")
             return None
+
+    def _standardize_next_post_format(self, next_post, platform, username):
+        """
+        🎯 BULLETPROOF: Standardize next post format for Image Generator compatibility.
+        
+        This method ensures that next_post data always has the required fields,
+        especially the image_prompt which is critical for Image Generator.
+        """
+        try:
+            logger.info(f"🔧 Standardizing next post format for {username} on {platform}")
+            
+            if not isinstance(next_post, dict):
+                logger.warning(f"⚠️ Next post is not a dictionary for {username}, creating default")
+                next_post = {}
+            
+            # Handle different caption field names (Twitter vs Instagram)
+            caption = (next_post.get("caption") or 
+                      next_post.get("tweet_text") or 
+                      next_post.get("text") or 
+                      f"Exciting updates from {username}! Stay tuned for more content.")
+            
+            # Ensure caption is a string and has reasonable length
+            if not isinstance(caption, str):
+                caption = str(caption)
+            
+            if len(caption.strip()) < 10:
+                caption = f"Check out the latest from {username}! {caption}".strip()
+            
+            # Handle hashtags
+            hashtags = next_post.get("hashtags", [])
+            if not isinstance(hashtags, list):
+                if isinstance(hashtags, str):
+                    # Extract hashtags from string
+                    import re
+                    hashtags = re.findall(r'#\w+', hashtags)
+                else:
+                    hashtags = []
+            
+            # Ensure we have at least some hashtags
+            if not hashtags:
+                if platform.lower() == "twitter":
+                    hashtags = ["#Update", "#Content", "#Twitter"]
+                else:
+                    hashtags = ["#Update", "#Content", "#Instagram"]
+            
+            # Handle call to action
+            call_to_action = (next_post.get("call_to_action") or 
+                             next_post.get("cta") or 
+                             "What do you think? Share your thoughts!")
+            
+            if not isinstance(call_to_action, str):
+                call_to_action = str(call_to_action)
+            
+            # 🎯 CRITICAL: Ensure image_prompt exists with multiple fallbacks
+            image_prompt = (next_post.get("image_prompt") or 
+                           next_post.get("visual_prompt") or 
+                           next_post.get("media_suggestion") or 
+                           next_post.get("visual_direction") or
+                           next_post.get("image_description"))
+            
+            # If no image prompt found, create an intelligent default
+            if not image_prompt:
+                # Analyze content to create relevant image prompt
+                content_indicators = " ".join([caption, " ".join(hashtags)])
+                
+                if any(word in content_indicators.lower() for word in ["beauty", "makeup", "cosmetics", "skincare"]):
+                    image_prompt = "High-quality beauty shot with professional makeup and lighting, showcasing products"
+                elif any(word in content_indicators.lower() for word in ["food", "recipe", "cooking", "restaurant"]):
+                    image_prompt = "Appetizing food photography with beautiful presentation and natural lighting"
+                elif any(word in content_indicators.lower() for word in ["fashion", "style", "outfit", "clothing"]):
+                    image_prompt = "Stylish fashion photography with modern aesthetic and professional styling"
+                elif any(word in content_indicators.lower() for word in ["tech", "ai", "technology", "innovation"]):
+                    image_prompt = "Clean, modern technology-focused visual design with sleek aesthetics"
+                elif any(word in content_indicators.lower() for word in ["fitness", "workout", "health", "exercise"]):
+                    image_prompt = "Dynamic fitness photography with energy and motivation"
+                elif any(word in content_indicators.lower() for word in ["travel", "vacation", "adventure", "explore"]):
+                    image_prompt = "Stunning travel photography with breathtaking scenery and wanderlust appeal"
+                else:
+                    # Platform-specific defaults
+                    if platform.lower() == "twitter":
+                        image_prompt = f"High-quality engaging visual for Twitter that represents {username}'s brand and content style"
+                    else:
+                        image_prompt = f"High-quality engaging visual for Instagram that represents {username}'s brand and aesthetic"
+                
+                logger.warning(f"⚠️ No image prompt found for {username}, created intelligent default: {image_prompt[:50]}...")
+            else:
+                logger.info(f"✅ Found existing image prompt for {username}: {str(image_prompt)[:50]}...")
+            
+            # Ensure image prompt is a string and has adequate length
+            if not isinstance(image_prompt, str):
+                image_prompt = str(image_prompt)
+            
+            if len(image_prompt.strip()) < 15:
+                image_prompt = f"High-quality engaging visual content: {image_prompt}"
+                logger.warning(f"⚠️ Image prompt too short for {username}, enhanced to: {image_prompt[:50]}...")
+            
+            # Create standardized format
+            standardized = {
+                "caption": caption,
+                "hashtags": hashtags,
+                "call_to_action": call_to_action,
+                "image_prompt": image_prompt
+            }
+            
+            # Add platform-specific fields if needed
+            if platform.lower() == "twitter":
+                standardized["tweet_text"] = caption  # Ensure both field names for compatibility
+                if "media_suggestion" not in standardized:
+                    standardized["media_suggestion"] = image_prompt
+            
+            # Add metadata for tracking
+            standardized["platform"] = platform.lower()
+            standardized["username"] = username
+            standardized["standardized_at"] = datetime.now().isoformat()
+            
+            logger.info(f"✅ Successfully standardized next post format for {username} on {platform}")
+            return standardized
+            
+        except Exception as e:
+            logger.error(f"🚨 Error standardizing next post format for {username}: {e}")
+            
+            # Return safe fallback
+            return {
+                "caption": f"Exciting updates from {username}! Stay tuned for more content.",
+                "hashtags": ["#Update", "#Content", f"#{platform.title()}"],
+                "call_to_action": "What do you think? Share your thoughts!",
+                "image_prompt": f"High-quality engaging visual for {platform} representing {username}'s brand",
+                "platform": platform.lower(),
+                "username": username,
+                "standardized_at": datetime.now().isoformat(),
+                "fallback_used": True
+            }
 
 def create_content_plan():
     """Create content plan without using sample data."""
