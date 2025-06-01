@@ -617,14 +617,27 @@ class ImageGenerator:
         
         try:
             objects = await self.output_r2_client.list_objects(output_dir)
-            post_number = len([o for o in objects if "ready_post_" in o["Key"]]) + 1
-            logger.info(f"📊 Current post number for {username}: {post_number}")
+            
+            # Determine output file prefix based on input file type
+            if "campaign_post_" in key:
+                file_prefix = "campaign_ready_post_"
+                existing_pattern = "campaign_ready_post_"
+            else:
+                file_prefix = "ready_post_"
+                existing_pattern = "ready_post_"
+                
+            post_number = len([o for o in objects if existing_pattern in o["Key"]]) + 1
+            logger.info(f"📊 Current {file_prefix}{post_number} for {username}")
         except Exception as e:
             logger.warning(f"⚠️ Could not list existing objects in {output_dir}, assuming post_number=1: {e}")
             post_number = 1
+            if "campaign_post_" in key:
+                file_prefix = "campaign_ready_post_"
+            else:
+                file_prefix = "ready_post_"
         
         # Create file paths for both JSON and image
-        json_key = f"{output_dir}ready_post_{post_number}.json"
+        json_key = f"{output_dir}{file_prefix}{post_number}.json"
         image_key = f"{output_dir}image_{post_number}.jpg"
         
         # Save the image file
@@ -795,7 +808,7 @@ class ImageGenerator:
         async with aiohttp.ClientSession() as session:
             while True:
                 try:
-                    logger.info("🔄 Checking for new posts across all platforms...")
+                    logger.info("🔄 Checking for new campaign posts across all platforms...")
                     
                     # Collect objects from ALL platforms
                     all_objects = []
@@ -805,22 +818,27 @@ class ImageGenerator:
                         all_objects.extend(objects)
                         logger.debug(f"Found {len(objects)} objects in {platform_prefix}")
                     
-                    # Process all objects from all platforms
+                    # Process all objects from all platforms - specifically look for campaign posts
                     urgent_files = []
+                    campaign_files = []
                     regular_files = []
                     
                     for obj in all_objects:
                         key = obj["Key"]
                         if key.endswith(".json"):
-                            if "urgent_" in key:
+                            if "urgent_campaign_post_" in key:
+                                urgent_files.append(key)
+                            elif "campaign_post_" in key:
+                                campaign_files.append(key)
+                            elif "urgent_" in key:
                                 urgent_files.append(key)
                             elif "post_" in key:
                                 regular_files.append(key)
                     
-                    logger.info(f"📊 Found {len(urgent_files)} urgent and {len(regular_files)} regular posts")
+                    logger.info(f"📊 Found {len(urgent_files)} urgent, {len(campaign_files)} campaign, and {len(regular_files)} regular posts")
                     
                     # Check which files actually need processing
-                    prioritized_files = urgent_files + regular_files
+                    prioritized_files = urgent_files + campaign_files + regular_files
                     pending_files = []
                     
                     for key in prioritized_files:

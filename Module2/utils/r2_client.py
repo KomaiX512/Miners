@@ -149,3 +149,36 @@ class R2Client:
             except Exception as e:
                 logger.error(f"Unexpected error when writing binary data to {key}: {str(e)}")
                 return False
+
+    async def delete_object(self, key):
+        """
+        Delete an object from R2 storage.
+        
+        Args:
+            key (str): The key (filename) to delete from R2
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        async with self.session.create_client(
+            "s3",
+            endpoint_url=self.config["endpoint_url"],
+            aws_access_key_id=self.config["aws_access_key_id"],
+            aws_secret_access_key=self.config["aws_secret_access_key"],
+            region_name="auto"
+        ) as client:
+            try:
+                await client.delete_object(
+                    Bucket=self.bucket_name,
+                    Key=key
+                )
+                logger.info(f"Successfully deleted {key}")
+                return True
+            except ClientError as e:
+                error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+                error_message = e.response.get('Error', {}).get('Message', str(e))
+                logger.error(f"Failed to delete {key}: {error_code} - {error_message}")
+                return False
+            except Exception as e:
+                logger.error(f"Unexpected error when deleting {key}: {str(e)}")
+                return False
