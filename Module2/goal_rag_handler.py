@@ -15,6 +15,7 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from utils.r2_client import R2Client
 from utils.logging import logger
+from utils.test_filter import TestFilter
 from config import R2_CONFIG, STRUCTUREDB_R2_CONFIG, GEMINI_CONFIG
 import google.generativeai as genai
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -677,11 +678,12 @@ class EnhancedGoalHandler:
             platform = parts[1]
             username = parts[2]
             
-            # Skip test users
-            if any(test_indicator in username.lower() for test_indicator in ["test", "demo", "sample", "example"]):
-                logger.debug(f"Skipping test user: {username}")
-                return
+            # 🚫 COMPREHENSIVE PRODUCTION FILTER - Use centralized test detection
+            if TestFilter.should_skip_processing(platform, username, goal_key):
+                return  # Skip test data completely
                 
+            # 🎯 PRODUCTION USER DETECTED - Log and process
+            TestFilter.log_production_user(platform, username, "processing goal")
             logger.info(f"Processing goal for {username} on {platform}")
             
             # 1. Retrieve and validate goal data
@@ -904,7 +906,15 @@ class EnhancedGoalHandler:
             try:
                 objects = await self.r2_tasks.list_objects(platform_prefix)
                 
-                for obj in objects:
+                # 🧹 COMPREHENSIVE TEST FILTERING - Filter out all test objects
+                production_objects = TestFilter.filter_test_objects(objects)
+                
+                # Log filtering statistics
+                if len(objects) != len(production_objects):
+                    filtered_count = len(objects) - len(production_objects)
+                    logger.info(f"🧹 Filtered out {filtered_count} test files from {platform} scan")
+                
+                for obj in production_objects:
                     key = obj["Key"]
                     
                     # Skip non-JSON files
@@ -913,11 +923,6 @@ class EnhancedGoalHandler:
                         
                     # Skip if doesn't contain goal_ pattern
                     if "goal_" not in key:
-                        continue
-                        
-                    # Skip test files
-                    if any(test_indicator in key.lower() for test_indicator in ["test", "demo", "sample", "example"]):
-                        logger.debug(f"Skipping test file: {key}")
                         continue
                     
                     # Check if already processed

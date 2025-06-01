@@ -1,6 +1,6 @@
 import asyncio
 from image_generator import ImageGenerator
-from query_handler import EnhancedQueryHandler
+from query_handler import SequentialQueryHandler
 from goal_rag_handler import EnhancedGoalHandler
 from utils.r2_client import R2Client
 from utils.logging import logger
@@ -77,23 +77,24 @@ async def run_enhanced_goal_handler():
             observer.stop()
         raise
 
-async def run_enhanced_query_handler():
-    """Run the Enhanced Query Handler"""
+async def run_sequential_query_handler():
+    """Run the Sequential Query Handler with 10-second retry loop"""
     try:
-        logger.info("Starting Enhanced Query Handler...")
-        query_handler = EnhancedQueryHandler()
+        logger.info("Starting Sequential Query Handler with 10-second retry...")
+        query_handler = SequentialQueryHandler()
         
-        # Run the enhanced query handler (includes FastAPI server)
-        await query_handler.run(host="0.0.0.0", port=8001)
+        # Run continuous processing with 10-second retry
+        await query_handler.run_continuous_processing()
         
     except Exception as e:
-        logger.error(f"Error in Enhanced Query Handler: {e}")
+        logger.error(f"Error in Sequential Query Handler: {e}")
         raise
 
 async def main():
     """Main entry point for the enhanced pipeline"""
     logger.info("🚀 Starting Enhanced Content Generation Pipeline")
     logger.info("Platform-aware schema with Deep RAG Analysis")
+    logger.info("Sequential Query Processing with 10-second retry")
     logger.info("=" * 60)
     
     # Perform initial verification
@@ -106,7 +107,7 @@ async def main():
         # Run all components concurrently
         await asyncio.gather(
             image_generator.run(),
-            run_enhanced_query_handler(),
+            run_sequential_query_handler(),
             run_enhanced_goal_handler(),
             return_exceptions=True
         )

@@ -7,6 +7,7 @@ import io
 from utils.r2_client import R2Client
 from utils.status_manager import StatusManager
 from utils.logging import logger
+from utils.test_filter import TestFilter
 from config import AI_HORDE_CONFIG, R2_CONFIG, STRUCTUREDB_R2_CONFIG
 from tenacity import retry, stop_after_attempt, wait_exponential
 from datetime import datetime
@@ -560,7 +561,7 @@ class ImageGenerator:
 
         post = data["post"]
         
-        # 🎯 ENHANCED IMAGE PROMPT EXTRACTION with multiple fallbacks
+        # 🎯 ENHANCED IMAGE PROMPT EXTRACTION with comprehensive keyword search and error handling
         logger.info(f"🎨 Extracting image prompt for {key}")
         prompt = self._extract_image_prompt(post, original_data, key)
         
@@ -618,20 +619,31 @@ class ImageGenerator:
         try:
             objects = await self.output_r2_client.list_objects(output_dir)
             
-            # Determine output file prefix based on input file type
-            if "campaign_post_" in key:
+            # 🏷️ FIX 3: Enforce naming conventions based on input file type
+            # Determine if this is a campaign post based on input filename
+            is_campaign_post = (
+                "campaign_next_post_" in key or 
+                "campaign_post_" in key or 
+                "compaign_next_post_" in key or  # Handle typo in spec
+                "campaign" in key.lower()
+            )
+            
+            if is_campaign_post:
                 file_prefix = "campaign_ready_post_"
                 existing_pattern = "campaign_ready_post_"
+                logger.info(f"📋 Detected campaign post input: {key} → using campaign naming")
             else:
                 file_prefix = "ready_post_"
                 existing_pattern = "ready_post_"
+                logger.info(f"📄 Detected regular post input: {key} → using regular naming")
                 
             post_number = len([o for o in objects if existing_pattern in o["Key"]]) + 1
             logger.info(f"📊 Current {file_prefix}{post_number} for {username}")
         except Exception as e:
             logger.warning(f"⚠️ Could not list existing objects in {output_dir}, assuming post_number=1: {e}")
             post_number = 1
-            if "campaign_post_" in key:
+            # Use campaign detection for fallback naming too
+            if "campaign" in key.lower() or "compaign" in key.lower():
                 file_prefix = "campaign_ready_post_"
             else:
                 file_prefix = "ready_post_"
@@ -666,42 +678,148 @@ class ImageGenerator:
 
     def _extract_image_prompt(self, post, original_data, key):
         """
-        🎯 ENHANCED IMAGE PROMPT EXTRACTION with multiple fallback strategies.
+        🎯 ENHANCED IMAGE PROMPT EXTRACTION with comprehensive keyword search and error handling.
+        Fix 2: Intelligent search for image_prompt, visual_prompt, prompt keywords.
         """
         try:
-            # Strategy 1: Direct extraction from post object
-            prompt = post.get("image_prompt") or post.get("visual_prompt")
-            if prompt and len(str(prompt).strip()) > 10:
-                logger.info(f"✅ Found direct image prompt in post for {key}: {str(prompt)[:50]}...")
-                return str(prompt).strip()
+            # 🔍 STRATEGY 1: Direct extraction from post object using all known keywords
+            prompt_keywords = ["image_prompt", "visual_prompt", "prompt"]
             
-            # Strategy 2: Alternative field names
-            alt_fields = ["media_suggestion", "visual_direction", "image_description", "visual_concept"]
+            for keyword in prompt_keywords:
+                prompt = post.get(keyword)
+                if prompt and self._is_valid_image_prompt(prompt):
+                    logger.info(f"✅ Found direct image prompt using keyword '{keyword}' in post for {key}: {str(prompt)[:50]}...")
+                    return str(prompt).strip()
+            
+            # 🔍 STRATEGY 2: Alternative field names
+            alt_fields = ["media_suggestion", "visual_direction", "image_description", "visual_concept", "media_prompt", "image_desc"]
             for field in alt_fields:
                 prompt = post.get(field)
-                if prompt and len(str(prompt).strip()) > 10:
+                if prompt and self._is_valid_image_prompt(prompt):
                     logger.info(f"✅ Found image prompt in alternative field '{field}' for {key}")
                     return str(prompt).strip()
             
-            # Strategy 3: Search in original data structure
-            for field_name, field_value in original_data.items():
-                if isinstance(field_value, str) and any(keyword in field_name.lower() for keyword in ["image", "visual", "media"]):
-                    if len(field_value.strip()) > 15:
-                        logger.info(f"✅ Found image prompt in original data field '{field_name}' for {key}")
-                        return field_value.strip()
-                elif isinstance(field_value, dict):
-                    nested_prompt = field_value.get("image_prompt") or field_value.get("visual_prompt")
-                    if nested_prompt and len(str(nested_prompt).strip()) > 10:
-                        logger.info(f"✅ Found image prompt in nested field '{field_name}' for {key}")
-                        return str(nested_prompt).strip()
+            # 🔍 STRATEGY 3: Deep search in original data structure (parent, child, nested)
+            prompt = self._deep_search_for_image_prompt(original_data, key)
+            if prompt:
+                return prompt
             
-            # Strategy 4: Intelligent generation based on content
-            logger.warning(f"⚠️ No explicit image prompt found for {key}, generating intelligent default")
-            return self._generate_intelligent_image_prompt(post, original_data, key)
+            # 🔍 STRATEGY 4: Recursive search in nested structures
+            prompt = self._recursive_prompt_search(original_data, key)
+            if prompt:
+                return prompt
+            
+            # ⚠️ STRATEGY 5: Skip file if no valid prompt found
+            logger.warning(f"⚠️ No valid image prompt found in {key} after comprehensive search")
+            logger.info(f"🚫 Skipping file {key} due to missing/invalid image prompt")
+            return None  # This will cause the file to be skipped
             
         except Exception as e:
             logger.error(f"🚨 Error extracting image prompt from {key}: {e}")
-            return self._generate_intelligent_image_prompt(post, original_data, key)
+            logger.info(f"🚫 Skipping file {key} due to extraction error")
+            return None  # This will cause the file to be skipped
+
+    def _is_valid_image_prompt(self, prompt):
+        """Check if image prompt is valid (not empty, not malformed, sufficient length)"""
+        if not prompt:
+            return False
+        
+        prompt_str = str(prompt).strip()
+        
+        # Check minimum length (at least 15 characters for meaningful prompt)
+        if len(prompt_str) < 15:
+            return False
+        
+        # Check for malformed prompts (just numbers, single words, etc.)
+        if prompt_str.isdigit():
+            return False
+            
+        # Check for meaningful content (not just spaces or special characters)
+        if not any(c.isalpha() for c in prompt_str):
+            return False
+            
+        # Check for placeholder text that indicates invalid prompt
+        invalid_indicators = [
+            "null", "none", "undefined", "placeholder", "todo", "fix", "error",
+            "missing", "empty", "n/a", "tbd", "coming soon"
+        ]
+        
+        if any(indicator in prompt_str.lower() for indicator in invalid_indicators):
+            return False
+            
+        return True
+
+    def _deep_search_for_image_prompt(self, data, key):
+        """Deep search for image prompt in original data structure"""
+        prompt_keywords = ["image_prompt", "visual_prompt", "prompt"]
+        
+        try:
+            # Search in all fields and values
+            for field_name, field_value in data.items():
+                # Check if field name contains prompt keywords
+                if any(keyword in field_name.lower() for keyword in ["image", "visual", "media", "prompt"]):
+                    if isinstance(field_value, str) and self._is_valid_image_prompt(field_value):
+                        logger.info(f"✅ Found image prompt in original data field '{field_name}' for {key}")
+                        return field_value.strip()
+                
+                # Check nested dictionaries
+                elif isinstance(field_value, dict):
+                    for nested_key, nested_value in field_value.items():
+                        if any(keyword in nested_key.lower() for keyword in prompt_keywords):
+                            if self._is_valid_image_prompt(nested_value):
+                                logger.info(f"✅ Found image prompt in nested field '{field_name}.{nested_key}' for {key}")
+                                return str(nested_value).strip()
+                
+                # Check lists for prompt objects
+                elif isinstance(field_value, list):
+                    for item in field_value:
+                        if isinstance(item, dict):
+                            for list_key, list_value in item.items():
+                                if any(keyword in list_key.lower() for keyword in prompt_keywords):
+                                    if self._is_valid_image_prompt(list_value):
+                                        logger.info(f"✅ Found image prompt in list item '{field_name}[].{list_key}' for {key}")
+                                        return str(list_value).strip()
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"🚨 Error in deep search for image prompt in {key}: {e}")
+            return None
+
+    def _recursive_prompt_search(self, data, key, depth=0, max_depth=3):
+        """Recursively search for image prompts in nested structures"""
+        if depth > max_depth or not isinstance(data, dict):
+            return None
+        
+        prompt_keywords = ["image_prompt", "visual_prompt", "prompt"]
+        
+        try:
+            for field_name, field_value in data.items():
+                # Direct prompt field check
+                if any(keyword in field_name.lower() for keyword in prompt_keywords):
+                    if self._is_valid_image_prompt(field_value):
+                        logger.info(f"✅ Found image prompt via recursive search at depth {depth} in field '{field_name}' for {key}")
+                        return str(field_value).strip()
+                
+                # Recursive search in nested dictionaries
+                if isinstance(field_value, dict):
+                    result = self._recursive_prompt_search(field_value, key, depth + 1, max_depth)
+                    if result:
+                        return result
+                
+                # Search in lists
+                elif isinstance(field_value, list):
+                    for item in field_value:
+                        if isinstance(item, dict):
+                            result = self._recursive_prompt_search(item, key, depth + 1, max_depth)
+                            if result:
+                                return result
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"🚨 Error in recursive prompt search at depth {depth} for {key}: {e}")
+            return None
 
     def _generate_intelligent_image_prompt(self, post, original_data, key):
         """Generate intelligent image prompt based on post content."""
@@ -774,7 +892,7 @@ class ImageGenerator:
                     "platform": platform,
                     "username": username
                 },
-                "status": "pending", #pending for the frontend to show the post as pending
+                "status": "pending",  # 🔧 FIX 4: Status should be pending (not processed) for frontend to handle
                 "processed_at": datetime.now().isoformat(),
                 "image_generated": True,
                 "original_format": original_data.get("original_format", "unknown")
@@ -784,7 +902,7 @@ class ImageGenerator:
             if platform.lower() == "twitter":
                 output_post["post"]["tweet_text"] = caption
             
-            logger.info(f"✅ Created enhanced output post structure for {username}")
+            logger.info(f"✅ Created enhanced output post structure for {username} with status: pending")
             return output_post
             
         except Exception as e:
@@ -798,7 +916,7 @@ class ImageGenerator:
                     "platform": platform,
                     "username": username
                 },
-                "status": "pending", #pending for the frontend to show the post as pending
+                "status": "pending",  # 🔧 FIX 4: Status should be pending (not processed) for frontend to handle
                 "processed_at": datetime.now().isoformat(),
                 "image_generated": True,
                 "fallback_used": True
@@ -818,24 +936,44 @@ class ImageGenerator:
                         all_objects.extend(objects)
                         logger.debug(f"Found {len(objects)} objects in {platform_prefix}")
                     
-                    # Process all objects from all platforms - specifically look for campaign posts
+                    # 🧹 COMPREHENSIVE TEST FILTERING - Filter out all test objects
+                    production_objects = TestFilter.filter_test_objects(all_objects)
+                    
+                    # Log filtering statistics
+                    if len(all_objects) != len(production_objects):
+                        filtered_count = len(all_objects) - len(production_objects)
+                        logger.info(f"🧹 Image Generator filtered out {filtered_count} test files")
+                    
+                    # Process production objects - specifically look for campaign posts
                     urgent_files = []
                     campaign_files = []
                     regular_files = []
                     
-                    for obj in all_objects:
+                    for obj in production_objects:
                         key = obj["Key"]
                         if key.endswith(".json"):
-                            if "urgent_campaign_post_" in key:
-                                urgent_files.append(key)
-                            elif "campaign_post_" in key:
-                                campaign_files.append(key)
-                            elif "urgent_" in key:
-                                urgent_files.append(key)
-                            elif "post_" in key:
-                                regular_files.append(key)
+                            # Additional username-based filtering
+                            parts = key.split('/')
+                            if len(parts) >= 3:
+                                platform = parts[1] if len(parts) > 1 else "unknown"
+                                username = parts[2] if len(parts) > 2 else "unknown"
+                                
+                                # 🚫 PRODUCTION FILTER - Username check
+                                if TestFilter.should_skip_processing(platform, username, key):
+                                    logger.debug(f"🚫 Skipping test file: {key}")
+                                    continue
+                                
+                                # 🎯 PRODUCTION FILE - Categorize for processing
+                                if "urgent_campaign_post_" in key:
+                                    urgent_files.append(key)
+                                elif "campaign_post_" in key:
+                                    campaign_files.append(key)
+                                elif "urgent_" in key:
+                                    urgent_files.append(key)
+                                elif "post_" in key:
+                                    regular_files.append(key)
                     
-                    logger.info(f"📊 Found {len(urgent_files)} urgent, {len(campaign_files)} campaign, and {len(regular_files)} regular posts")
+                    logger.info(f"📊 Found {len(urgent_files)} urgent, {len(campaign_files)} campaign, and {len(regular_files)} regular production posts")
                     
                     # Check which files actually need processing
                     prioritized_files = urgent_files + campaign_files + regular_files
@@ -847,7 +985,7 @@ class ImageGenerator:
                     
                     # Log processing status
                     if pending_files:
-                        logger.info(f"🚀 Processing {len(pending_files)} posts:")
+                        logger.info(f"🚀 Processing {len(pending_files)} production posts:")
                         for f in pending_files:
                             logger.info(f"  - {f}")
                         
@@ -855,7 +993,7 @@ class ImageGenerator:
                         for key in pending_files:
                             await self.process_post(key, session)
                     else:
-                        logger.info("✨ No pending posts to process")
+                        logger.info("✨ No pending production posts to process")
                     
                     logger.info("💤 Waiting 10 seconds before next check...")
                     await asyncio.sleep(10)
