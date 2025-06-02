@@ -539,101 +539,58 @@ class RagImplementation:
 • Personal growth opportunity mapping
 """
         
-        prompt = f"""
-🚀 PREMIUM {platform.upper()} CONTENT GENERATION - {module_key} INSTRUCTION SET 🚀
+        # Build core RAG prompt with STRICT anti-template directives
+        core_prompt = f"""
+🚨 **CRITICAL RAG GENERATION REQUIREMENTS - NO TEMPLATE CONTENT ALLOWED**:
 
-**INSTRUCTION ACTIVATION**: {instruction_set["instruction_theme"].upper()}
-**CONTENT THEME**: {instruction_set["content_focus"]}
-**ANALYSIS TYPE**: {instruction_set["analysis_type"]}
-**PROMPT STYLE**: {instruction_set["prompt_style"]}
-**OUTPUT EMPHASIS**: {instruction_set["output_emphasis"]}
-**QUALITY STANDARD**: {instruction_set["content_quality"]}
+**STRICT CONTENT AUTHENTICITY RULES:**
+• NEVER use generic phrases like "PRIORITY ACTION", "STRATEGIC MOVE", "OPTIMIZATION"
+• NEVER use numbered emoji patterns (🚀 **ACTION 1**, 📊 **MOVE 2**, etc.)
+• NEVER use template phrases: "moderate engagement", "room for growth", "consistent audience response"
+• NEVER use generic recommendations that could apply to any brand
+• MUST include specific brand mentions, product names, and unique brand elements
+• MUST reference actual scraped content themes and specific engagement metrics
+• MUST create 100% unique, personalized content that passes anti-template detection
 
-=== 📊 ACCOUNT INTELLIGENCE BASED ON SCRAPED DATA ===
-PRIMARY ACCOUNT: @{primary_username}
-COMPETITORS: {', '.join(secondary_usernames) if secondary_usernames else 'Strategic analysis required'}
-
-📈 **PERFORMANCE INTELLIGENCE FROM RAG DATA:**
+**MANDATORY PERSONALIZATION:**
+You are analyzing @{primary_username} on {platform} with the following REAL DATA:
 {account_context['engagement_insights']}
 
-📋 **CONTENT ANALYSIS FROM SCRAPED DATA:**
+**PRIMARY CONTENT TO ANALYZE:**
 {account_context['primary_context']}
 
 {competitor_section}
 
-=== 🎯 ENHANCED {instruction_set["instruction_theme"].upper()} PROTOCOL ===
-
-**CRITICAL RAG REQUIREMENT**: Generate {instruction_set["content_quality"]} based on real scraped data analysis. 
-**PROHIBITED**: Generic templates, placeholder content, or fallback responses.
-**MANDATORY**: Apply {instruction_set["analysis_type"]} to create content that makes real account users amazed.
-
-**MODULE 1: {intelligence_type.upper().replace('_', ' ')} - {instruction_set["prompt_style"].upper()} ANALYSIS**
-- REQUIRED: {analysis_focus} with specific data-driven insights from scraped content
-- ANALYSIS TYPE: {instruction_set["analysis_type"]} focusing on {instruction_set["output_emphasis"]}
-- QUALITY: {instruction_set["content_quality"]} that demonstrates deep understanding of scraped data
-
-**MODULE 2: TACTICAL RECOMMENDATIONS - {instruction_set["instruction_theme"].upper()} STRATEGY** 
-- REQUIRED: 3-5 strategic recommendations based on {instruction_set["output_emphasis"]}
-- STYLE: {instruction_set["prompt_style"]} approach with measurable outcomes
-- FOCUS: {instruction_set["content_focus"]} with clear implementation timelines
-
-**MODULE 3: NEXT POST PREDICTION - {platform.upper()} {instruction_set["prompt_style"].upper()} OPTIMIZATION**
-- REQUIRED: {content_length} optimized for @{primary_username}'s authentic {instruction_set["prompt_style"]} voice
-- STYLE: {instruction_set["content_focus"]} that reflects {instruction_set["analysis_type"]}
-- ENGAGEMENT: Strategic elements focusing on {instruction_set["output_emphasis"]}
-
-=== 📋 MANDATORY JSON OUTPUT FORMAT ===
-
-**CRITICAL**: Respond with ONLY this exact JSON structure filled with REAL {instruction_set["instruction_theme"]} content:
+**MANDATORY JSON FORMAT - RESPOND WITH EXACTLY THIS STRUCTURE:**
 
 {{
     "{intelligence_type}": {{
-        "account_analysis": "📊 **@{primary_username} {instruction_set['instruction_theme'].upper()} INTELLIGENCE**\\n\\n• SPECIFIC performance metrics from scraped data: Average engagement {account_context['avg_engagement']:.0f}, analyzing {account_context['total_posts']} posts\\n• DETAILED {instruction_set['analysis_type']} of content success patterns\\n• REAL strategic positioning based on competitive advantages from scraped competitor data\\n• MEASURABLE growth trajectory with {instruction_set['output_emphasis']} optimization opportunities",
+        "account_analysis": "PERSONALIZED analysis of @{primary_username} with specific content themes, actual engagement numbers ({account_context.get('avg_engagement', 0):.0f} avg), and unique brand characteristics. Include specific competitor insights from {', '.join(secondary_usernames)}.",
         
-        {"competitive_analysis" if is_branding else "growth_opportunities"}: "🔍 **{instruction_set['instruction_theme'].upper()} MARKET INTELLIGENCE**\\n\\n{'• MANDATORY: Individual competitor breakdown with ' + instruction_set['analysis_type'] + ' for: ' + ', '.join(secondary_usernames[:3]) if is_branding else '• REAL ' + instruction_set['content_focus'] + ' opportunities with actionable strategies'}\\n{'• REQUIRED: Strategic positioning using ' + instruction_set['prompt_style'] + ' approach with measurable differentiation' if is_branding else '• SPECIFIC ' + instruction_set['analysis_type'] + ' strategies with clear implementation'}\\n{'• DEMANDED: Market opportunity identification focusing on ' + instruction_set['output_emphasis'] if is_branding else '• ACTIONABLE ' + instruction_set['output_emphasis'] + ' with measurable outcomes'}",
+        "{analysis_focus}": "SPECIFIC strategic insights for @{primary_username} based on actual content patterns, competitor positioning vs {', '.join(secondary_usernames)}, and measurable growth opportunities with brand-specific elements.",
         
-        "strategic_positioning": "🎯 **{instruction_set['instruction_theme'].upper()} ADVANTAGE STRATEGY**\\n\\n• REAL strategic advantages: {instruction_set['content_focus']} specific to @{primary_username}'s unique position\\n• ACTIONABLE {instruction_set['prompt_style']} optimization with clear differentiation\\n• TARGETED {instruction_set['output_emphasis']} strategies with measurable engagement improvements"
+        "strategic_positioning": "UNIQUE positioning strategy that differentiates @{primary_username} from competitors using actual performance data and brand-specific elements. Reference peak performance of {account_context.get('max_engagement', 0)}."
     }},
     
     "tactical_recommendations": [
-        "🚀 **PRIORITY ACTION 1**: SPECIFIC {instruction_set['instruction_theme']} recommendation for @{primary_username} focusing on {instruction_set['output_emphasis']} with expected {account_context['avg_engagement']*1.2:.0f}+ engagement impact and 30-day timeline",
-        "📊 **STRATEGIC MOVE 2**: DATA-DRIVEN {instruction_set['prompt_style']} strategy leveraging {platform} features with MEASURABLE outcomes tracking",
-        "🎯 **OPTIMIZATION 3**: {instruction_set['content_focus'].upper()} enhancement tactic with CLEAR implementation steps and success metrics"
+        "First personalized recommendation that references specific @{primary_username} products/services and includes actual engagement targets",
+        "Second recommendation mentioning specific competitor insights from {', '.join(secondary_usernames)} with measurable outcomes",
+        "Third recommendation with brand-specific elements and clear implementation steps"
     ],
     
     "next_post_prediction": {{
-        "{content_field}": "AUTHENTIC {content_length} that perfectly matches @{primary_username}'s {instruction_set['prompt_style']} voice, incorporates {instruction_set['analysis_type']} themes from {account_context['avg_engagement']:.0f} avg engagement analysis, and targets {instruction_set['output_emphasis']} for maximum impact",
-        "hashtags": ["{instruction_set['instruction_theme'].upper()}", "hashtags", "based", "on", "{primary_username}", "{instruction_set['prompt_style']}", "analysis"],
-        "call_to_action": "PERSONALIZED engagement prompt designed specifically for @{primary_username}'s {instruction_set['output_emphasis']} and {instruction_set['analysis_type']} patterns",
-        "image_prompt": "🎨 **{instruction_set['instruction_theme'].upper()} VISUAL DIRECTION**: DETAILED, creative image prompt maximizing {instruction_set['content_focus']} visual impact for @{primary_username}'s {instruction_set['prompt_style']} brand alignment and {platform} platform optimization"
+        "{content_field}": "Brand-specific {content_length} for @{primary_username} that matches their unique voice and includes specific product/theme references",
+        "hashtags": ["#{primary_username}", "brand-specific", "hashtags", "based", "on", "actual", "content"],
+        "call_to_action": "Specific engagement prompt designed for @{primary_username}'s audience and brand goals",
+        "image_prompt": "Detailed visual direction matching @{primary_username}'s aesthetic and brand identity for {platform} optimization"
     }}
 }}
 
-=== 🚀 {instruction_set["instruction_theme"].upper()} EXCELLENCE STANDARDS ===
+**CRITICAL: Respond with ONLY the JSON object above, filled with 100% personalized content. No additional text before or after the JSON.**
 
-✅ **REAL RAG DATA INTEGRATION REQUIREMENTS:**
-- MANDATORY: Use actual performance metrics from scraped data - Average engagement {account_context['avg_engagement']:.0f}
-- REQUIRED: Include specific competitor performance data using {instruction_set['analysis_type']}
-- DEMANDED: Base ALL recommendations on {instruction_set['content_focus']} and real engagement patterns
-- CRITICAL: Apply {instruction_set['prompt_style']} approach throughout for {platform.capitalize()} platform optimization
-
-✅ **{instruction_set["instruction_theme"].upper()} FORMAT COMPLIANCE:**
-- PROHIBITED: Any text outside the JSON object or template content
-- REQUIRED: All fields filled with REAL {instruction_set['content_focus']} content
-- MANDATORY: Proper JSON formatting with escaped newlines (\\n)
-- CRITICAL: {instruction_set['content_quality']} in every field
-
-✅ **{instruction_set["prompt_style"].upper()} CONTENT QUALITY ENFORCEMENT:**
-- MANDATORY: Every insight actionable and specific to @{primary_username} using {instruction_set['analysis_type']}
-- REQUIRED: All recommendations target {instruction_set['output_emphasis']} improvements
-- DEMANDED: Content authentic to @{primary_username}'s {instruction_set['prompt_style']} voice and style
-- CRITICAL: Strategic positioning based on REAL scraped competitive analysis data
-
-**EXECUTE ENHANCED {platform.upper()} GENERATION WITH {instruction_set["instruction_theme"].upper()} INSTRUCTION SET:**
-**GENERATE {instruction_set["content_quality"].upper()} FOR ALL FIELDS - NO EXCEPTIONS**
-"""
+Generate 100% authentic, personalized {intelligence_type} content that cannot be confused with templates."""
         
-        return prompt
+        return core_prompt
 
     def generate_recommendation(self, primary_username, secondary_usernames, query, n_context=3, is_branding=True, platform="instagram"):
         """Bulletproof unified recommendation with guaranteed real RAG generation."""
