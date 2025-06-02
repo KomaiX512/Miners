@@ -19,7 +19,7 @@ class VectorDatabaseManager:
     def __init__(self, config=VECTOR_DB_CONFIG):
         """Initialize with vector database configuration."""
         self.config = config
-        self.client = chromadb.Client()
+        self.client = chromadb.PersistentClient(path="./chroma_db")
         self.embedding_dimension = 384  # Fixed embedding dimension for consistency
         self.collection = self._get_or_create_collection()
         self.vectorizer = TfidfVectorizer(max_features=self.embedding_dimension)
@@ -77,46 +77,96 @@ class VectorDatabaseManager:
             return np.zeros((len(texts), self.embedding_dimension)).tolist()
     
     def add_documents(self, documents, ids=None, metadatas=None):
-        """Add documents to the vector database."""
+        """Add documents to the vector database with enhanced RAG logging and duplicate checking."""
         try:
             if not documents:
-                logger.warning("No documents provided to add")
+                logger.warning("⚠️ RAG INDEX: No documents provided to add")
                 return
             
             if ids is None:
                 ids = [f"doc_{i}" for i in range(len(documents))]
             
             if len(documents) != len(ids) or (metadatas and len(documents) != len(metadatas)):
-                logger.error("Mismatch in lengths of documents, ids, and metadatas")
+                logger.error("❌ RAG INDEX: Mismatch in lengths of documents, ids, and metadatas")
                 raise ValueError("Length mismatch in inputs")
             
-            embeddings = self._get_embeddings(documents)
-            if not embeddings:
-                logger.warning("No embeddings generated; skipping add")
+            # Check for existing documents to prevent duplicates
+            existing_ids = set()
+            try:
+                existing_results = self.collection.get(include=['metadatas'])
+                if existing_results and 'ids' in existing_results:
+                    existing_ids = set(existing_results['ids'])
+                    logger.info(f"Found {len(existing_ids)} existing documents in vector database")
+            except Exception as e:
+                logger.warning(f"Could not retrieve existing IDs: {str(e)}")
+            
+            # Filter out duplicates
+            new_documents = []
+            new_ids = []
+            new_metadatas = []
+            skipped_count = 0
+            
+            for i, doc_id in enumerate(ids):
+                if doc_id in existing_ids:
+                    skipped_count += 1
+                    logger.debug(f"Skipping duplicate document ID: {doc_id}")
+                    continue
+                
+                new_documents.append(documents[i])
+                new_ids.append(doc_id)
+                if metadatas:
+                    new_metadatas.append(metadatas[i])
+            
+            if not new_documents:
+                logger.info(f"⚠️ RAG INDEX: No new documents to add (skipped {skipped_count} duplicates)")
                 return
             
-            self.collection.add(
-                documents=documents,
-                embeddings=embeddings,
-                ids=ids,
-                metadatas=metadatas
-            )
-            logger.info(f"Added {len(documents)} documents to the collection")
+            embeddings = self._get_embeddings(new_documents)
+            if not embeddings:
+                logger.warning("⚠️ RAG INDEX: No embeddings generated; skipping add")
+                return
+            
+            # Enhanced logging for RAG tracking
+            logger.info(f"📊 RAG INDEX: Adding {len(new_documents)} new documents to vector database (skipped {skipped_count} duplicates)")
+            if new_metadatas:
+                usernames = set(meta.get('username', 'unknown') for meta in new_metadatas if meta)
+                logger.info(f"📊 RAG INDEX: Users being indexed: {list(usernames)}")
+            
+            # Add documents to collection with graceful duplicate handling
+            if new_metadatas:
+                logger.info(f"📊 RAG INDEX: Adding {len(new_documents)} new documents to collection (post filter)")
+                
+                # Use upsert instead of add to handle duplicates gracefully
+                self.collection.upsert(
+                    documents=new_documents,
+                    embeddings=embeddings,
+                    ids=new_ids,
+                    metadatas=new_metadatas
+                )
+                logger.info(f"✅ RAG INDEX: Successfully upserted {len(new_documents)} documents (graceful duplicate handling)")
+            else:
+                logger.info(f"⚠️ RAG INDEX: All documents were duplicates, nothing added")
+            
         except Exception as e:
-            logger.error(f"Error adding documents: {str(e)}")
+            logger.error(f"❌ RAG INDEX: Error adding documents: {str(e)}")
             raise
     
     def query_similar(self, query_text, n_results=5, filter_username=None):
-        """Query for similar documents with enhanced context retrieval and optional username filter."""
+        """Query for similar documents with enhanced RAG retrieval logging and optional username filter."""
         try:
             if not query_text.strip():
-                logger.warning("Empty query text provided")
+                logger.warning("⚠️ RAG QUERY: Empty query text provided")
                 return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
+            
+            # Log RAG query initiation
+            logger.info(f"🔍 RAG QUERY: Searching for content similar to: '{query_text[:50]}...'")
+            if filter_username:
+                logger.info(f"🔍 RAG QUERY: Filtering by username: {filter_username}")
             
             # Generate embedding for query
             query_embedding = self._get_embeddings([query_text])
             if not query_embedding or len(query_embedding) == 0:
-                logger.error("Failed to generate embedding for query")
+                logger.error("❌ RAG QUERY: Failed to generate embedding for query")
                 return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
                 
             # Make sure we're using the first (and only) embedding
@@ -124,7 +174,7 @@ class VectorDatabaseManager:
             
             # Check embedding dimensions
             if len(query_vector) != self.embedding_dimension:
-                logger.warning(f"Query embedding dimension {len(query_vector)} doesn't match expected {self.embedding_dimension}")
+                logger.warning(f"⚠️ RAG QUERY: Query embedding dimension {len(query_vector)} doesn't match expected {self.embedding_dimension}")
                 # Fix dimension issue by padding or truncating
                 if len(query_vector) < self.embedding_dimension:
                     query_vector = query_vector + [0] * (self.embedding_dimension - len(query_vector))
@@ -148,22 +198,33 @@ class VectorDatabaseManager:
             # Add username filter if provided
             if filter_username:
                 query_params['where'] = {'username': filter_username}
-                logger.info(f"Querying for {enhanced_n_results} results filtered by username: {filter_username}")
+                logger.info(f"🔍 RAG QUERY: Searching {enhanced_n_results} results filtered by username: {filter_username}")
             else:
-                logger.info(f"Querying for {enhanced_n_results} results across all users")
+                logger.info(f"🔍 RAG QUERY: Searching {enhanced_n_results} results across all users")
             
             # Execute query
             results = self.collection.query(**query_params)
             
-            # Handle empty results
+            # Enhanced RAG result logging
             if not results['documents'] or not results['documents'][0]:
-                logger.info(f"No similar documents found for query: {query_text[:50]}...")
+                logger.warning(f"⚠️ RAG QUERY: No similar documents found for query: {query_text[:50]}...")
+                logger.warning(f"⚠️ RAG QUERY: Total documents in database: {self.get_count()}")
                 return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
             
-            # Enhanced result processing for better theme alignment
+            # Log successful RAG retrieval
             documents = results['documents'][0]
             metadatas = results['metadatas'][0]
             distances = results.get('distances', [[]])[0] if results.get('distances') else [0] * len(documents)
+            
+            logger.info(f"✅ RAG QUERY: Found {len(documents)} relevant documents")
+            
+            # Log RAG data quality
+            if metadatas:
+                retrieved_users = set(meta.get('username', 'unknown') for meta in metadatas if meta)
+                logger.info(f"📊 RAG DATA: Retrieved content from users: {list(retrieved_users)}")
+                
+                avg_engagement = sum(meta.get('engagement', 0) for meta in metadatas if meta) / len(metadatas)
+                logger.info(f"📊 RAG DATA: Average engagement of retrieved content: {avg_engagement:.1f}")
             
             # Sort by relevance (lower distance = more similar) and engagement
             doc_metadata_distance = list(zip(documents, metadatas, distances))
@@ -199,22 +260,14 @@ class VectorDatabaseManager:
             final_metadatas = [item[1] for item in final_results]
             final_distances = [item[2] for item in final_results]
             
-            # Add ranking score to metadata for transparency
-            for i, meta in enumerate(final_metadatas):
-                if isinstance(meta, dict):
-                    doc, meta_orig, distance = final_results[i]
-                    ranking_score = intelligent_ranking((doc, meta_orig, distance))
-                    meta['ranking_score'] = round(ranking_score, 3)
-                    meta['similarity_distance'] = round(distance, 3)
+            # Log final RAG selection
+            logger.info(f"✅ RAG SELECTION: Returning top {len(final_results)} most relevant documents")
             
-            enhanced_results = {
+            return {
                 'documents': [final_documents],
                 'metadatas': [final_metadatas],
                 'distances': [final_distances]
             }
-            
-            logger.info(f"Enhanced query returned {len(final_documents)} intelligently ranked results for better theme alignment")
-            return enhanced_results
             
         except Exception as e:
             logger.error(f"Error in enhanced query for similar documents: {str(e)}")
@@ -234,6 +287,7 @@ class VectorDatabaseManager:
     def add_posts(self, posts, primary_username):
         """
         Add social media posts to the vector database with username metadata.
+        Checks for existing embeddings to prevent duplicates.
         
         Args:
             posts: List of post dictionaries
@@ -251,6 +305,18 @@ class VectorDatabaseManager:
             ids = []
             metadatas = []
             post_count = 0
+            skipped_count = 0
+            
+            # Get existing IDs to check for duplicates
+            existing_ids = set()
+            try:
+                # Query all documents with no filter to get existing IDs
+                existing_results = self.collection.get(include=['metadatas'])
+                if existing_results and 'ids' in existing_results:
+                    existing_ids = set(existing_results['ids'])
+                    logger.info(f"Found {len(existing_ids)} existing documents in vector database")
+            except Exception as e:
+                logger.warning(f"Could not retrieve existing IDs: {str(e)}")
             
             for post in posts:
                 # Handle different field names between Instagram and Twitter
@@ -290,9 +356,6 @@ class VectorDatabaseManager:
                 if username and username.startswith('@'):
                     username = username[1:]
                 
-                # Create document and metadata
-                documents.append(text)
-                
                 # Use stable ID generation for consistency
                 if 'id' in post:
                     post_id = f"{username}_{post['id']}"
@@ -300,6 +363,14 @@ class VectorDatabaseManager:
                     # Create a deterministic ID from content
                     post_id = f"{username}_{abs(hash(text + timestamp))}"
                 
+                # Check if this post already exists
+                if post_id in existing_ids:
+                    skipped_count += 1
+                    logger.debug(f"Skipping duplicate post ID: {post_id}")
+                    continue
+                
+                # Create document and metadata
+                documents.append(text)
                 ids.append(post_id)
                 
                 metadata = {
@@ -321,22 +392,40 @@ class VectorDatabaseManager:
                 post_count += 1
             
             if post_count > 0:
-                # Generate embeddings and add to collection
+                # Generate embeddings and add to collection - ONLY if we have new posts
+                logger.info(f"📊 Generating embeddings for {post_count} new posts")
                 embeddings = self._get_embeddings(documents)
                 
-                self.collection.add(
-                    documents=documents,
-                    embeddings=embeddings,
-                    ids=ids,
-                    metadatas=metadatas
-                )
-                logger.info(f"Indexed {post_count} posts with usernames for {primary_username}")
+                # Double-check that we don't have any duplicates before adding
+                final_documents = []
+                final_ids = []
+                final_metadatas = []
+                final_embeddings = []
+                
+                for i, doc_id in enumerate(ids):
+                    if doc_id not in existing_ids:
+                        final_documents.append(documents[i])
+                        final_ids.append(doc_id)
+                        final_metadatas.append(metadatas[i])
+                        final_embeddings.append(embeddings[i])
+                
+                if final_documents:
+                    # Use upsert instead of add to handle duplicates gracefully
+                    self.collection.upsert(
+                        documents=final_documents,
+                        embeddings=final_embeddings,
+                        ids=final_ids,
+                        metadatas=final_metadatas
+                    )
+                    logger.info(f"✅ RAG INDEX: Successfully upserted {len(final_documents)} posts for {primary_username} (graceful duplicate handling)")
+                else:
+                    logger.info(f"⚠️ RAG INDEX: All posts were duplicates, nothing added for {primary_username}")
             else:
-                logger.warning(f"No valid posts found to index for {primary_username}")
+                logger.info(f"⚠️ RAG INDEX: No new posts to add for {primary_username} (skipped {skipped_count} duplicates)")
                 
             return post_count
         except Exception as e:
-            logger.error(f"Error adding posts to vector DB: {str(e)}")
+            logger.error(f"❌ RAG INDEX: Error adding posts to vector DB: {str(e)}")
             import traceback
             logger.error(traceback.format_exc())
             return 0

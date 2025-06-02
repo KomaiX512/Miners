@@ -1,0 +1,186 @@
+{
+  "platform": "instagram",
+  "primary_username": "toofaced",
+  "secondary_usernames": [
+    "maccosmetics",
+    "fentybeauty",
+    "narsissist"
+  ],
+  "account_type": "non-branding",
+  "posting_style": "beauty posts",
+  "profile": {
+    "username": "toofaced",
+    "fullName": "Too Faced"
+  },
+  "main_recommendation": {
+    "recommendations": [
+      "Develop consistent content pillars that showcase your unique value proposition",
+      "Create authentic storytelling content that builds emotional connection with audience",
+      "Implement strategic posting schedule optimization for better engagement"
+    ],
+    "account_analysis": "Account analysis in progress - focus on authentic engagement strategies",
+    "content_recommendations": "Focus on storytelling and community building"
+  },
+  "next_post_prediction": {
+    "caption": "Hey besties! \u2728 Feeling extra glam today and wanted to share my go-to everyday makeup look! \ud83d\ude09 Products used are linked in my bio! What are your favorite makeup products? Let me know in the comments! \ud83d\udc47 #makeup #beauty #everydaymakeup #glam #toofaced",
+    "hashtags": [
+      "#authentic",
+      "#personal",
+      "#unique",
+      "#voice",
+      "#makeup"
+    ],
+    "call_to_action": "Share your thoughts in the comments!",
+    "image_prompt": "High-quality engaging visual"
+  },
+  "improvement_recommendations": {
+    "recommendations": [
+      "Develop strategic content pillars that showcase non-branding account's unique value proposition",
+      "Create authentic storytelling content that builds emotional connection with target audience",
+      "Implement data-driven posting schedule optimization for instagram platform algorithms"
+    ],
+    "strategy_basis": "Default recommendations for non-branding account",
+    "platform": "instagram"
+  },
+  "engagement_strategies": [
+    {
+      "strategy": "Ask thought-provoking questions",
+      "implementation": "End posts with questions that prompt reflection or discussion"
+    },
+    {
+      "strategy": "Create interactive polls and quizzes",
+      "implementation": "Use platform features to poll your audience on relevant topics"
+    },
+    {
+      "strategy": "Share behind-the-scenes content",
+      "implementation": "Give glimpses into your process to build authenticity"
+    }
+  ],
+  "trending_topics": [
+    {
+      "date": "2025-06-04",
+      "value": 1200.0000000000007,
+      "topic": "Trending on June 04"
+    },
+    {
+      "date": "2025-06-05",
+      "value": 1300.0000000000007,
+      "topic": "Trending on June 05"
+    }
+  ],
+  "competitor_analysis": {
+    "maccosmetics": {
+      "overview": "REAL DATA ANALYSIS: maccosmetics demonstrates 0 average engagement across 1 analyzed posts.",
+      "intelligence_source": "scraped_data_analysis",
+      "performance_metrics": {
+        "average_engagement": 0.0,
+        "posting_frequency": "Low frequency",
+        "content_volume": 1
+      },
+      "competitive_strengths": [],
+      "exploitable_vulnerabilities": [
+        "Low engagement rate - audience not responding well",
+        "Limited viral content success - struggling to create breakout posts",
+        "Content repetition - limited theme diversity",
+        "Low posting frequency - missing audience engagement opportunities"
+      ],
+      "recommended_counter_strategies": [
+        "Target their audience with more engaging, interactive content",
+        "Exploit their content gaps with trend-focused, viral-optimized content",
+        "Differentiate with diverse content themes they're neglecting",
+        "Increase posting frequency to capture their missed audience moments",
+        "Outperform maccosmetics by targeting 2000+ engagement per post",
+        "Dominate viral content space they're failing to capture"
+      ],
+      "top_content_themes": [],
+      "strategic_recommendations": [
+        "Monitor maccosmetics's engagement patterns for content timing optimization",
+        "Analyze their top-performing content themes: N/A",
+        "Exploit their vulnerabilities: Low engagement rate - audience not responding well, Limited viral content success - struggling to create breakout posts"
+      ]
+    },
+    "fentybeauty": {
+      "overview": "REAL DATA ANALYSIS: fentybeauty demonstrates 0 average engagement across 1 analyzed posts.",
+      "intelligence_source": "scraped_data_analysis",
+      "performance_metrics": {
+        "average_engagement": 0.0,
+        "posting_frequency": "Low frequency",
+        "content_volume": 1
+      },
+      "competitive_strengths": [],
+      "exploitable_vulnerabilities": [
+        "Low engagement rate - audience not responding well",
+        "Limited viral content success - struggling to create breakout posts",
+        "Content repetition - limited theme diversity",
+        "Low posting frequency - missing audience engagement opportunities"
+      ],
+      "recommended_counter_strategies": [
+        "Target their audience with more engaging, interactive content",
+        "Exploit their content gaps with trend-focused, viral-optimized content",
+        "Differentiate with diverse content themes they're neglecting",
+        "Increase posting frequency to capture their missed audience moments",
+        "Outperform fentybeauty by targeting 2000+ engagement per post",
+        "Dominate viral content space they're failing to capture"
+      ],
+      "top_content_themes": [],
+      "strategic_recommendations": [
+        "Monitor fentybeauty's engagement patterns for content timing optimization",
+        "Analyze their top-performing content themes: N/A",
+        "Exploit their vulnerabilities: Low engagement rate - audience not responding well, Limited viral content success - struggling to create breakout posts"
+      ]
+    },
+    "narsissist": {
+      "overview": "REAL DATA ANALYSIS: narsissist demonstrates 0 average engagement across 1 analyzed posts.",
+      "intelligence_source": "scraped_data_analysis",
+      "performance_metrics": {
+        "average_engagement": 0.0,
+        "posting_frequency": "Low frequency",
+        "content_volume": 1
+      },
+      "competitive_strengths": [],
+      "exploitable_vulnerabilities": [
+        "Low engagement rate - audience not responding well",
+        "Limited viral content success - struggling to create breakout posts",
+        "Content repetition - limited theme diversity",
+        "Low posting frequency - missing audience engagement opportunities"
+      ],
+      "recommended_counter_strategies": [
+        "Target their audience with more engaging, interactive content",
+        "Exploit their content gaps with trend-focused, viral-optimized content",
+        "Differentiate with diverse content themes they're neglecting",
+        "Increase posting frequency to capture their missed audience moments",
+        "Outperform narsissist by targeting 2000+ engagement per post",
+        "Dominate viral content space they're failing to capture"
+      ],
+      "top_content_themes": [],
+      "strategic_recommendations": [
+        "Monitor narsissist's engagement patterns for content timing optimization",
+        "Analyze their top-performing content themes: N/A",
+        "Exploit their vulnerabilities: Low engagement rate - audience not responding well, Limited viral content success - struggling to create breakout posts"
+      ]
+    }
+  },
+  "recommendation": {
+    "next_post": {
+      "caption": "Hey besties! \u2728 Feeling extra glam today and wanted to share my go-to everyday makeup look! \ud83d\ude09 Products used are linked in my bio! What are your favorite makeup products? Let me know in the comments! \ud83d\udc47 #makeup #beauty #everydaymakeup #glam #toofaced",
+      "hashtags": [
+        "#authentic",
+        "#personal",
+        "#unique",
+        "#voice",
+        "#makeup"
+      ],
+      "call_to_action": "Share your thoughts in the comments!",
+      "image_prompt": "High-quality engaging visual"
+    }
+  },
+  "content_intelligence": {
+    "recommendations": [
+      "Develop consistent content pillars that showcase your unique value proposition",
+      "Create authentic storytelling content that builds emotional connection with audience",
+      "Implement strategic posting schedule optimization for better engagement"
+    ],
+    "account_analysis": "Account analysis in progress - focus on authentic engagement strategies",
+    "content_recommendations": "Focus on storytelling and community building"
+  }
+}

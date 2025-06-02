@@ -23,7 +23,7 @@ AI_HORDE_CONFIG = {
 }
 
 GEMINI_CONFIG = {
-    "api_key": os.getenv("GEMINI_API_KEY", "AIzaSyDIPj_v_yICpcZayoPXfdymD1yVf0mjo2A"),
+    "api_key": os.getenv("GEMINI_API_KEY", "AIzaSyA3CCL8Oyl29e7RK5UST5sNFW0wYhCZNsI"),
     "model": "gemini-2.0-flash",
     "max_tokens": 2000,
     "temperature": 0.2,

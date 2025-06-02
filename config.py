@@ -26,7 +26,7 @@ VECTOR_DB_CONFIG = {
 
 # Gemini API Configuration
 GEMINI_CONFIG = {
-    'api_key': 'AIzaSyDIPj_v_yICpcZayoPXfdymD1yVf0mjo2A',
+    'api_key': 'AIzaSyA3CCL8Oyl29e7RK5UST5sNFW0wYhCZNsI',
     'model': 'gemini-2.0-flash',
     'max_tokens': 2000,
     'temperature': 0.2,  # Lower temperature for more focused, analytical responses
