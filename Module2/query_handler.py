@@ -273,6 +273,12 @@ class SequentialQueryHandler:
             followers = profile_data.get("followersCount", 0)
             follower_info = f"Followers: {followers:,}"
         
+        # 🏷️ HASHTAG PRESERVATION: Extract existing hashtags from content
+        existing_hashtags = self._extract_hashtags_from_content(content)
+        hashtag_instruction = ""
+        if existing_hashtags:
+            hashtag_instruction = f"\nIMPORTANT: The content already includes optimized hashtags: {' '.join(existing_hashtags)}. Please include these hashtags in your response."
+        
         prompt = f"""
         Transform this 3-sentence content into a engaging {platform} post for {username}.
         
@@ -283,10 +289,11 @@ class SequentialQueryHandler:
         - Username: {username}
         - Bio: {bio}
         - {follower_info}
+        {hashtag_instruction}
         
         TRANSFORMATION REQUIREMENTS:
         1. Create an engaging caption that matches the platform style
-        2. Extract and enhance key hashtags (5-8 hashtags)
+        2. Extract and enhance key hashtags (5-8 hashtags total, including any existing ones)
         3. Create a compelling call-to-action
         4. Generate detailed image prompt from the visual description
         
@@ -305,6 +312,16 @@ class SequentialQueryHandler:
         """
         
         return prompt
+    
+    def _extract_hashtags_from_content(self, content: str) -> List[str]:
+        """🏷️ Extract existing hashtags from enhanced content"""
+        if not content:
+            return []
+        
+        # Find all hashtags in the content
+        hashtags = re.findall(r'#\w+', content)
+        logger.debug(f"🏷️ Extracted {len(hashtags)} existing hashtags from content")
+        return hashtags
     
     def parse_transformation_response(self, response_text: str) -> Optional[Dict]:
         """Parse AI response into structured format"""

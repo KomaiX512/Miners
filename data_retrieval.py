@@ -125,7 +125,7 @@ class R2DataRetriever:
             platform (str): The social media platform (instagram or twitter)
             
         Returns:
-            list: Combined list of post data from primary and competitor files, or None if failed
+            list: Combined list of post data with PRIMARY USER'S DATA FIRST, or None if failed
         """
         try:
             # FIXED: Use consistent schema across platforms - platform/username/
@@ -140,29 +140,53 @@ class R2DataRetriever:
                 logger.warning(f"No objects found under prefix '{prefix}'")
                 return None
             
-            combined_data = []
+            # CRITICAL FIX: Separate primary and competitor data to prevent contamination
             primary_key = f"{prefix}{primary_username}.json"
-            found_primary = False
+            primary_data = None
+            competitor_data = []
             
-            # Retrieve and combine data from all relevant files
+            # First, retrieve primary user data ONLY
             for obj in objects:
                 key = obj['Key']
-                if key.endswith('.json'):  # Only process JSON files
+                if key == primary_key:
                     data = self.get_json_data(key)
                     if data:
-                        if key == primary_key:
-                            found_primary = True
-                        combined_data.extend(data)  # Assuming data is a list of posts
+                        primary_data = data
+                        logger.info(f"✅ Found primary user data: {primary_key}")
+                        break
             
-            if not found_primary:
-                logger.warning(f"Primary file '{primary_key}' not found")
+            if not primary_data:
+                logger.error(f"❌ CRITICAL: Primary file '{primary_key}' not found")
                 return None
+            
+            # Then, retrieve competitor data separately
+            for obj in objects:
+                key = obj['Key']
+                if key.endswith('.json') and key != primary_key:  # Competitor files only
+                    data = self.get_json_data(key)
+                    if data:
+                        competitor_data.extend(data)  # Assuming data is a list of posts
+                        logger.info(f"✅ Found competitor data: {key}")
+            
+            # CRITICAL: Ensure primary data is ALWAYS FIRST in the returned array
+            # This prevents profile data contamination where raw_data[0] gets wrong profile
+            combined_data = []
+            
+            # Add primary user data first
+            if isinstance(primary_data, list):
+                combined_data.extend(primary_data)
+            else:
+                combined_data.append(primary_data)
+                
+            # Add competitor data after primary data
+            combined_data.extend(competitor_data)
                 
             if not combined_data:
                 logger.warning(f"No valid data retrieved for {primary_username}")
                 return None
                 
-            logger.info(f"Successfully retrieved {len(combined_data)} posts for {primary_username} and competitors")
+            logger.info(f"Successfully retrieved {len(primary_data) if isinstance(primary_data, list) else 1} primary posts and {len(competitor_data)} competitor posts for {primary_username}")
+            logger.info(f"✅ PRIMARY USER DATA IS GUARANTEED TO BE FIRST in returned array")
             return combined_data
             
         except Exception as e:

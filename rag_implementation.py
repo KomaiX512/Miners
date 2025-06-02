@@ -466,10 +466,42 @@ EXECUTE ELITE ACCOUNT MANAGEMENT ANALYSIS:
 """
         return prompt
     
-    def _construct_non_branding_prompt(self, primary_username, query):
-        """Construct an intelligent prompt for personal accounts focused on authentic voice analysis and theme alignment."""
+    def _construct_non_branding_prompt(self, primary_username, secondary_usernames, query):
+        """Construct an intelligent prompt for personal accounts focused on hyper-personalized voice analysis, competitor insights, and theme alignment."""
         # Get comprehensive data about the personal account
         primary_data = self.vector_db.query_similar(query, n_results=15, filter_username=primary_username)
+        
+        # 🔥 ENHANCED: Get REAL competitor data from vector database for each competitor
+        individual_competitor_intel = {}
+        competitor_performance_data = {}
+        
+        for competitor_username in secondary_usernames[:3]:  # Analyze top 3 competitors max
+            competitor_data = self.vector_db.query_similar(query, n_results=10, filter_username=competitor_username)
+            individual_competitor_intel[competitor_username] = competitor_data
+            
+            # 🔥 ENHANCED: Calculate real competitor performance metrics
+            if competitor_data and 'documents' in competitor_data and competitor_data['documents'][0]:
+                competitor_posts = list(zip(competitor_data['documents'][0], competitor_data['metadatas'][0]))
+                
+                # Real performance analysis
+                engagements = [meta['engagement'] for doc, meta in competitor_posts if 'engagement' in meta]
+                total_engagement = sum(engagements) if engagements else 0
+                avg_engagement = total_engagement / len(engagements) if engagements else 0
+                max_engagement = max(engagements) if engagements else 0
+                
+                # Content theme analysis
+                top_content = sorted(competitor_posts, key=lambda x: x[1].get('engagement', 0), reverse=True)[:3]
+                content_themes = [doc[:80] + "..." for doc, meta in top_content]
+                
+                competitor_performance_data[competitor_username] = {
+                    'avg_engagement': avg_engagement,
+                    'max_engagement': max_engagement,
+                    'total_posts': len(competitor_posts),
+                    'top_content': content_themes,
+                    'performance_level': 'HIGH' if avg_engagement > 500 else 'MEDIUM' if avg_engagement > 50 else 'LOW'
+                }
+                
+                logger.info(f"🔥 REAL COMPETITOR DATA: {competitor_username} - Avg: {avg_engagement:.0f}, Posts: {len(competitor_posts)}")
         
         # Extract detailed personal context with authenticity patterns
         primary_context = ""
@@ -502,7 +534,7 @@ EXECUTE ELITE ACCOUNT MANAGEMENT ANALYSIS:
                 casual_language = [p for p in posts_with_meta if any(word in p[0].lower() for word in ['awesome', 'amazing', 'love', 'great', 'cool'])]
                 personal_pronouns = [p for p in posts_with_meta if any(word in p[0].lower() for word in ['i ', 'my ', 'me ', 'myself'])]
                 
-                writing_style_analysis = f"PERSONAL VOICE ANALYSIS:\n"
+                writing_style_analysis = f"HYPER-PERSONALIZED VOICE DNA ANALYSIS:\n"
                 writing_style_analysis += f"Total posts analyzed: {total_posts} | Average engagement: {avg_engagement:.0f}\n"
                 writing_style_analysis += f"Interactive posts (questions): {len(question_posts)} ({len(question_posts)/total_posts*100:.1f}%)\n"
                 writing_style_analysis += f"Enthusiastic posts (exclamations): {len(exclamation_posts)} ({len(exclamation_posts)/total_posts*100:.1f}%)\n"
@@ -512,96 +544,143 @@ EXECUTE ELITE ACCOUNT MANAGEMENT ANALYSIS:
                 if authentic_themes:
                     personal_insights = f"AUTHENTIC CONTENT THEMES:\n" + "\n".join(authentic_themes[:4])
         
+        # 🔥 ENHANCED: Build DETAILED competitive intelligence with REAL scraped data
+        detailed_competitor_intel = ""
+        competitive_advantage_analysis = ""
+        
+        if competitor_performance_data:
+            detailed_competitor_intel += f"\n🔥 REAL COMPETITOR INTELLIGENCE (SCRAPED DATA ANALYSIS):\n"
+        
+            for competitor_username, perf_data in competitor_performance_data.items():
+                detailed_competitor_intel += f"\n📊 {competitor_username.upper()} - PERFORMANCE BREAKDOWN:\n"
+                detailed_competitor_intel += f"• Performance Level: {perf_data['performance_level']}\n"
+                detailed_competitor_intel += f"• Average Engagement: {perf_data['avg_engagement']:.0f}\n"
+                detailed_competitor_intel += f"• Peak Engagement: {perf_data['max_engagement']}\n"
+                detailed_competitor_intel += f"• Content Volume: {perf_data['total_posts']} posts analyzed\n"
+                
+                if perf_data['top_content']:
+                    detailed_competitor_intel += f"• TOP PERFORMING CONTENT:\n"
+                    for i, content in enumerate(perf_data['top_content'], 1):
+                        detailed_competitor_intel += f"  {i}. {content}\n"
+                
+                # Strategic insights based on real data
+                if perf_data['avg_engagement'] > 500:
+                    detailed_competitor_intel += f"• COMPETITIVE POSITIONING: Strong personal brand engagement\n"
+                    detailed_competitor_intel += f"• DIFFERENTIATION OPPORTUNITY: Develop unique personal angle\n"
+                elif perf_data['avg_engagement'] < 50:
+                    detailed_competitor_intel += f"• OPPORTUNITY: Low engagement - easy to outshine with authentic content\n"
+                    detailed_competitor_intel += f"• STRATEGY: Target their audience with superior personal content\n"
+            
+            # Competitive advantage analysis
+            primary_avg = avg_engagement if 'avg_engagement' in locals() and avg_engagement else 0
+            competitive_advantage_analysis = f"\n🎯 PERSONAL COMPETITIVE ADVANTAGE ANALYSIS:\n"
+            competitive_advantage_analysis += f"• {primary_username} average: {primary_avg:.0f}\n"
+            
+            for comp_name, comp_data in competitor_performance_data.items():
+                advantage = primary_avg - comp_data['avg_engagement']
+                if advantage > 0:
+                    competitive_advantage_analysis += f"• ADVANTAGE vs {comp_name}: +{advantage:.0f} engagement\n"
+                else:
+                    competitive_advantage_analysis += f"• GROWTH OPPORTUNITY vs {comp_name}: {abs(advantage):.0f} engagement gap to close\n"
+        else:
+            detailed_competitor_intel = f"\n🔍 PERSONAL COMPETITIVE LANDSCAPE: {', '.join(secondary_usernames) if secondary_usernames else 'No competitors specified'}\n"
+            detailed_competitor_intel += "• Personal brand positioning analysis framework deployed\n"
+            detailed_competitor_intel += "• Audience overlap identification protocol active\n"
+            detailed_competitor_intel += "• Authentic differentiation opportunities being analyzed\n"
+        
         prompt = f"""
-🎯 PERSONAL ACCOUNT MANAGEMENT BRIEFING - EXECUTIVE LEVEL 🎯
+🎯 HYPER-PERSONALIZED ACCOUNT MANAGEMENT BRIEFING - EXECUTIVE LEVEL 🎯
 
-ACCOUNT UNDER MANAGEMENT: @{primary_username} [PERSONAL BRAND]
-STRATEGIC FOCUS: {query}
-MISSION: Authentic voice amplification and strategic personal growth
-ANALYSIS DATE: {datetime.now().strftime('%B %d, %Y')}
+ACCOUNT UNDER MANAGEMENT: @{primary_username} [PERSONAL BRAND - HYPER-PERSONALIZED APPROACH]
+COMPETITIVE LANDSCAPE: {', '.join(secondary_usernames) if secondary_usernames else 'Personal brand focus'}
+MISSION: Create a "second me" - hyper-personalized content that reflects their exact personality, style, and psychology
 
-=== 📊 YOUR ACCOUNT'S AUTHENTIC VOICE ANALYSIS ===
-        {writing_style_analysis}
+=== 📊 YOUR ACCOUNT'S HYPER-PERSONALIZED VOICE DNA ===
+{writing_style_analysis}
 
 === 🔥 AUTHENTIC CONTENT INTELLIGENCE ===
-        {personal_insights}
+{personal_insights}
 
-=== 📋 COMPLETE CONTENT ANALYSIS ===
-        {primary_context if primary_context else "Limited post data available - focusing on authentic voice development"}
+=== 🔍 PERSONAL COMPETITIVE LANDSCAPE ANALYSIS ===
+{detailed_competitor_intel}
 
-=== 🎯 EXECUTIVE PERSONAL ACCOUNT MANAGER PROTOCOL ===
+=== 🎯 HYPER-PERSONALIZED ACCOUNT MANAGER PROTOCOL ===
 
-You are the ELITE PERSONAL ACCOUNT MANAGER for @{primary_username}. You have complete access to their authentic voice patterns, engagement data, and personal brand analytics. Your role is to provide executive-level strategic guidance that amplifies their authentic voice while maximizing genuine engagement and personal growth.
+You are the ELITE PERSONAL ACCOUNT MANAGER for @{primary_username}. Create content so personalized it feels like a "second me" - perfectly aligned with their unique style, psychology, and presentation approach.
 
-**MODULE 1: 📈 PERSONAL GROWTH RECOMMENDATIONS**
-Provide comprehensive personal brand optimization including:
-• 🎯 **Authentic Voice Analysis**: Detail @{primary_username}'s natural communication style, personality traits, and genuine expression patterns
-• 📊 **Personal Engagement Dashboard**: Include specific metrics showing which authentic moments drive the highest engagement
-• 🔥 **Community Connection Intel**: Analyze how @{primary_username} naturally builds relationships and connects with their audience
-• ⚡ **Authentic Growth Strategies**: Provide 3-5 specific tactics to amplify their natural voice and grow genuine engagement
-• 🚀 **Personal Content Roadmap**: Strategic recommendations for authentic content that reflects their true personality, interests, and experiences
-
-**MODULE 2: 🔍 PERSONAL BRAND INTELLIGENCE**
-Deliver authentic voice optimization featuring:
-• 📊 **Voice Pattern Analysis**: Identify @{primary_username}'s unique communication style, emotional expressions, and authentic storytelling approach
-• 🎯 **Engagement Authenticity**: Break down which genuine moments drive highest audience connection with specific examples and metrics
-• ⚖️ **Personal Brand Positioning**: Strategic positioning opportunities that align perfectly with @{primary_username}'s authentic personality and interests
-• 🔥 **Authentic Advantages**: Identify specific personal qualities, experiences, and perspectives that make @{primary_username} uniquely engaging
-• 💡 **Community Growth Map**: Strategies to build genuine connections and foster authentic community while staying true to their voice
-
-**MODULE 3: 🎨 NEXT POST AUTHENTIC CREATION**
-Generate the optimal authentic next post with:
-• ✨ **Personality-Aligned Content**: Perfect alignment with @{primary_username}'s natural voice, genuine interests, and personal experiences
-• 📝 **Authentic Expression**: Crafted based on analysis of @{primary_username}'s most genuine, engaging, and personally resonant posts
-• 🏷️ **Natural Hashtag Strategy**: Hashtag approach that matches @{primary_username}'s authentic usage patterns and personal interests
-• 🎨 **Personal Visual Direction**: Detailed caption image prompt reflecting @{primary_username}'s authentic aesthetic, lifestyle, and personal brand
-• 🎯 **Genuine Engagement**: Call-to-action designed for authentic community interaction based on their natural communication style and interests
-
-=== 📋 EXECUTIVE REPORTING FORMAT ===
-
-Structure your analysis using this EXACT format with engaging presentation:
+**REQUIRED OUTPUT FORMAT - RESPOND WITH VALID JSON ONLY:**
 
 {{
-    "account_analysis": "🎯 **@{primary_username} AUTHENTIC PERSONAL BRAND ANALYSIS**\n\n📊 **Personal Voice Intelligence:**\n• [Detailed analysis of their natural communication style and personality traits]\n• [Authentic expression patterns and emotional storytelling approach]\n• [Personal interests and expertise areas that drive engagement]\n\n🔥 **Genuine Engagement Drivers:**\n• [Specific types of authentic content that resonate with their audience]\n• [Personal stories, experiences, and moments that generate highest engagement]\n• [Natural community building approaches and connection tactics they use]\n\n💡 **Authentic Brand Positioning:**\n• [Their unique personal qualities, perspectives, and experiences]\n• [Areas where their authentic voice and personality stand out]\n• [Personal interests, expertise, and lifestyle elements to amplify]\n\n📈 **Growth Potential Analysis:**\n• [Authentic growth opportunities that align with their personality]\n• [Personal content themes with highest engagement and expansion potential]\n• [Community building strategies that feel natural to their voice]",
+    "competitive_intelligence": {{
+        "account_dna": "🎯 **@{primary_username} HYPER-PERSONALIZED BRAND ANALYSIS**\\n\\n📊 **Personality Voice Intelligence:**\\n• [Detailed analysis of their exact communication style, emotional expressions, and psychological patterns]\\n• [Personal storytelling approach and authentic voice characteristics]\\n• [Expertise areas, interests, and lifestyle elements that define their personal brand]\\n\\n🔥 **Personal Engagement Psychology:**\\n• [Specific types of content that resonate with their unique personality and audience]\\n• [Personal moments, stories, and expressions that generate highest engagement]\\n• [Natural community building approaches that reflect their authentic personality]",
+        
+        "market_surveillance": "🔍 **PERSONAL COMPETITIVE LANDSCAPE INTELLIGENCE**\\n\\n📈 **Personal Brand Positioning:**\\n• [How @{primary_username}'s unique personality and voice position them against competitors]\\n• [Personal brand opportunities and audience gaps competitors are missing]\\n• [Authentic differentiation strategies based on their personality and expertise]\\n\\n⚡ **Competitor Personal Analysis:**\\n{', '.join([f'• **{name}**: [Personal brand strength, audience appeal, how @{primary_username} can outshine them with authentic personality]' for name in secondary_usernames[:3]]) if secondary_usernames else '• **Personal brand focus**: Analysis of audience engagement and growth opportunities'}\\n\\n🎯 **Personal Competitive Advantages:**\\n• [Specific personality traits, communication style, and expertise that give @{primary_username} competitive edge]\\n• [Audience psychology insights showing how their authentic voice can capture more engagement]",
+        
+        "engagement_warfare": "⚔️ **PERSONAL ENGAGEMENT DOMINATION STRATEGY**\\n\\n🚀 **Personality-Based Advantages:**\\n• [Specific strategies leveraging @{primary_username}'s unique personality to outperform competitors]\\n• [Content approaches using their authentic voice and expertise to win audience attention]\\n• [Personal branding tactics that exploit competitor weaknesses while amplifying their strengths]\\n\\n📊 **Personal Performance Optimization:**\\n• [Data-driven recommendations for engagement growth using their exact communication style]\\n• [Strategic content themes that perfectly match their personality and interests for maximum impact]"
+    }},
     
-    "content_recommendations": "🚀 **STRATEGIC PERSONAL CONTENT PLAN FOR @{primary_username}**\n\n⚡ **IMMEDIATE AUTHENTIC ACTIONS:**\n• 🎯 **Personal Story Amplification**: [Specific approach to share their experiences more effectively with expected engagement boost]\n• 📊 **Voice Optimization Strategy**: [Tactical recommendations to enhance their natural communication style]\n• 🔥 **Community Connection Enhancement**: [Specific tactics to build genuine relationships with their audience]\n• 💡 **Interest-Based Content Expansion**: [Strategic content themes based on their authentic interests and expertise]\n• 🚀 **Authentic Growth Acceleration**: [Personal brand development strategies that maintain genuine voice]\n\n📈 **CONTENT OPTIMIZATION ROADMAP:**\n• [Specific content types and themes to prioritize based on their authentic voice]\n• [Personal storytelling approaches that maximize genuine engagement]\n• [Timing and frequency recommendations that align with their natural patterns]\n\n🎯 **AUTHENTIC ENGAGEMENT STRATEGIES:**\n• [Community interaction approaches that feel natural to their personality]\n• [Personal content formats that showcase their unique voice and interests]\n• [Authentic conversation starters and relationship building tactics]\n\n💡 **PERSONAL BRAND EVOLUTION:**\n• [Ways to grow their reach while maintaining authentic personality]\n• [Personal expertise and interest areas to develop and showcase]\n• [Authentic positioning strategies for long-term personal brand growth]",
+    "threat_assessment": {{
+        "competitor_analysis": "🎯 **INDIVIDUAL COMPETITOR VS PERSONAL BRAND BREAKDOWN**\\n\\n{chr(10).join([f'🔍 **{name.upper()} vs @{primary_username} ANALYSIS:**' + chr(10) + f'• **Their Performance**: [Engagement level, content approach, audience appeal]' + chr(10) + f'• **Their Success Factors**: [Why their content works, what makes them appealing]' + chr(10) + f'• **@{primary_username} Advantage**: [How your unique personality, voice, and expertise can outshine them]' + chr(10) + f'• **Counter-Strategy**: [Specific personal branding approach to capture their audience using your authentic voice]' + chr(10) for name in secondary_usernames[:3]]) if secondary_usernames else '**Personal Brand Development**: Focus on authentic voice amplification and audience growth through personality-driven content'}",
+        
+        "vulnerability_map": "🎯 **PERSONAL COMPETITIVE ADVANTAGE ANALYSIS**\\n\\n💡 **Competitor Weaknesses You Can Exploit:**\\n• [Personal branding gaps in competitor content that @{primary_username} can fill with their authentic voice]\\n• [Audience engagement opportunities competitors miss that match @{primary_username}'s personality]\\n• [Content authenticity blind spots that @{primary_username}'s genuine voice can capture]\\n\\n🚀 **Your Personal Advantages:**\\n• [Areas where @{primary_username}'s personality, voice, and expertise already outperform]\\n• [Unique positioning opportunities based on their authentic interests and communication style]",
+        
+        "market_opportunities": "🌟 **PERSONAL BRAND GROWTH OPPORTUNITIES**\\n\\n🎯 **High-Impact Personal Growth Areas:**\\n• [Specific content themes matching @{primary_username}'s personality with high growth potential]\\n• [Audience segments that resonate with their authentic voice and expertise]\\n• [Personal branding trends @{primary_username} can lead with their unique perspective]\\n\\n📈 **Personal Engagement Accelerators:**\\n• [Tactical moves for rapid engagement growth using their authentic personality]\\n• [Personal collaboration opportunities that align with their interests and voice]"
+    }},
     
-            "next_post": {{
-        "caption": "[Craft an engaging caption that sounds exactly like @{primary_username} would naturally write, incorporating their authentic voice, personal interests, genuine personality, and natural communication style]",
-        "hashtags": ["#authentic", "#personal", "#genuine", "#interests"],
-        "call_to_action": "[Natural engagement prompt that fits perfectly with @{primary_username}'s communication style and encourages genuine community interaction based on their personality]",
-        "visual_prompt": "🎨 **AUTHENTIC VISUAL DIRECTION**: [Detailed, creative image prompt that reflects @{primary_username}'s personal aesthetic, lifestyle, interests, and authentic style. Include: composition style that matches their personality, color palette that aligns with their brand, visual elements that represent their interests, lighting and mood that reflects their authentic voice, props and settings that connect to their lifestyle, and design details that showcase their personal brand. Make it comprehensive enough for an AI image generator to create stunning, authentic visuals that truly represent their personal voice and resonate with their genuine audience.]"
+    "tactical_recommendations": [
+        "🚀 **HYPER-PERSONAL VOICE AMPLIFICATION**: [Specific strategy to enhance their exact communication style and personality with expected engagement impact]",
+        "📊 **PSYCHOLOGY-BASED CONTENT STRATEGY**: [Strategic content approach based on their personality psychology and authentic interests for maximum resonance]", 
+        "🎯 **PERSONAL COMPETITIVE POSITIONING**: [Specific tactics to outshine competitors using their unique voice, expertise, and authentic personality]"
+    ],
+    
+    "next_post_prediction": {{
+        "caption": "[Craft content that sounds EXACTLY like @{primary_username} would naturally write, incorporating their specific communication style, personality traits, interests, expertise, and psychological patterns - this should feel like a 'second me']",
+        "hashtags": ["#authentic", "#personal", "#unique", "#voice"],
+        "call_to_action": "[Engagement prompt that perfectly matches @{primary_username}'s exact communication style and encourages genuine community interaction based on their personality psychology]",
+        "visual_prompt": "🎨 **HYPER-PERSONALIZED VISUAL DIRECTION**: [Detailed, creative image prompt that perfectly reflects @{primary_username}'s exact aesthetic preferences, lifestyle, personality, interests, and visual style. Include: composition style that matches their personality psychology, color palette that aligns with their authentic brand, visual elements that represent their specific interests and expertise, lighting and mood that reflects their exact communication style, props and settings that connect to their actual lifestyle, and design details that showcase their unique personal brand. Make it comprehensive enough for an AI image generator to create visuals that truly feel like @{primary_username}'s authentic visual identity.]"
     }}
 }}
 
-=== 🎯 PERSONAL ACCOUNT MANAGER EXCELLENCE STANDARDS ===
-
-✅ **AUTHENTICITY REQUIREMENTS:**
-- Every recommendation based on @{primary_username}'s actual authentic voice and genuine personality patterns from their content
-- All strategies designed to amplify their natural strengths, real interests, and personal experiences
-- Growth tactics that feel completely natural and genuine to their personality and lifestyle
-- Content suggestions that perfectly align with their authentic self-expression and personal brand
-
-✅ **PROFESSIONAL PRESENTATION:**
-- Use emojis strategically to enhance readability, engagement, and visual hierarchy
-- Structure content with bullet points and organized formatting for easy consumption and implementation
-- Include specific metrics, examples, and insights from their authentic content patterns and engagement data
-- Maintain supportive, encouraging, and empowering tone while providing strategic guidance
-
-✅ **STRATEGIC AUTHENTICITY:**
-- Provide growth strategies that enhance and amplify rather than change their authentic voice
-- Connect all recommendations to their genuine interests, natural communication style, and personal experiences
-- Base all suggestions on proven patterns from their most authentic, engaging, and personally resonant content
-- Deliver actionable insights that help them be more effectively themselves while growing their genuine community
-
-EXECUTE AUTHENTIC PERSONAL BRAND MANAGEMENT:
-        """
+CRITICAL: Respond with ONLY the JSON object above. No additional text, explanations, or formatting. The response must be valid JSON that can be parsed directly.
+"""
         return prompt
     
-    def _construct_twitter_non_branding_prompt(self, primary_username, query):
-        """Construct a Twitter-specific intelligent prompt for personal accounts with authentic voice analysis."""
+    def _construct_twitter_non_branding_prompt(self, primary_username, secondary_usernames, query):
+        """Construct a Twitter-specific intelligent prompt for personal accounts with hyper-personalized voice analysis and competitor insights."""
         # Get comprehensive Twitter data about the personal account
         primary_data = self.vector_db.query_similar(query, n_results=20, filter_username=primary_username)
+        
+        # 🔥 ENHANCED: Get REAL competitor data from vector database for each competitor
+        individual_competitor_intel = {}
+        competitor_performance_data = {}
+        
+        for competitor_username in secondary_usernames[:3]:  # Analyze top 3 competitors max
+            competitor_data = self.vector_db.query_similar(query, n_results=10, filter_username=competitor_username)
+            individual_competitor_intel[competitor_username] = competitor_data
+            
+            # 🔥 ENHANCED: Calculate real competitor performance metrics
+            if competitor_data and 'documents' in competitor_data and competitor_data['documents'][0]:
+                competitor_posts = list(zip(competitor_data['documents'][0], competitor_data['metadatas'][0]))
+                
+                # Real performance analysis
+                engagements = [meta['engagement'] for doc, meta in competitor_posts if 'engagement' in meta]
+                total_engagement = sum(engagements) if engagements else 0
+                avg_engagement = total_engagement / len(engagements) if engagements else 0
+                max_engagement = max(engagements) if engagements else 0
+                
+                # Content theme analysis
+                top_content = sorted(competitor_posts, key=lambda x: x[1].get('engagement', 0), reverse=True)[:3]
+                content_themes = [doc[:80] + "..." for doc, meta in top_content]
+                
+                competitor_performance_data[competitor_username] = {
+                    'avg_engagement': avg_engagement,
+                    'max_engagement': max_engagement,
+                    'total_posts': len(competitor_posts),
+                    'top_content': content_themes,
+                    'performance_level': 'HIGH' if avg_engagement > 1000 else 'MEDIUM' if avg_engagement > 100 else 'LOW'
+                }
+                
+                logger.info(f"🔥 REAL TWITTER COMPETITOR DATA: {competitor_username} - Avg: {avg_engagement:.0f}, Posts: {len(competitor_posts)}")
         
         # Extract authentic voice intelligence
         primary_context = ""
@@ -626,7 +705,7 @@ EXECUTE AUTHENTIC PERSONAL BRAND MANAGEMENT:
                 community_replies = [t for t in tweets_with_meta if t[0].startswith('@')]
                 emotional_tweets = [t for t in tweets_with_meta if any(emotion in t[0].lower() for emotion in ['love', 'excited', 'grateful', 'amazing', 'incredible', 'proud', 'happy'])]
                 
-                voice_fingerprint = f"🎯 AUTHENTIC VOICE INTELLIGENCE:\n"
+                voice_fingerprint = f"🎯 HYPER-PERSONALIZED TWITTER VOICE DNA:\n"
                 voice_fingerprint += f"• Total tweets analyzed: {total_tweets}\n"
                 voice_fingerprint += f"• Personal content ratio: {len(personal_stories)}/{total_tweets} ({len(personal_stories)/total_tweets*100:.1f}%)\n"
                 voice_fingerprint += f"• Community engagement: {len(question_tweets)} questions, {len(community_replies)} replies\n"
@@ -639,108 +718,159 @@ EXECUTE AUTHENTIC PERSONAL BRAND MANAGEMENT:
                         voice_fingerprint += f"• #{i+1}: {doc[:100]}... (E:{meta['engagement']})\n"
                 
                 if engaging_tweets:
-                    authenticity_intelligence = f"📊 ENGAGEMENT PATTERNS:\n"
+                    authenticity_intelligence = f"📊 PERSONAL ENGAGEMENT PSYCHOLOGY:\n"
                     authenticity_intelligence += f"• High-engagement content: {len(engaging_tweets)} tweets above baseline\n"
                     authenticity_intelligence += f"• Personal storytelling: {len(personal_stories)} authentic moments\n"
                     authenticity_intelligence += f"• Community connection rate: {(len(question_tweets) + len(community_replies))/total_tweets*100:.1f}%\n"
         
+        # 🔥 ENHANCED: Build DETAILED competitive intelligence with REAL scraped data
+        detailed_competitor_intel = ""
+        competitive_advantage_analysis = ""
+        
+        if competitor_performance_data:
+            detailed_competitor_intel += f"\n🔥 REAL TWITTER COMPETITOR INTELLIGENCE (SCRAPED DATA ANALYSIS):\n"
+        
+            for competitor_username, perf_data in competitor_performance_data.items():
+                detailed_competitor_intel += f"\n📊 {competitor_username.upper()} - TWITTER PERFORMANCE BREAKDOWN:\n"
+                detailed_competitor_intel += f"• Performance Level: {perf_data['performance_level']}\n"
+                detailed_competitor_intel += f"• Average Engagement: {perf_data['avg_engagement']:.0f}\n"
+                detailed_competitor_intel += f"• Peak Engagement: {perf_data['max_engagement']}\n"
+                detailed_competitor_intel += f"• Tweet Volume: {perf_data['total_posts']} tweets analyzed\n"
+                
+                if perf_data['top_content']:
+                    detailed_competitor_intel += f"• TOP PERFORMING TWEETS:\n"
+                    for i, content in enumerate(perf_data['top_content'], 1):
+                        detailed_competitor_intel += f"  {i}. {content}\n"
+                
+                # Strategic insights based on real data
+                if perf_data['avg_engagement'] > 1000:
+                    detailed_competitor_intel += f"• THREAT LEVEL: HIGH - Strong Twitter engagement performance\n"
+                    detailed_competitor_intel += f"• DIFFERENTIATION OPPORTUNITY: Develop unique personal Twitter voice\n"
+                elif perf_data['avg_engagement'] < 100:
+                    detailed_competitor_intel += f"• OPPORTUNITY: Low engagement - easy to outperform with authentic Twitter presence\n"
+                    detailed_competitor_intel += f"• STRATEGY: Target their audience with superior personal content\n"
+            
+            # Competitive advantage analysis
+            primary_avg = avg_engagement if 'avg_engagement' in locals() and avg_engagement else 0
+            competitive_advantage_analysis = f"\n🎯 TWITTER COMPETITIVE ADVANTAGE ANALYSIS:\n"
+            competitive_advantage_analysis += f"• {primary_username} average: {primary_avg:.0f}\n"
+            
+            for comp_name, comp_data in competitor_performance_data.items():
+                advantage = primary_avg - comp_data['avg_engagement']
+                if advantage > 0:
+                    competitive_advantage_analysis += f"• ADVANTAGE vs {comp_name}: +{advantage:.0f} engagement\n"
+                else:
+                    competitive_advantage_analysis += f"• GROWTH OPPORTUNITY vs {comp_name}: {abs(advantage):.0f} engagement gap to close\n"
+        else:
+            detailed_competitor_intel = f"\n🔍 TWITTER COMPETITIVE LANDSCAPE: {', '.join(secondary_usernames) if secondary_usernames else 'No competitors specified'}\n"
+            detailed_competitor_intel += "• Personal Twitter brand positioning analysis framework deployed\n"
+            detailed_competitor_intel += "• Twitter audience overlap identification protocol active\n"
+            detailed_competitor_intel += "• Authentic Twitter differentiation opportunities being analyzed\n"
+        
         prompt = f"""
-🎯 PERSONAL ACCOUNT MANAGEMENT BRIEFING - EXECUTIVE LEVEL 🎯
+🎯 HYPER-PERSONALIZED TWITTER ACCOUNT MANAGEMENT BRIEFING - EXECUTIVE LEVEL 🎯
 
-ACCOUNT UNDER MANAGEMENT: @{primary_username} [PERSONAL BRAND]
-MISSION: Authentic voice amplification and strategic personal growth
+ACCOUNT UNDER MANAGEMENT: @{primary_username} [PERSONAL TWITTER BRAND - HYPER-PERSONALIZED APPROACH]
+COMPETITIVE LANDSCAPE: {', '.join(secondary_usernames) if secondary_usernames else 'Personal brand focus'}
+MISSION: Create a "second me" - hyper-personalized Twitter content that reflects their exact personality, style, and psychology
 
-=== 📊 YOUR ACCOUNT'S AUTHENTIC VOICE ANALYSIS ===
+=== 📊 YOUR ACCOUNT'S HYPER-PERSONALIZED VOICE DNA ===
 {voice_fingerprint}
 
-=== 📈 ENGAGEMENT INTELLIGENCE ===
+=== 📈 PERSONAL ENGAGEMENT PSYCHOLOGY ===
 {authenticity_intelligence}
 
-=== 🎯 EXECUTIVE PERSONAL ACCOUNT MANAGER PROTOCOL ===
+=== 🔍 TWITTER COMPETITIVE LANDSCAPE ANALYSIS ===
+{detailed_competitor_intel}
 
-You are the ELITE PERSONAL ACCOUNT MANAGER for @{primary_username}. You have complete access to their authentic voice patterns, engagement data, and personal brand analytics. Your role is to provide executive-level strategic guidance that amplifies their authentic voice while maximizing genuine engagement.
+=== ⚖️ TWITTER STRATEGIC POSITIONING MATRIX ===
+{competitive_advantage_analysis}
 
-**MODULE 1: 📈 PERSONAL GROWTH RECOMMENDATIONS**
-Provide comprehensive personal brand optimization including:
-• 🎯 **Authentic Voice Analysis**: Detail @{primary_username}'s natural communication style, personality traits, and authentic expression patterns
-• 📊 **Personal Engagement Dashboard**: Include specific metrics showing which authentic moments drive the highest engagement
-• 🔥 **Community Connection Intel**: Analyze how @{primary_username} naturally builds relationships and connects with their audience
-• ⚡ **Authentic Growth Strategies**: Provide 3-5 specific tactics to amplify their natural voice and grow genuine engagement
-• 🚀 **Personal Content Roadmap**: Strategic recommendations for authentic content that reflects their true personality and interests
+=== 🎯 HYPER-PERSONALIZED TWITTER ACCOUNT MANAGER PROTOCOL ===
 
-**MODULE 2: 🔍 PERSONAL BRAND INTELLIGENCE**
-Deliver authentic voice optimization featuring:
-• 📊 **Voice Pattern Analysis**: Identify @{primary_username}'s unique communication style, emotional expressions, and authentic storytelling approach
-• 🎯 **Engagement Authenticity**: Break down which genuine moments drive highest audience connection with specific examples
-• ⚖️ **Personal Brand Positioning**: Strategic positioning opportunities that align perfectly with @{primary_username}'s authentic personality
-• 🔥 **Authentic Advantages**: Identify specific personal qualities and experiences that make @{primary_username} unique
-• 💡 **Community Growth Map**: Strategies to build genuine connections while staying true to their authentic voice
+You are the ELITE PERSONAL TWITTER ACCOUNT MANAGER for @{primary_username}. You have complete access to their authentic voice patterns, engagement data, personality psychology, and personal brand analytics. Your role is to create Twitter content so personalized it feels like a "second me" - perfectly aligned with their unique style, psychology, and presentation approach.
 
-**MODULE 3: 🎨 NEXT POST AUTHENTIC CREATION**
-Generate the optimal authentic next post with:
-• ✨ **Personality-Aligned Content**: Perfect alignment with @{primary_username}'s natural voice and genuine interests
-• 📝 **Authentic Expression**: Crafted based on analysis of @{primary_username}'s most genuine and engaging posts
-• 🏷️ **Natural Hashtag Strategy**: Hashtag approach that matches @{primary_username}'s authentic usage patterns and personal interests
-• 🎨 **Personal Visual Direction**: Image prompt reflecting @{primary_username}'s authentic aesthetic and interests
-• 🎯 **Genuine Engagement**: Call-to-action designed for authentic community interaction based on their natural communication style
+**MODULE 1: 📈 HYPER-PERSONALIZED GROWTH RECOMMENDATIONS**
+Provide comprehensive personal Twitter brand optimization that feels like "second me" including:
+• 🎯 **Psychological Voice Analysis**: Detail @{primary_username}'s exact Twitter communication style, personality traits, emotional expressions, and psychological patterns
+• 📊 **Personal Engagement Psychology**: Include specific metrics showing which authentic personality moments drive the highest Twitter engagement
+• 🔥 **Personal Community Intel**: Analyze how @{primary_username} naturally builds relationships and connects with their Twitter audience using their unique personality
+• ⚡ **Hyper-Personalized Growth Strategies**: Provide 3-5 specific tactics that amplify their exact natural voice and psychology for genuine Twitter engagement growth
+• 🚀 **Personal Twitter DNA**: Strategic recommendations for Twitter content that perfectly mirrors their personality, interests, expertise, and natural communication style
+
+**MODULE 2: 🔍 PERSONAL COMPETITIVE INTELLIGENCE REPORT**
+Deliver hyper-personalized Twitter competitive analysis featuring:
+• 📊 **Personal vs Twitter Competitors**: Specific engagement data, successful tweet examples, and performance patterns showing how @{primary_username} can outshine competitors with their unique personality
+• 🎯 **Personality-Based Twitter Strategy**: Break down how @{primary_username}'s unique voice and personality can capture Twitter audiences that competitors are missing
+• ⚖️ **Personal Twitter Brand Positioning**: Direct comparisons showing @{primary_username}'s authentic advantages and how to leverage their unique personality traits on Twitter
+• 🔥 **Personal Twitter Competitive Edge**: Identify specific personal qualities, expertise, and presentation style that make @{primary_username} irreplaceable on Twitter
+• 💡 **Twitter Audience Capture Map**: Strategies to attract competitor audiences using @{primary_username}'s authentic personality and unique perspective
+
+**MODULE 3: 🎨 NEXT TWEET HYPER-PERSONALIZED CREATION**
+Generate the optimal "second me" next tweet with:
+• ✨ **Psychology-Aligned Content**: Perfect alignment with @{primary_username}'s exact personality, communication style, interests, and psychological patterns
+• 📝 **Voice-Matched Expression**: Crafted to sound exactly like @{primary_username} would naturally tweet, based on their most engaging and personality-revealing tweets
+• 🏷️ **Personal Hashtag DNA**: Hashtag strategy that matches @{primary_username}'s exact usage patterns, interests, and personal brand
+• 🎨 **Personal Visual Identity**: Detailed image prompt reflecting @{primary_username}'s exact aesthetic, lifestyle, personality, and visual preferences
+• 🎯 **Psychology-Based Engagement**: Call-to-action designed for @{primary_username}'s exact Twitter audience psychology and communication style
 
 === 📋 EXECUTIVE REPORTING FORMAT ===
 
 Structure your analysis using this EXACT format with engaging presentation:
 
 {{
-    "personal_intelligence": {{
-        "voice_dna": "🎯 **@{primary_username} AUTHENTIC VOICE ANALYSIS**\n\n📊 **Personal Communication Style:**\n• [Detailed analysis of their natural way of expressing themselves]\n• [Personality traits that shine through in their content]\n• [Authentic storytelling patterns and emotional expressions]\n\n🔥 **Genuine Engagement Drivers:**\n• [Specific types of authentic content that resonate with their audience]\n• [Personal stories and experiences that generate highest engagement]\n• [Natural community building approaches they use]\n\n💡 **Authentic Brand Positioning:**\n• [Their unique personal qualities and perspectives]\n• [Areas where their authentic voice stands out]\n• [Personal interests and expertise areas to amplify]",
+    "competitive_intelligence": {{
+        "account_dna": "🎯 **@{primary_username} HYPER-PERSONALIZED TWITTER BRAND ANALYSIS**\n\n📊 **Personality Voice Intelligence:**\n• [Detailed analysis of their exact Twitter communication style, emotional expressions, and psychological patterns]\n• [Personal storytelling approach and authentic voice characteristics]\n• [Expertise areas, interests, and lifestyle elements that define their personal Twitter brand]\n\n🔥 **Personal Twitter Engagement Psychology:**\n• [Specific types of Twitter content that resonate with their unique personality and audience]\n• [Personal moments, stories, and expressions that generate highest Twitter engagement]\n• [Natural community building approaches that reflect their authentic personality on Twitter]\n\n💡 **Authentic Personal Twitter Positioning:**\n• [Their unique personal qualities, perspectives, experiences, and expertise]\n• [Areas where their authentic voice and personality create competitive advantages on Twitter]\n• [Personal interests, lifestyle, and values that differentiate them from Twitter competitors]",
         
-        "engagement_personality": "📈 **PERSONAL ENGAGEMENT INTELLIGENCE**\n\n🎯 **Authentic Connection Patterns:**\n• [How their genuine personality drives engagement]\n• [Which personal topics and interests resonate most]\n• [Natural conversation starters and community building tactics]\n\n📊 **Voice Authenticity Metrics:**\n• [Engagement levels on personal vs general content]\n• [Audience response to their authentic moments]\n• [Growth patterns when being genuinely themselves]\n\n⚡ **Natural Growth Opportunities:**\n• [Areas to expand while maintaining authenticity]\n• [Personal interests that could drive more engagement]\n• [Authentic story angles to explore]",
+        "market_surveillance": "🔍 **PERSONAL TWITTER COMPETITIVE LANDSCAPE INTELLIGENCE**\n\n📈 **Personal Twitter Brand Positioning:**\n• [How @{primary_username}'s unique personality and voice position them against Twitter competitors]\n• [Personal brand opportunities and Twitter audience gaps competitors are missing]\n• [Authentic differentiation strategies based on their personality and expertise]\n\n⚡ **Twitter Competitor Personal Analysis:**\n{', '.join([f'• **{name}**: [Twitter performance level, audience appeal, how @{primary_username} can outshine them with authentic personality]' for name in secondary_usernames[:3]]) if secondary_usernames else '• **Personal Twitter brand focus**: Analysis of audience engagement and growth opportunities'}\n\n🎯 **Personal Twitter Competitive Advantages:**\n• [Specific personality traits, communication style, and expertise that give @{primary_username} Twitter competitive edge]\n• [Twitter audience psychology insights showing how their authentic voice can capture more engagement]\n• [Personal content themes and approaches that Twitter competitors cannot replicate]",
         
-        "audience_connection": "🤝 **COMMUNITY CONNECTION ANALYSIS**\n\n💬 **Natural Interaction Style:**\n• [How @{primary_username} naturally engages with their audience]\n• [Their authentic response patterns and conversation approach]\n• [Community building tactics that feel genuine to them]\n\n🎯 **Audience Relationship Dynamics:**\n• [What their followers appreciate most about their authentic voice]\n• [Types of content that drive genuine community interaction]\n• [Personal elements that build strongest connections]\n\n🚀 **Authentic Growth Strategies:**\n• [Ways to scale their genuine personality]\n• [Personal content themes with highest growth potential]\n• [Community engagement approaches that feel natural]"
+        "engagement_warfare": "⚔️ **PERSONAL TWITTER ENGAGEMENT DOMINATION STRATEGY**\n\n🚀 **Personality-Based Twitter Advantages:**\n• [Specific strategies leveraging @{primary_username}'s unique personality to outperform Twitter competitors]\n• [Twitter content approaches using their authentic voice and expertise to win audience attention]\n• [Personal Twitter branding tactics that exploit competitor weaknesses while amplifying their strengths]\n\n📊 **Personal Twitter Performance Optimization:**\n• [Data-driven recommendations for Twitter engagement growth using their exact communication style]\n• [Strategic Twitter content themes that perfectly match their personality and interests for maximum impact]\n• [Twitter audience targeting strategies based on their natural appeal and authentic voice]"
     }},
     
-    "growth_opportunities": {{
-        "authentic_expansion": "🌟 **NATURAL GROWTH OPPORTUNITIES FOR @{primary_username}**\n\n🎯 **Personality Amplification:**\n• [Specific ways to amplify their natural strengths and interests]\n• [Personal expertise areas to showcase more prominently]\n• [Authentic story angles that could resonate with broader audiences]\n\n📈 **Genuine Reach Extension:**\n• [Strategies to grow while maintaining authentic voice]\n• [Personal content themes with viral potential]\n• [Community collaboration opportunities that align with their interests]",
+    "threat_assessment": {{
+        "competitor_analysis": "🎯 **INDIVIDUAL TWITTER COMPETITOR VS PERSONAL BRAND BREAKDOWN**\n\n{chr(10).join([f'🔍 **{name.upper()} vs @{primary_username} TWITTER ANALYSIS:**' + chr(10) + f'• **Their Twitter Performance**: [Engagement level, content approach, audience appeal]' + chr(10) + f'• **Their Twitter Success Factors**: [Why their tweets work, what makes them appealing]' + chr(10) + f'• **@{primary_username} Twitter Advantage**: [How your unique personality, voice, and expertise can outshine them on Twitter]' + chr(10) + f'• **Twitter Counter-Strategy**: [Specific personal branding approach to capture their audience using your authentic voice]' + chr(10) for name in secondary_usernames[:3]]) if secondary_usernames else '**Personal Twitter Brand Development**: Focus on authentic voice amplification and audience growth through personality-driven Twitter content'}",
         
-        "engagement_amplification": "🚀 **AUTHENTIC ENGAGEMENT BOOST STRATEGIES**\n\n⚡ **Natural Interaction Enhancement:**\n• [Ways to increase genuine audience interaction]\n• [Personal storytelling approaches for higher engagement]\n• [Authentic conversation starters based on their interests]\n\n🎯 **Voice Optimization:**\n• [Refinements to amplify their natural communication style]\n• [Personal content formats that maximize authentic engagement]\n• [Timing strategies that align with their natural posting patterns]",
+        "vulnerability_map": "🎯 **PERSONAL TWITTER COMPETITIVE ADVANTAGE ANALYSIS**\n\n💡 **Twitter Competitor Weaknesses You Can Exploit:**\n• [Personal branding gaps in competitor Twitter content that @{primary_username} can fill with their authentic voice]\n• [Twitter audience engagement opportunities competitors miss that match @{primary_username}'s personality]\n• [Twitter content authenticity blind spots that @{primary_username}'s genuine voice can capture]\n\n🚀 **Your Personal Twitter Advantages:**\n• [Areas where @{primary_username}'s personality, voice, and expertise already outperform on Twitter]\n• [Unique Twitter positioning opportunities based on their authentic interests and communication style]\n• [Personal Twitter content themes that competitors cannot authentically replicate]",
         
-        "content_diversification": "🎨 **AUTHENTIC CONTENT EXPANSION**\n\n💡 **Personal Interest Exploration:**\n• [New content types that align with their authentic interests]\n• [Personal expertise areas to explore more deeply]\n• [Authentic formats that could showcase their personality]\n\n🔥 **Natural Content Evolution:**\n• [Ways to evolve their content while staying true to themselves]\n• [Personal themes with untapped potential]\n• [Authentic approaches to trending topics]"
+        "market_opportunities": "🌟 **PERSONAL TWITTER BRAND GROWTH OPPORTUNITIES**\n\n🎯 **High-Impact Personal Twitter Growth Areas:**\n• [Specific Twitter content themes matching @{primary_username}'s personality with high growth potential]\n• [Twitter audience segments that resonate with their authentic voice and expertise]\n• [Personal Twitter branding trends @{primary_username} can lead with their unique perspective]\n\n📈 **Personal Twitter Engagement Accelerators:**\n• [Tactical moves for rapid Twitter engagement growth using their authentic personality]\n• [Personal Twitter collaboration opportunities that align with their interests and voice]\n• [Twitter content formats that showcase @{primary_username}'s unique personality and expertise]"
     }},
     
     "tactical_recommendations": [
-        "🎯 **AUTHENTIC VOICE AMPLIFICATION**: [Specific strategy to enhance their natural communication style with expected engagement impact]",
-        "📊 **PERSONAL STORY OPTIMIZATION**: [Tactical approach to share their experiences more effectively for community building]",
-        "🚀 **GENUINE GROWTH ACCELERATION**: [Strategic move to expand reach while maintaining authentic personality]"
+        "🚀 **HYPER-PERSONAL TWITTER VOICE AMPLIFICATION**: [Specific strategy to enhance their exact communication style and personality with expected engagement impact]",
+        "📊 **PSYCHOLOGY-BASED TWITTER CONTENT STRATEGY**: [Strategic Twitter content approach based on their personality psychology and authentic interests for maximum resonance]", 
+        "🎯 **PERSONAL TWITTER COMPETITIVE POSITIONING**: [Specific tactics to outshine competitors using their unique voice, expertise, and authentic personality]"
     ],
     
     "next_post_prediction": {{
-        "tweet_text": "[Craft a tweet that sounds exactly like @{primary_username} would naturally write, incorporating their authentic voice, personal interests, and genuine personality - maximum 280 characters]",
-        "hashtags": ["#authentic", "#personal", "#genuine"],
-        "call_to_action": "[Natural engagement prompt that fits perfectly with @{primary_username}'s communication style and encourages genuine community interaction]",
-        "image_prompt": "🎨 **AUTHENTIC VISUAL DIRECTION**: [Detailed image prompt that reflects @{primary_username}'s personal aesthetic, interests, and authentic style. Include: personal elements, mood that matches their personality, visual style that feels genuine to them, and design details that represent their authentic brand. Make it specific enough for creating visuals that truly represent their personal voice.]",
+        "tweet_text": "[Craft a tweet that sounds EXACTLY like @{primary_username} would naturally write, incorporating their specific communication style, personality traits, interests, expertise, and psychological patterns - this should feel like a 'second me' - maximum 280 characters]",
+        "hashtags": ["#authentic", "#personal", "#unique", "#voice"],
+        "call_to_action": "[Twitter engagement prompt that perfectly matches @{primary_username}'s exact communication style and encourages genuine community interaction based on their personality psychology]",
+        "image_prompt": "🎨 **HYPER-PERSONALIZED TWITTER VISUAL DIRECTION**: [Detailed image prompt that perfectly reflects @{primary_username}'s exact aesthetic preferences, lifestyle, personality, interests, and visual style. Include: composition style that matches their personality psychology, color palette that aligns with their authentic brand, visual elements that represent their specific interests and expertise, lighting and mood that reflects their exact communication style, props and settings that connect to their actual lifestyle, and design details that showcase their unique personal brand. Make it specific enough for creating Twitter visuals that truly feel like @{primary_username}'s authentic visual identity.]",
         "personality_note": "[Brief explanation of why this tweet perfectly aligns with @{primary_username}'s authentic voice and natural interests]"
     }}
 }}
 
-=== 🎯 PERSONAL ACCOUNT MANAGER EXCELLENCE STANDARDS ===
+=== 🎯 HYPER-PERSONALIZED TWITTER ACCOUNT MANAGER EXCELLENCE STANDARDS ===
 
-✅ **AUTHENTICITY REQUIREMENTS:**
-- Every recommendation based on @{primary_username}'s actual authentic voice and genuine personality patterns
-- All strategies designed to amplify their natural strengths and real interests
-- Growth tactics that feel completely natural and genuine to their personality
-- Content suggestions that align perfectly with their authentic self-expression
+✅ **HYPER-PERSONALIZATION REQUIREMENTS:**
+- Every insight based on @{primary_username}'s exact authentic Twitter voice, personality psychology, and genuine communication patterns
+- All strategies designed to amplify their specific natural strengths, real interests, expertise, and personality traits
+- Growth tactics that feel completely natural and genuine to their exact personality and lifestyle
+- Content suggestions that align perfectly with their authentic self-expression and create "second me" feeling
 
 ✅ **PROFESSIONAL PRESENTATION:**
-- Use emojis strategically to enhance readability and engagement hierarchy
-- Structure content with bullet points and formatting for easy consumption
-- Include specific metrics and examples from their authentic content patterns
-- Maintain supportive, encouraging tone while providing strategic guidance
+- Use emojis strategically for visual engagement and information hierarchy
+- Implement bullet points and structured formatting for executive consumption
+- Include specific statistics, metrics, and insights from their authentic Twitter content patterns and engagement data
+- Maintain highly supportive, encouraging, and empowering tone while providing strategic guidance
 
 ✅ **STRATEGIC AUTHENTICITY:**
-- Provide growth strategies that enhance rather than change their authentic voice
-- Connect all recommendations to their genuine interests and natural communication style
-- Base all suggestions on proven patterns from their most authentic and engaging content
-- Deliver insights that help them be more effectively themselves while growing their community
+- Provide growth strategies that enhance and amplify rather than change their authentic voice and personality
+- Connect all recommendations to their genuine interests, natural communication style, expertise, and personal experiences
+- Base all tactical suggestions on proven patterns from their most authentic, engaging, and personally resonant content
+- Deliver actionable insights that help them be more effectively themselves while growing their genuine community and outshining competitors
 
-EXECUTE AUTHENTIC PERSONAL BRAND MANAGEMENT:
+EXECUTE HYPER-PERSONALIZED PERSONAL TWITTER BRAND MANAGEMENT:
 """
         return prompt
     
@@ -760,12 +890,12 @@ EXECUTE AUTHENTIC PERSONAL BRAND MANAGEMENT:
                         if is_branding and secondary_usernames and len(secondary_usernames) > 0:
                             prompt = self._construct_twitter_enhanced_prompt(primary_username, secondary_usernames, query)
                         else:
-                            prompt = self._construct_twitter_non_branding_prompt(primary_username, query)
+                            prompt = self._construct_twitter_non_branding_prompt(primary_username, secondary_usernames, query)
                     else:
                         if is_branding and secondary_usernames and len(secondary_usernames) > 0:
                             prompt = self._construct_enhanced_prompt(primary_username, secondary_usernames, query)
                         else:
-                            prompt = self._construct_non_branding_prompt(primary_username, query)
+                            prompt = self._construct_non_branding_prompt(primary_username, secondary_usernames, query)
                     
                     # Get similar posts for context
                     similar_posts = []
@@ -795,18 +925,47 @@ EXECUTE AUTHENTIC PERSONAL BRAND MANAGEMENT:
                             'max_output_tokens': self.config.get('max_tokens', 2000)
                         }
                         
+                        # ENHANCED: Add safety timeout and validation
+                        logger.info(f"Sending prompt to Gemini API (attempt {attempt + 1}/{max_retries})")
+                        
                         # Use the generative model to generate content
                         response = self.generative_model.generate_content(
                             contents=prompt,
                             generation_config=generation_config
                         )
                         
-                        if not response or not hasattr(response, 'text'):
-                            logger.error("Empty or invalid response from Gemini API")
-                            raise Exception("Empty or invalid response from Gemini API")
+                        # ENHANCED: Better response validation
+                        if not response:
+                            logger.error(f"Gemini API returned None response on attempt {attempt + 1}")
+                            if attempt < max_retries - 1:
+                                logger.info("Retrying due to None response...")
+                                continue
+                            else:
+                                raise Exception("Gemini API returned None response after all retries")
+                        
+                        if not hasattr(response, 'text'):
+                            logger.error(f"Gemini response missing text attribute on attempt {attempt + 1}")
+                            if attempt < max_retries - 1:
+                                logger.info("Retrying due to missing text attribute...")
+                                continue
+                            else:
+                                raise Exception("Gemini response missing text attribute after all retries")
+                        
+                        if not response.text or not response.text.strip():
+                            logger.error(f"Gemini API returned empty text response on attempt {attempt + 1}")
+                            logger.error(f"Response object: {type(response)}, has text: {hasattr(response, 'text')}")
+                            if hasattr(response, 'text'):
+                                logger.error(f"Text content: '{response.text}'")
+                            if attempt < max_retries - 1:
+                                logger.info("Retrying due to empty response text...")
+                                continue
+                            else:
+                                raise Exception("Gemini API returned empty response text after all retries")
+                        
+                        logger.info(f"✅ Received valid response from Gemini API (length: {len(response.text)} chars)")
                             
                         # Extract structured recommendation with strict validation
-                        recommendation_json = self._parse_json_response(response.text)
+                        recommendation_json = self._parse_json_response(response.text, platform)
                         
                         # Final validation for Twitter responses
                         if platform == "twitter" and recommendation_json:
@@ -858,46 +1017,65 @@ EXECUTE AUTHENTIC PERSONAL BRAND MANAGEMENT:
             logger.error(f"Failed to generate recommendation: {str(e)}")
             raise Exception(f"RAG recommendation generation failed: {str(e)}")
     
-    def _parse_json_response(self, response_text):
-        """Parse JSON response with enhanced error handling and Twitter-specific validation."""
+    def _parse_json_response(self, response_text, platform="instagram"):
+        """Parse JSON response with enhanced error handling and CORRECT platform-specific validation."""
         if not response_text or not response_text.strip():
             raise ValueError("Empty response text - cannot generate content plan")
         
-        logger.info("Parsing RAG response with strict validation...")
+        logger.info(f"Parsing RAG response for {platform} platform with strict validation...")
         
         # First attempt: Direct JSON parsing
         try:
             parsed = json.loads(response_text)
-            logger.info("Direct JSON parsing successful")
+            logger.info(f"Direct JSON parsing successful for {platform}")
             
-            # For Twitter responses, validate structure
-            if self._is_twitter_response(parsed):
-                module_type = self._detect_twitter_module_type(parsed)
-                if module_type:
-                    self._validate_twitter_response_structure(parsed, module_type)
-                    parsed = self._ensure_twitter_response_completeness(parsed, module_type)
-                    logger.info(f"Twitter response validated for module: {module_type}")
+            # FIXED: Platform-specific validation ONLY for the correct platform
+            if platform == "twitter":
+                if self._is_twitter_response(parsed):
+                    module_type = self._detect_twitter_module_type(parsed)
+                    if module_type:
+                        self._validate_twitter_response_structure(parsed, module_type)
+                        parsed = self._ensure_twitter_response_completeness(parsed, module_type)
+                        logger.info(f"Twitter response validated for module: {module_type}")
+                    else:
+                        logger.warning("Twitter response detected but module type unclear")
                 else:
-                    logger.warning("Twitter response detected but module type unclear")
+                    logger.warning("Expected Twitter response but structure doesn't match")
+            elif platform == "instagram":
+                # For Instagram, validate that we have the expected structure
+                if not self._is_instagram_response_valid(parsed):
+                    logger.warning("Instagram response may have unexpected structure, but continuing...")
             
             return parsed
             
         except json.JSONDecodeError as e:
             logger.warning(f"Direct JSON parsing failed: {str(e)}")
         
-        # Second attempt: Twitter-specific JSON repair
-        if self._is_likely_twitter_response(response_text):
+        # Second attempt: Platform-specific JSON repair ONLY for the correct platform
+        if platform == "twitter":
+            if self._is_likely_twitter_response(response_text):
+                try:
+                    repaired = self._repair_twitter_json_response(response_text)
+                    module_type = self._detect_twitter_module_type(repaired)
+                    if module_type:
+                        repaired = self._ensure_twitter_response_completeness(repaired, module_type)
+                        logger.info(f"Twitter JSON repair successful for module: {module_type}")
+                        return repaired
+                except Exception as e:
+                    logger.error(f"Twitter JSON repair failed: {str(e)}")
+            else:
+                logger.warning(f"Platform is Twitter but response doesn't look like Twitter format")
+        elif platform == "instagram":
+            # For Instagram, try Instagram-specific repair methods
             try:
-                repaired = self._repair_twitter_json_response(response_text)
-                module_type = self._detect_twitter_module_type(repaired)
-                if module_type:
-                    repaired = self._ensure_twitter_response_completeness(repaired, module_type)
-                    logger.info(f"Twitter JSON repair successful for module: {module_type}")
+                repaired = self._repair_instagram_json_response(response_text)
+                if repaired:
+                    logger.info(f"Instagram JSON repair successful")
                     return repaired
             except Exception as e:
-                logger.error(f"Twitter JSON repair failed: {str(e)}")
+                logger.warning(f"Instagram JSON repair failed: {str(e)}")
         
-        # Third attempt: Generic JSON repair
+        # Third attempt: Generic JSON repair for any platform
         repair_attempts = [
             lambda text: self._extract_json_from_mixed_content(text),
             lambda text: json.loads(re.sub(r',\s*}', '}', re.sub(r',\s*]', ']', text))),
@@ -908,28 +1086,105 @@ EXECUTE AUTHENTIC PERSONAL BRAND MANAGEMENT:
             try:
                 repaired_text = repair_func(response_text)
                 if repaired_text and isinstance(repaired_text, dict):
-                    logger.info(f"Generic JSON repair successful using method {i+1}")
+                    logger.info(f"Generic JSON repair successful using method {i+1} for {platform}")
                     return repaired_text
                 elif repaired_text:
                     parsed = json.loads(repaired_text)
-                    logger.info(f"Generic JSON repair and parse successful using method {i+1}")
+                    logger.info(f"Generic JSON repair and parse successful using method {i+1} for {platform}")
                     return parsed
             except (json.JSONDecodeError, AttributeError, TypeError):
                 continue
         
         # Fourth attempt: Structure extraction from text
-        logger.warning("All JSON parsing failed, attempting structure extraction...")
+        logger.warning(f"All JSON parsing failed for {platform}, attempting structure extraction...")
         try:
-            structured = self._create_structured_response_from_text(response_text)
+            structured = self._create_structured_response_from_text(response_text, platform)
             if structured and isinstance(structured, dict):
-                logger.info("Successfully created structured response from text")
+                logger.info(f"Successfully created structured response from text for {platform}")
                 return structured
         except Exception as e:
             logger.error(f"Structure extraction failed: {str(e)}")
         
         # FINAL: If everything fails, raise exception instead of fallback
-        raise ValueError(f"Failed to parse response as valid JSON or extract meaningful structure. Response preview: {response_text[:200]}...")
-
+        raise ValueError(f"Failed to parse {platform} response as valid JSON or extract meaningful structure. Response preview: {response_text[:200]}...")
+    
+    def _repair_instagram_json_response(self, response_text):
+        """Instagram-specific JSON repair methods."""
+        repair_attempts = [
+            # Method 1: Direct JSON extraction
+            lambda text: self._extract_complete_json_object(text),
+            # Method 2: Clean and parse
+            lambda text: self._clean_and_parse_json(text),
+            # Method 3: Reconstruct from Instagram patterns
+            lambda text: self._reconstruct_instagram_json(text),
+        ]
+        
+        for i, repair_method in enumerate(repair_attempts):
+            try:
+                repaired = repair_method(response_text)
+                if repaired and isinstance(repaired, dict):
+                    # Basic validation for Instagram structure
+                    if self._is_instagram_response_valid(repaired):
+                        logger.info(f"Successfully repaired Instagram JSON using method {i+1}")
+                        return repaired
+            except Exception as e:
+                logger.warning(f"Instagram repair method {i+1} failed: {str(e)}")
+                continue
+        
+        raise ValueError("All Instagram JSON repair attempts failed")
+    
+    def _reconstruct_instagram_json(self, text):
+        """Reconstruct Instagram JSON from text patterns when parsing fails."""
+        result = {}
+        
+        # Extract next_post section (Instagram format)
+        caption_match = re.search(r'"caption":\s*"([^"]+)"', text)
+        hashtags_match = re.search(r'"hashtags":\s*\[(.*?)\]', text, re.DOTALL)
+        
+        if caption_match:
+            next_post = {
+                "caption": caption_match.group(1),
+                "hashtags": [],
+                "call_to_action": "Share your thoughts in the comments!",
+                "image_prompt": "High-quality engaging visual"
+            }
+            
+            if hashtags_match:
+                hashtags_text = hashtags_match.group(1)
+                hashtags = re.findall(r'"([^"]+)"', hashtags_text)
+                next_post["hashtags"] = hashtags[:5]  # Limit to 5 hashtags
+            
+            result["next_post"] = next_post
+        
+        # Extract recommendations
+        recs_pattern = r'"recommendations":\s*\[(.*?)\]'
+        recs_match = re.search(recs_pattern, text, re.DOTALL)
+        if recs_match:
+            recs_text = recs_match.group(1)
+            recs = re.findall(r'"([^"]+)"', recs_text)
+            result["recommendations"] = recs[:5]  # Limit to 5 recommendations
+        
+        # Ensure minimal structure
+        if not result:
+            raise ValueError("Could not reconstruct any valid Instagram content from text")
+        
+        return result
+    
+    def _is_instagram_response_valid(self, parsed_data):
+        """Check if the parsed data is a valid Instagram response."""
+        if not isinstance(parsed_data, dict):
+            return False
+        
+        # Check for Instagram-specific indicators
+        instagram_indicators = [
+            "next_post" in parsed_data and isinstance(parsed_data["next_post"], dict),
+            "caption" in str(parsed_data),
+            "recommendations" in parsed_data,
+            "account_analysis" in parsed_data
+        ]
+        
+        return any(instagram_indicators)
+    
     def _is_twitter_response(self, parsed_data):
         """Check if the parsed data is a Twitter-specific response."""
         if not isinstance(parsed_data, dict):
@@ -976,14 +1231,14 @@ EXECUTE AUTHENTIC PERSONAL BRAND MANAGEMENT:
         except Exception:
             return text
     
-    def _create_structured_response_from_text(self, response_text):
+    def _create_structured_response_from_text(self, response_text, platform="instagram"):
         """Create a structured response when JSON parsing fails completely - ENHANCED VERSION."""
         try:
-            logger.info("Creating structured response from unstructured text")
+            logger.info(f"Creating structured response from unstructured text for {platform}")
             response = {}
             
-            # Check if this is likely a Twitter response
-            is_twitter = self._is_likely_twitter_response(response_text)
+            # Check platform-specific content
+            is_twitter = platform == "twitter"
             
             if is_twitter:
                 # Extract Twitter-specific content with strict patterns
@@ -991,8 +1246,14 @@ EXECUTE AUTHENTIC PERSONAL BRAND MANAGEMENT:
                 if response:
                     logger.info("Successfully extracted Twitter structure from text")
                     return response
+            else:
+                # Extract Instagram-specific content
+                response = self._extract_instagram_structure_from_text(response_text)
+                if response:
+                    logger.info("Successfully extracted Instagram structure from text")
+                    return response
             
-            # Generic structure extraction for non-Twitter content
+            # Generic structure extraction
             lines = response_text.split('\n')
             content_lines = [line.strip() for line in lines if line.strip() and len(line.strip()) > 10]
             
@@ -1006,7 +1267,7 @@ EXECUTE AUTHENTIC PERSONAL BRAND MANAGEMENT:
                 if recommendations:
                     response['recommendations'] = recommendations[:3]  # Limit to 3
                 
-                # Create next post content
+                # Create next post content based on platform
                 if is_twitter:
                     response['next_post_prediction'] = {
                         'tweet_text': content_lines[0] if content_lines else 'Exciting updates coming soon!',
@@ -1018,21 +1279,22 @@ EXECUTE AUTHENTIC PERSONAL BRAND MANAGEMENT:
                     response['next_post'] = {
                         'caption': content_lines[0] if content_lines else 'Exciting updates coming soon!',
                         'hashtags': ['#Content', '#Update', '#Engagement'],
-                        'call_to_action': 'Share your thoughts!'
+                        'call_to_action': 'Share your thoughts!',
+                        'visual_prompt': 'High-quality engaging visual'
                     }
                 
-                response['account_analysis'] = 'Analysis based on account patterns and engagement data'
+                response['primary_analysis'] = 'Analysis based on account patterns and engagement data'
                 
                 if response:
-                    logger.info("Successfully created structured response from text content")
+                    logger.info(f"Successfully created structured {platform} response from text content")
                     return response
             
             # If we can't extract meaningful structure, raise an exception
-            raise ValueError("Could not extract meaningful structured content from response text")
+            raise ValueError(f"Could not extract meaningful structured content from {platform} response text")
             
         except Exception as e:
-            logger.error(f"Error creating structured response: {str(e)}")
-            raise ValueError(f"Structure extraction failed: {str(e)}")
+            logger.error(f"Error creating structured {platform} response: {str(e)}")
+            raise ValueError(f"Structure extraction failed for {platform}: {str(e)}")
 
     def _extract_twitter_structure_from_text(self, response_text):
         """Extract Twitter-specific structure from unstructured text."""
@@ -1305,6 +1567,52 @@ EXECUTE AUTHENTIC PERSONAL BRAND MANAGEMENT:
             ]
         
         return response_data
+
+    def _extract_instagram_structure_from_text(self, response_text):
+        """Extract Instagram-specific structure from unstructured text."""
+        result = {}
+        
+        # Look for Instagram content patterns
+        caption_patterns = [
+            r'caption[:\s]*["\']?([^"\'\n]{20,})["\']?',
+            r'post[_\s]*content[:\s]*["\']?([^"\'\n]+)["\']?',
+            r'content[:\s]*["\']?([^"\'\n]{20,})["\']?'
+        ]
+        
+        caption_text = None
+        for pattern in caption_patterns:
+            match = re.search(pattern, response_text, re.IGNORECASE)
+            if match:
+                caption_text = match.group(1).strip()
+                break
+        
+        # Extract hashtags
+        hashtag_matches = re.findall(r'#\w+', response_text)
+        hashtags = hashtag_matches[:5] if hashtag_matches else ['#Update', '#Content']
+        
+        # Extract recommendations
+        rec_lines = []
+        for line in response_text.split('\n'):
+            line = line.strip()
+            if line and any(keyword in line.lower() for keyword in ['recommend', 'strategy', 'suggest', 'should']):
+                rec_lines.append(line)
+        
+        if caption_text or rec_lines:
+            result['next_post'] = {
+                'caption': caption_text or 'Exciting updates coming soon! Stay tuned for fresh content.',
+                'hashtags': hashtags,
+                'call_to_action': 'Engage with this content!',
+                'visual_prompt': 'High-quality engaging visual'
+            }
+            
+            if rec_lines:
+                result['recommendations'] = rec_lines[:3]
+            
+            result['primary_analysis'] = 'Analysis based on account patterns and engagement data'
+            
+            return result
+        
+        return None
 
 def test_rag_implementation():
     """Test the enhanced RAG implementation with multi-user data."""

@@ -11,6 +11,7 @@ from utils.test_filter import TestFilter
 from config import AI_HORDE_CONFIG, R2_CONFIG, STRUCTUREDB_R2_CONFIG
 from tenacity import retry, stop_after_attempt, wait_exponential
 from datetime import datetime
+import os
 
 class ImageGenerator:
     def __init__(self):
@@ -502,11 +503,55 @@ class ImageGenerator:
             return None
 
     async def save_image(self, image_data, key):
-        """Save image data to R2 storage."""
+        """Save image data to R2 storage with enhanced logging and validation."""
         try:
-            return await self.output_r2_client.write_binary(key, image_data)
+            logger.info(f"🔄 Starting image upload to R2: {key}")
+            logger.debug(f"📊 Image data size: {len(image_data)} bytes")
+            
+            # Validate image data
+            if not image_data or len(image_data) < 1000:  # Minimum reasonable image size
+                logger.error(f"🚨 Invalid image data for {key}: size={len(image_data) if image_data else 0} bytes")
+                return False
+            
+            # Validate R2 client
+            if not self.output_r2_client:
+                logger.error(f"🚨 R2 output client not initialized for {key}")
+                return False
+            
+            # Attempt upload with detailed logging
+            logger.info(f"📤 Uploading image to bucket: {self.output_r2_client.bucket_name}")
+            result = await self.output_r2_client.write_binary(key, image_data)
+            
+            if result:
+                logger.info(f"✅ Successfully uploaded image to R2: {key} ({len(image_data)} bytes)")
+                
+                # Verify upload by checking if object exists
+                try:
+                    # Check if the uploaded image exists by listing objects with the exact key
+                    image_dir = os.path.dirname(key)
+                    objects = await self.output_r2_client.list_objects(image_dir + "/" if image_dir else "")
+                    
+                    # Look for our specific key in the objects
+                    found_object = any(obj["Key"] == key for obj in objects)
+                    
+                    if found_object:
+                        logger.info(f"🔍 Verified: Image exists in R2 bucket at {key}")
+                    else:
+                        logger.warning(f"⚠️ Image upload reported success but object not found in bucket listing for {key}")
+                        # Still return True as the upload call succeeded
+                        
+                except Exception as verify_error:
+                    logger.warning(f"⚠️ Could not verify image upload for {key}: {verify_error}")
+                    # Don't fail the upload if verification fails
+                
+                return True
+            else:
+                logger.error(f"❌ Failed to upload image to R2: {key}")
+                return False
+                
         except Exception as e:
-            logger.error(f"Error saving image to R2: {e}")
+            logger.error(f"🚨 Error saving image to R2 bucket '{self.output_r2_client.bucket_name if self.output_r2_client else 'unknown'}' with key '{key}': {e}")
+            logger.debug(f"🔍 R2 client config: endpoint={getattr(self.output_r2_client, 'endpoint_url', 'unknown')}")
             return False
 
     async def process_post(self, key, session):

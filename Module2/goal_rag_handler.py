@@ -398,7 +398,8 @@ class ContentGenerator:
         posts_needed: int,
         username: str,
         platform: str,
-        prediction_metrics: Dict
+        prediction_metrics: Dict,
+        posting_interval: float
     ) -> Dict:
         """Generate theme-aligned posts in the new required format with statistical justification"""
         
@@ -420,10 +421,19 @@ class ContentGenerator:
                 platform
             )
             
-            # Format as Post_X with 3 sentences and status
+            # 🏷️ HASHTAG INTEGRATION: Generate and append hashtags to third sentence
+            enhanced_content = await self._add_hashtags_to_content(
+                post_content.get("three_sentences", ""),
+                content_themes,
+                platform,
+                username,
+                goal
+            )
+            
+            # Format as Post_X with enhanced content including hashtags and status
             post_key = f"Post_{i + 1}"
             posts_dict[post_key] = {
-                "content": post_content.get("three_sentences", ""),
+                "content": enhanced_content,
                 "status": "pending"
             }
         
@@ -439,6 +449,13 @@ class ContentGenerator:
         
         # Add summary to the output
         posts_dict["Summary"] = summary
+        
+        # 🕒 ADD TIMELINE: Include posting interval (in hours) as Timeline field
+        # Extract numerical value from posting_interval (remove 'h' if present and round to integer)
+        timeline_hours = int(round(posting_interval))
+        posts_dict["Timeline"] = str(timeline_hours)
+        
+        logger.info(f"📅 Added Timeline to generated content: {timeline_hours} hours between posts")
         
         return posts_dict
         
@@ -649,6 +666,159 @@ class ContentGenerator:
         
         return summary
 
+    async def _add_hashtags_to_content(
+        self,
+        original_content: str,
+        content_themes: List[str],
+        platform: str,
+        username: str,
+        goal: Dict
+    ) -> str:
+        """
+        🏷️ HASHTAG GENERATION: Add relevant hashtags to the third sentence of content
+        Uses content themes, platform analysis, and goal context for hashtag generation
+        """
+        try:
+            if not original_content:
+                return original_content
+            
+            # Split content into sentences
+            sentences = original_content.split('. ')
+            if len(sentences) < 3:
+                # If less than 3 sentences, append hashtags to the last sentence
+                sentences[-1] = sentences[-1].rstrip('.')
+                hashtags = self._generate_relevant_hashtags(content_themes, platform, username, goal)
+                hashtag_string = ' ' + ' '.join(hashtags)
+                sentences[-1] += hashtag_string + '.'
+                return '. '.join(sentences)
+            
+            # Add hashtags to the third sentence
+            third_sentence = sentences[2].rstrip('.')
+            hashtags = self._generate_relevant_hashtags(content_themes, platform, username, goal)
+            hashtag_string = ' ' + ' '.join(hashtags)
+            sentences[2] = third_sentence + hashtag_string + '.'
+            
+            enhanced_content = '. '.join(sentences)
+            logger.info(f"🏷️ Added {len(hashtags)} hashtags to content for {username}")
+            
+            return enhanced_content
+            
+        except Exception as e:
+            logger.error(f"🚨 Error adding hashtags to content: {e}")
+            return original_content  # Return original content if hashtag generation fails
+
+    def _generate_relevant_hashtags(
+        self,
+        content_themes: List[str],
+        platform: str,
+        username: str,
+        goal: Dict
+    ) -> List[str]:
+        """
+        🎯 SMART HASHTAG GENERATION: Generate 3-5 relevant hashtags based on:
+        - Content themes from scraped data
+        - Platform-specific trending topics
+        - Goal context and engagement optimization
+        - XGBoost ML recommendations
+        """
+        try:
+            hashtags = []
+            
+            # 🤖 XGBOOST INTEGRATION: Get ML-powered hashtag recommendations
+            try:
+                from xgboost_post_estimator import XGBoostPostEstimator
+                xgb_estimator = XGBoostPostEstimator()
+                
+                # Extract follower count from goal or use default
+                follower_count = goal.get("follower_count", 1000)
+                goal_text = goal.get("goal", "increase engagement")
+                
+                ml_hashtags = xgb_estimator.get_hashtag_recommendations(
+                    content_themes, platform, goal_text, follower_count
+                )
+                
+                if ml_hashtags:
+                    hashtags.extend(ml_hashtags[:3])  # Use top 3 XGBoost recommendations
+                    logger.info(f"🤖 Added {len(ml_hashtags[:3])} XGBoost-recommended hashtags for {username}")
+                
+            except Exception as e:
+                logger.warning(f"⚠️ XGBoost hashtag recommendations failed, using fallback: {e}")
+            
+            # 1. Theme-based hashtags from scraped content analysis
+            theme_hashtags = []
+            for theme in content_themes[:2]:  # Reduced to 2 to make room for XGBoost recommendations
+                if theme and len(theme) > 2:
+                    # Clean and format theme as hashtag
+                    clean_theme = ''.join(c.title() if c.isalnum() else '' for c in theme)
+                    if clean_theme and len(clean_theme) > 2:
+                        theme_hashtag = f"#{clean_theme}"
+                        # Avoid duplicates with existing ML hashtags (case-insensitive)
+                        if not any(theme_hashtag.lower() == existing.lower() for existing in hashtags):
+                            theme_hashtags.append(theme_hashtag)
+            
+            hashtags.extend(theme_hashtags[:1])  # Max 1 theme hashtag to balance with ML recommendations
+            
+            # 2. Platform-specific hashtags for engagement optimization
+            platform_hashtags = self._get_platform_hashtags(platform, goal)
+            hashtags.extend(platform_hashtags[:1])  # Limit to make room for ML recommendations
+            
+            # 3. Goal-aligned hashtags based on engagement objectives
+            goal_hashtags = self._get_goal_hashtags(goal, platform)
+            hashtags.extend(goal_hashtags[:1])  # Limit to make room for ML recommendations
+            
+            # 4. Ensure we have 3-5 hashtags total
+            if len(hashtags) < 3:
+                # Add generic engagement hashtags
+                fallback_hashtags = self._get_fallback_hashtags(platform)
+                hashtags.extend(fallback_hashtags)
+            
+            # Limit to 5 hashtags and remove duplicates
+            unique_hashtags = list(dict.fromkeys(hashtags))[:5]
+            
+            # Ensure minimum 3 hashtags
+            if len(unique_hashtags) < 3:
+                unique_hashtags.extend(self._get_fallback_hashtags(platform))
+                unique_hashtags = list(dict.fromkeys(unique_hashtags))[:5]
+            
+            logger.debug(f"🏷️ Generated hashtags for {username}: {unique_hashtags}")
+            return unique_hashtags[:5]  # Return max 5 hashtags
+            
+        except Exception as e:
+            logger.error(f"🚨 Error generating hashtags: {e}")
+            return self._get_fallback_hashtags(platform)[:3]  # Return 3 fallback hashtags
+
+    def _get_platform_hashtags(self, platform: str, goal: Dict) -> List[str]:
+        """Generate platform-specific hashtags for engagement optimization"""
+        if platform.lower() == "instagram":
+            return ["#Instagram", "#Engagement", "#VisualContent"]
+        elif platform.lower() == "twitter":
+            return ["#Twitter", "#Trending"]
+        else:
+            return ["#SocialMedia", "#Content"]
+
+    def _get_goal_hashtags(self, goal: Dict, platform: str) -> List[str]:
+        """Generate hashtags based on goal context and objectives"""
+        goal_text = goal.get("goal", "").lower()
+        hashtags = []
+        
+        if "engagement" in goal_text or "increase" in goal_text:
+            hashtags.append("#Growth")
+        if "brand" in goal_text or "business" in goal_text:
+            hashtags.append("#Brand")
+        if "community" in goal_text or "audience" in goal_text:
+            hashtags.append("#Community")
+        
+        return hashtags
+
+    def _get_fallback_hashtags(self, platform: str) -> List[str]:
+        """Generate fallback hashtags when other methods fail"""
+        if platform.lower() == "instagram":
+            return ["#Instagram", "#Content", "#Engagement", "#Quality", "#Brand"]
+        elif platform.lower() == "twitter":
+            return ["#Twitter", "#Update", "#Engagement", "#Content"]
+        else:
+            return ["#SocialMedia", "#Content", "#Engagement", "#Quality", "#Brand"]
+
 class EnhancedGoalHandler:
     """Main goal handler with enhanced RAG and platform-aware schema"""
     
@@ -719,7 +889,7 @@ class EnhancedGoalHandler:
             # 6. Generate theme-aligned content
             logger.info(f"Generating {posts_needed} theme-aligned posts")
             posts_content = await self.content_generator.generate_post_content(
-                goal_data, profile_analysis, posts_needed, username, platform, prediction_metrics
+                goal_data, profile_analysis, posts_needed, username, platform, prediction_metrics, posting_interval
             )
             
             # 7. Create comprehensive output in required format

@@ -46,8 +46,36 @@ class XGBoostPostEstimator:
         self.model_path = "models/xgboost_post_estimator.pkl"
         self.is_trained = False
         
+        # 🏷️ HASHTAG RECOMMENDATION: Initialize hashtag database for engagement optimization
+        self.hashtag_database = self._initialize_hashtag_database()
+        
         # Initialize or load model
         self._initialize_model()
+    
+    def _initialize_hashtag_database(self) -> Dict[str, Dict]:
+        """🏷️ Initialize hashtag database with engagement-optimized recommendations"""
+        return {
+            "instagram": {
+                "high_engagement": ["#Viral", "#Trending", "#Explore", "#Featured", "#Popular"],
+                "beauty": ["#Beauty", "#Makeup", "#Skincare", "#Glow", "#BeautyTips"],
+                "fitness": ["#Fitness", "#Workout", "#Health", "#Motivation", "#FitLife"],
+                "food": ["#Food", "#Delicious", "#Foodie", "#Recipe", "#Yummy"],
+                "travel": ["#Travel", "#Adventure", "#Wanderlust", "#Explore", "#Vacation"],
+                "business": ["#Business", "#Entrepreneur", "#Success", "#Growth", "#Leadership"],
+                "lifestyle": ["#Lifestyle", "#Daily", "#Inspiration", "#Life", "#Happiness"],
+                "tech": ["#Technology", "#Innovation", "#Digital", "#Tech", "#Future"],
+                "fashion": ["#Fashion", "#Style", "#OOTD", "#Trendy", "#Designer"],
+                "art": ["#Art", "#Creative", "#Design", "#Artist", "#Gallery"]
+            },
+            "twitter": {
+                "high_engagement": ["#Trending", "#Twitter", "#Viral", "#Breaking"],
+                "business": ["#Business", "#Startup", "#Growth", "#Success"],
+                "tech": ["#Tech", "#AI", "#Innovation", "#Digital"],
+                "news": ["#News", "#Update", "#Breaking", "#Latest"],
+                "community": ["#Community", "#Discussion", "#Thoughts"],
+                "motivational": ["#Motivation", "#Success", "#Growth", "#Mindset"]
+            }
+        }
     
     def _initialize_model(self):
         """Initialize XGBoost model - load if exists, create synthetic training if not"""
@@ -374,4 +402,71 @@ class XGBoostPostEstimator:
             'xgboost_available': XGBOOST_AVAILABLE,
             'feature_count': len(self.feature_names),
             'model_path': self.model_path
-        } 
+        }
+
+    def get_hashtag_recommendations(
+        self,
+        content_themes: List[str],
+        platform: str,
+        engagement_goal: str,
+        follower_count: int
+    ) -> List[str]:
+        """
+        🏷️ Generate hashtag recommendations based on XGBoost analysis and engagement data
+        
+        Args:
+            content_themes: Extracted content themes from profile analysis
+            platform: Target platform (instagram/twitter)
+            engagement_goal: Goal type (increase/double/triple)
+            follower_count: Account follower count
+            
+        Returns:
+            List of recommended hashtags for optimal engagement
+        """
+        try:
+            logger.info(f"🏷️ Generating hashtag recommendations for {platform} with {follower_count} followers")
+            
+            recommended_hashtags = []
+            platform_db = self.hashtag_database.get(platform.lower(), {})
+            
+            # 1. Add high-engagement hashtags based on follower count
+            if follower_count < 1000:
+                # Smaller accounts need broader hashtags
+                recommended_hashtags.extend(platform_db.get("high_engagement", [])[:2])
+            elif follower_count < 10000:
+                # Medium accounts can use trending hashtags
+                recommended_hashtags.extend(platform_db.get("high_engagement", [])[:1])
+            
+            # 2. Add theme-specific hashtags
+            for theme in content_themes[:3]:  # Use top 3 themes
+                theme_lower = theme.lower()
+                for category, hashtags in platform_db.items():
+                    if any(keyword in theme_lower for keyword in category.split("_")):
+                        recommended_hashtags.extend(hashtags[:2])
+                        break
+            
+            # 3. Add goal-specific hashtags
+            if "increase" in engagement_goal.lower():
+                recommended_hashtags.append("#Growth")
+            elif "double" in engagement_goal.lower():
+                recommended_hashtags.extend(["#Double", "#Boost"])
+            elif "triple" in engagement_goal.lower():
+                recommended_hashtags.extend(["#Triple", "#Viral"])
+            
+            # 4. Remove duplicates and limit count
+            unique_hashtags = list(dict.fromkeys(recommended_hashtags))
+            
+            # Platform-specific limits
+            max_hashtags = 5 if platform.lower() == "instagram" else 3
+            final_hashtags = unique_hashtags[:max_hashtags]
+            
+            logger.info(f"🏷️ Generated {len(final_hashtags)} hashtag recommendations: {final_hashtags}")
+            return final_hashtags
+            
+        except Exception as e:
+            logger.error(f"🚨 Error generating hashtag recommendations: {e}")
+            # Return basic fallback hashtags
+            if platform.lower() == "instagram":
+                return ["#Content", "#Engagement", "#Growth"]
+            else:
+                return ["#Update", "#Growth"] 

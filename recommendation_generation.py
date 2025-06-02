@@ -647,8 +647,9 @@ class RecommendationGenerator:
             account_type = account_analysis.get('account_type', 'Unknown')
             is_branding = False
             
+            # CRITICAL FIX: Only mark as branding if explicitly set as 'branding'
             if isinstance(account_type, str):
-                is_branding = any(term in account_type.lower() for term in ['business', 'brand', 'company', 'corporate'])
+                is_branding = (account_type.lower() == 'branding')
             
             # Create intelligent query based on account's content themes AND real profile data
             content_themes = []
@@ -981,8 +982,9 @@ class RecommendationGenerator:
             
             # Determine if this is a branding account for strategic approach
             is_branding = False
+            # CRITICAL FIX: Only mark as branding if explicitly set as 'branding'
             if isinstance(account_type, str):
-                is_branding = any(term in account_type.lower() for term in ['business', 'brand', 'company', 'corporate'])
+                is_branding = (account_type.lower() == 'branding')
             
             # Check if RAG is available
             if not self.rag:
