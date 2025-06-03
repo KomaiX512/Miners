@@ -5,6 +5,9 @@ import chromadb
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from config import VECTOR_DB_CONFIG, LOGGING_CONFIG
+import time
+from datetime import datetime
+import re
 
 # Set up logging
 logging.basicConfig(
@@ -26,16 +29,92 @@ class VectorDatabaseManager:
         self.fitted = False
         
     def _get_or_create_collection(self):
-        """Get or create a collection in the vector database."""
-        try:
-            collection = self.client.get_or_create_collection(
-                name=self.config['collection_name']
-            )
-            logger.info(f"Initialized collection: {self.config['collection_name']} with embedding dimension: {self.embedding_dimension}")
-            return collection
-        except Exception as e:
-            logger.error(f"Error initializing collection: {str(e)}")
-            raise
+        """Get or create a collection in the vector database with robust error handling."""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # First try to get collection if it exists
+                try:
+                    collection = self.client.get_collection(name=self.config['collection_name'])
+                    logger.info(f"Retrieved existing collection: {self.config['collection_name']}")
+                    
+                    # Verify collection is working with a simple count operation
+                    try:
+                        count = collection.count()
+                        logger.info(f"Verified collection contains {count} documents")
+                        return collection
+                    except Exception as verify_err:
+                        logger.warning(f"Collection verification failed: {str(verify_err)}")
+                        logger.info("Will recreate collection due to verification failure")
+                        # Continue to recreation
+                        raise
+                        
+                except Exception as e:
+                    logger.info(f"Creating new collection: {self.config['collection_name']}")
+                    
+                    # Try to delete if it might exist but be corrupted
+                    try:
+                        self.client.delete_collection(self.config['collection_name'])
+                        logger.info(f"Deleted potentially corrupted collection: {self.config['collection_name']}")
+                    except Exception as del_err:
+                        # It's fine if it doesn't exist yet
+                        pass
+                    
+                    # Create with minimal params to avoid errors
+                    collection = self.client.create_collection(
+                        name=self.config['collection_name'],
+                        metadata={"hnsw:space": "cosine"}
+                    )
+                    
+                    # Try a simple operation to verify it works
+                    try:
+                        dummy_id = f"test_init_{int(time.time())}"
+                        dummy_text = "Test collection initialization"
+                        dummy_embedding = [0.1] * self.embedding_dimension
+                        
+                        collection.upsert(
+                            ids=[dummy_id],
+                            embeddings=[dummy_embedding],
+                            documents=[dummy_text],
+                            metadatas=[{"test": "init"}]
+                        )
+                        
+                        # Remove the test document
+                        collection.delete(ids=[dummy_id])
+                        logger.info(f"Successfully initialized collection: {self.config['collection_name']}")
+                    except Exception as init_err:
+                        logger.error(f"Failed to initialize collection with test data: {str(init_err)}")
+                        # Let the retry mechanism handle this
+                        raise
+                    
+                    return collection
+                    
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    delay = 2 ** attempt  # Exponential backoff
+                    logger.warning(f"Collection initialization attempt {attempt+1}/{max_retries} failed: {str(e)}")
+                    logger.info(f"Retrying in {delay} seconds...")
+                    time.sleep(delay)
+                else:
+                    logger.error(f"All {max_retries} attempts to initialize collection failed. Final error: {str(e)}")
+                    
+                    # Last resort fallback collection
+                    try:
+                        fallback_name = f"{self.config['collection_name']}_fallback_{int(time.time())}"
+                        logger.info(f"Creating fallback collection as last resort: {fallback_name}")
+                        fallback_collection = self.client.create_collection(
+                            name=fallback_name,
+                            metadata={"hnsw:space": "cosine"}
+                        )
+                        return fallback_collection
+                    except Exception as fallback_err:
+                        logger.error(f"Even fallback collection creation failed: {str(fallback_err)}")
+                        # We truly cannot create a collection, raise the exception
+                        raise
+        
+        # This shouldn't be reached due to the final exception in the loop
+        logger.error("Unexpected exit from collection initialization retry loop")
+        raise ValueError("Failed to initialize collection after all attempts")
     
     def _get_embeddings(self, texts):
         """Generate embeddings for the given texts using TF-IDF with fixed dimensionality."""
@@ -45,14 +124,56 @@ class VectorDatabaseManager:
                 # Return zero vector of correct dimension instead of empty list
                 return np.zeros((1, self.embedding_dimension)).tolist()
             
+            # Clean and prepare texts to ensure better features
+            cleaned_texts = []
+            for text in texts:
+                # Skip empty texts
+                if not text or not text.strip():
+                    continue
+                
+                # Clean the text more thoroughly
+                text = re.sub(r'http\S+', '', text)  # Remove URLs
+                text = re.sub(r'[^\w\s]', ' ', text)  # Replace punctuation with spaces
+                text = re.sub(r'\s+', ' ', text).strip()  # Normalize whitespace
+                
+                # Ensure text is long enough to generate meaningful features
+                if len(text.split()) < 3:
+                    # Add placeholder text to ensure minimum content
+                    text = text + " content makeup beauty post"
+                
+                cleaned_texts.append(text)
+            
+            # Get count of actual texts for later filtering
+            actual_text_count = len(cleaned_texts)
+            
+            # Ensure we have enough examples for the vectorizer
+            standard_examples = []
+            if actual_text_count < 5:
+                # Add standard examples to help with feature extraction
+                standard_examples = [
+                    "makeup beauty content cosmetics instagram post",
+                    "beauty product post makeup instagram cosmetics",
+                    "makeup tutorial beauty cosmetics instagram products",
+                    "cosmetics brand makeup beauty products instagram",
+                    "beauty makeup tutorial cosmetics instagram product review"
+                ]
+                cleaned_texts.extend(standard_examples)
+            
             # Get raw embeddings with max_features limiting dimension
             if not self.fitted:
+                logger.info(f"Training new TF-IDF vectorizer with {len(cleaned_texts)} documents")
                 # Make sure the vectorizer is initialized with correct dimensions
-                self.vectorizer = TfidfVectorizer(max_features=self.embedding_dimension)
-                embeddings = self.vectorizer.fit_transform(texts).toarray()
+                self.vectorizer = TfidfVectorizer(
+                    max_features=self.embedding_dimension,
+                    ngram_range=(1, 2),  # Use bigrams to improve features
+                    min_df=1,
+                    max_df=0.9
+                )
+                embeddings = self.vectorizer.fit_transform(cleaned_texts).toarray()
                 self.fitted = True
+                logger.info(f"TF-IDF vectorizer fitted with {len(self.vectorizer.get_feature_names_out())} features")
             else:
-                embeddings = self.vectorizer.transform(texts).toarray()
+                embeddings = self.vectorizer.transform(cleaned_texts).toarray()
             
             # Ensure consistent dimension (handle case where actual dimension is less than target)
             current_dim = embeddings.shape[1]
@@ -69,7 +190,12 @@ class VectorDatabaseManager:
             norms[norms == 0] = 1  # Avoid division by zero
             normalized_embeddings = embeddings / norms
             
-            logger.info(f"Generated embeddings with shape: {normalized_embeddings.shape} for {len(texts)} texts")
+            # Return only the embeddings for the actual texts, not the standard examples
+            if len(standard_examples) > 0:
+                logger.info(f"Filtering out {len(standard_examples)} standard examples from embeddings")
+                normalized_embeddings = normalized_embeddings[:actual_text_count]
+            
+            logger.info(f"Generated embeddings with shape: {normalized_embeddings.shape} for {actual_text_count} texts")
             return normalized_embeddings.tolist()
         except Exception as e:
             logger.error(f"Error generating embeddings: {str(e)}")
@@ -139,10 +265,10 @@ class VectorDatabaseManager:
                 # Use upsert instead of add to handle duplicates gracefully
                 self.collection.upsert(
                     documents=new_documents,
-                    embeddings=embeddings,
+                embeddings=embeddings,
                     ids=new_ids,
                     metadatas=new_metadatas
-                )
+            )
                 logger.info(f"✅ RAG INDEX: Successfully upserted {len(new_documents)} documents (graceful duplicate handling)")
             else:
                 logger.info(f"⚠️ RAG INDEX: All documents were duplicates, nothing added")
@@ -151,147 +277,297 @@ class VectorDatabaseManager:
             logger.error(f"❌ RAG INDEX: Error adding documents: {str(e)}")
             raise
     
-    def query_similar(self, query_text, n_results=5, filter_username=None):
-        """Query for similar documents with enhanced RAG retrieval logging and optional username filter."""
+    def query_similar(self, query_text, n_results=5, filter_username=None, is_competitor=False):
+        """
+        Query for similar documents with enhanced RAG retrieval, filtering, and robust error handling.
+        
+        Args:
+            query_text: The text to search for
+            n_results: Maximum number of results to return
+            filter_username: Optional username to filter results
+            is_competitor: Set to True when querying competitor data for specialized handling
+            
+        Returns:
+            Dictionary with documents, metadatas, and distances
+        """
         try:
-            if not query_text.strip():
+            if not query_text or not query_text.strip():
                 logger.warning("⚠️ RAG QUERY: Empty query text provided")
                 return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
             
-            # Log RAG query initiation
-            logger.info(f"🔍 RAG QUERY: Searching for content similar to: '{query_text[:50]}...'")
-            if filter_username:
-                logger.info(f"🔍 RAG QUERY: Filtering by username: {filter_username}")
+            # Sanitize and normalize query
+            query_text = query_text.strip()
             
-            # Generate embedding for query
-            query_embedding = self._get_embeddings([query_text])
+            # Log RAG query initiation
+            query_preview = query_text[:50] + ('...' if len(query_text) > 50 else '')
+            logger.info(f"🔍 RAG QUERY: Searching for content similar to: '{query_preview}'")
+            if filter_username:
+                logger.info(f"🔍 RAG QUERY: Filtering by username: {filter_username} (competitor: {is_competitor})")
+            
+            # Generate embedding for query with retry logic
+            max_embedding_retries = 2
+            query_embedding = None
+            
+            for attempt in range(max_embedding_retries):
+                try:
+                    query_embedding = self._get_embeddings([query_text])
+                    if query_embedding and len(query_embedding) > 0:
+                        break
+                except Exception as e:
+                    logger.warning(f"Embedding generation failed (attempt {attempt+1}): {str(e)}")
+                    if attempt < max_embedding_retries - 1:
+                        time.sleep(1)  # Short delay before retry
+                
             if not query_embedding or len(query_embedding) == 0:
-                logger.error("❌ RAG QUERY: Failed to generate embedding for query")
+                logger.error("❌ RAG QUERY: Failed to generate embedding for query after all attempts")
                 return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
                 
             # Make sure we're using the first (and only) embedding
             query_vector = query_embedding[0]
             
-            # Check embedding dimensions
-            if len(query_vector) != self.embedding_dimension:
-                logger.warning(f"⚠️ RAG QUERY: Query embedding dimension {len(query_vector)} doesn't match expected {self.embedding_dimension}")
-                # Fix dimension issue by padding or truncating
-                if len(query_vector) < self.embedding_dimension:
-                    query_vector = query_vector + [0] * (self.embedding_dimension - len(query_vector))
-                else:
-                    query_vector = query_vector[:self.embedding_dimension]
+            # Check if collection exists and is initialized
+            collection_size = 0
+            max_retries = 3
             
-            # Increase n_results for better context if no filter is applied
-            if not filter_username:
-                # For general queries, get more results for richer context
-                enhanced_n_results = min(n_results * 2, 20)
-            else:
-                # For username-specific queries, get more results for that user's context
-                enhanced_n_results = min(n_results * 3, 25)
+            # Try to get collection count with retries
+            for attempt in range(max_retries):
+                try:
+                    collection_size = self.get_count()
+                    if collection_size > 0:
+                        break
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        retry_delay = 2 ** attempt  # Exponential backoff
+                        logger.warning(f"Collection check failed (attempt {attempt+1}/{max_retries}), retrying in {retry_delay}s")
+                        time.sleep(retry_delay)
+                    else:
+                        logger.error(f"All {max_retries} attempts to check collection failed")
             
-            # Set up query parameters
+            if collection_size == 0:
+                logger.warning("⚠️ RAG QUERY: Vector database is empty or not accessible, returning empty results")
+                return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
+                
+            # Determine safe n_results value based on collection size
+            safe_n_results = min(n_results, collection_size, 20)  # Cap at 20 for performance
+            if safe_n_results < n_results:
+                logger.info(f"🔍 Using safe n_results={safe_n_results} for query (collection size: {collection_size})")
+            
+            # Set up query parameters with appropriate values
             query_params = {
                 'query_embeddings': [query_vector],
-                'n_results': enhanced_n_results
+                'n_results': safe_n_results,
+                'include': ['documents', 'metadatas', 'distances']
             }
             
-            # Add username filter if provided
+            # Add username filter if provided with enhanced flexibility for competitors
             if filter_username:
-                query_params['where'] = {'username': filter_username}
-                logger.info(f"🔍 RAG QUERY: Searching {enhanced_n_results} results filtered by username: {filter_username}")
-            else:
-                logger.info(f"🔍 RAG QUERY: Searching {enhanced_n_results} results across all users")
+                # Handle potential @symbol in usernames
+                clean_username = filter_username
+                if clean_username.startswith('@'):
+                    clean_username = clean_username[1:]
+                
+                # IMPROVED: More robust username matching for competitor data
+                if is_competitor:
+                    # Log that we're using competitor-specific filtering
+                    logger.info(f"🔍 Using expanded competitor filtering for: {clean_username}")
+                    
+                    # FIXED: Improved competitor query filtering with proper syntax
+                    # For competitor data, explicitly use the competitor field
+                    query_params['where'] = {
+                        "$or": [
+                            {"competitor": clean_username},
+                            {"$and": [
+                                {"username": clean_username},
+                                {"is_competitor": True}
+                            ]},
+                            {"$and": [
+                                {"primary_username": clean_username},
+                                {"is_competitor": True}
+                            ]}
+                        ]
+                    }
+                else:
+                    # Standard filtering for primary user (exact match)
+                    query_params['where'] = {
+                        "$and": [
+                            {"primary_username": clean_username},
+                            {"is_competitor": False}
+                        ]
+                    }
             
-            # Execute query
-            results = self.collection.query(**query_params)
+            # Execute query with retry logic
+            results = None
+            for attempt in range(max_retries):
+                try:
+                    results = self.collection.query(**query_params)
+                    logger.info(f"✅ Query successful on attempt {attempt+1}")
+                    break
+                except Exception as e:
+                    logger.error(f"❌ Query error on attempt {attempt+1}: {str(e)}")
+                    if attempt < max_retries - 1:
+                        retry_delay = 2 ** attempt  # Exponential backoff
+                        logger.info(f"Retrying query in {retry_delay}s with simplified params")
+                        
+                        # IMPROVED: More aggressive simplification for competitor queries
+                        if is_competitor and 'where' in query_params:
+                            logger.info("Removing username filter for competitor fallback query")
+                            del query_params['where']
+                        
+                        # Simplify for retry
+                        query_params['n_results'] = max(1, safe_n_results // 2)
+                        time.sleep(retry_delay)
+                    else:
+                        logger.error("All query attempts failed")
             
-            # Enhanced RAG result logging
-            if not results['documents'] or not results['documents'][0]:
-                logger.warning(f"⚠️ RAG QUERY: No similar documents found for query: {query_text[:50]}...")
-                logger.warning(f"⚠️ RAG QUERY: Total documents in database: {self.get_count()}")
+            # If all attempts failed
+            if not results:
+                logger.warning("❌ Could not retrieve results after all attempts")
                 return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
             
-            # Log successful RAG retrieval
-            documents = results['documents'][0]
-            metadatas = results['metadatas'][0]
-            distances = results.get('distances', [[]])[0] if results.get('distances') else [0] * len(documents)
+            # Validate results structure
+            if not isinstance(results, dict):
+                logger.error(f"❌ Unexpected results type: {type(results)}")
+                return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
             
-            logger.info(f"✅ RAG QUERY: Found {len(documents)} relevant documents")
+            # Process results with safety checks
+            documents = []
+            metadatas = []
+            distances = []
             
-            # Log RAG data quality
-            if metadatas:
-                retrieved_users = set(meta.get('username', 'unknown') for meta in metadatas if meta)
-                logger.info(f"📊 RAG DATA: Retrieved content from users: {list(retrieved_users)}")
+            if 'documents' in results and results['documents']:
+                documents = results['documents'][0] if len(results['documents']) > 0 else []
+            
+            if 'metadatas' in results and results['metadatas']:
+                metadatas = results['metadatas'][0] if len(results['metadatas']) > 0 else []
+            
+            if 'distances' in results and results['distances']:
+                distances = results['distances'][0] if len(results['distances']) > 0 else []
+            
+            # IMPROVED: Post-query filtering based on is_competitor flag
+            if filter_username and len(documents) > 0:
+                # Apply additional filtering based on is_competitor flag
+                filtered_docs = []
+                filtered_meta = []
+                filtered_dist = []
                 
-                avg_engagement = sum(meta.get('engagement', 0) for meta in metadatas if meta) / len(metadatas)
-                logger.info(f"📊 RAG DATA: Average engagement of retrieved content: {avg_engagement:.1f}")
-            
-            # Sort by relevance (lower distance = more similar) and engagement
-            doc_metadata_distance = list(zip(documents, metadatas, distances))
-            
-            # Apply intelligent ranking: combine similarity and engagement for better results
-            def intelligent_ranking(item):
-                doc, meta, distance = item
-                engagement = meta.get('engagement', 0)
+                for i in range(len(documents)):
+                    if i < len(metadatas):
+                        meta = metadatas[i]
+                        # Get username from metadata for comparison
+                        meta_username = meta.get('username', '').lower()
+                        meta_primary_username = meta.get('primary_username', '').lower()
+                        meta_competitor = meta.get('competitor', '').lower()
+                        # Get is_competitor flag with fallback
+                        meta_is_competitor = meta.get('is_competitor', False)
+                        
+                        # For competitor queries - include if:
+                        # 1. is_competitor flag is True AND either competitor field matches OR username matches
+                        if is_competitor and meta_is_competitor and (
+                            meta_competitor.lower() == filter_username.lower() or
+                            meta_username.lower() == filter_username.lower() or
+                            meta_primary_username.lower() == filter_username.lower()
+                        ):
+                            filtered_docs.append(documents[i])
+                            filtered_meta.append(metadatas[i])
+                            if i < len(distances):
+                                filtered_dist.append(distances[i])
+                        # For primary account queries - only include if is_competitor is False
+                        elif not is_competitor and not meta_is_competitor:
+                            filtered_docs.append(documents[i])
+                            filtered_meta.append(metadatas[i])
+                            if i < len(distances):
+                                filtered_dist.append(distances[i])
                 
-                # Normalize engagement (0-1 scale) - higher is better
-                max_engagement = max(m.get('engagement', 0) for _, m, _ in doc_metadata_distance) or 1
-                normalized_engagement = engagement / max_engagement
+                # Replace original results with filtered results
+                documents = filtered_docs
+                metadatas = filtered_meta
+                distances = filtered_dist
                 
-                # Normalize distance (0-1 scale) - lower is better
-                max_distance = max(distances) if distances else 1
-                if max_distance > 0:
-                    normalized_distance = 1 - (distance / max_distance)
+                # Log filtering results
+                if len(documents) == 0:
+                    logger.warning(f"⚠️ No results found for username: {filter_username} (competitor: {is_competitor})")
+                    # Debug info about available usernames
+                    available_usernames = set()
+                    try:
+                        all_docs = self.collection.get(include=["metadatas"])
+                        if all_docs and "metadatas" in all_docs:
+                            for meta in all_docs["metadatas"]:
+                                if meta:
+                                    available_usernames.add(meta.get("username", ""))
+                                    if meta.get("is_competitor", False):
+                                        available_usernames.add(meta.get("competitor", ""))
+                        logger.info(f"Available usernames in DB: {list(available_usernames)[:5]}...")
+                    except Exception as e:
+                        logger.warning(f"Could not retrieve available usernames: {str(e)}")
                 else:
-                    normalized_distance = 1
-                
-                # Combine similarity (40%) and engagement (60%) for theme-aligned results
-                combined_score = (0.4 * normalized_distance) + (0.6 * normalized_engagement)
-                return combined_score
+                    logger.info(f"Applied post-query filtering for {filter_username} (competitor: {is_competitor}) - {len(documents)} results")
             
-            # Sort by intelligent ranking (highest score first)
-            ranked_results = sorted(doc_metadata_distance, key=intelligent_ranking, reverse=True)
+            # Ensure we always return a list of lists
+            if not isinstance(documents, list):
+                documents = [documents]
+            if not isinstance(metadatas, list):
+                metadatas = [metadatas]
+            if not isinstance(distances, list):
+                distances = [distances]
             
-            # Take the top n_results after intelligent ranking
-            final_results = ranked_results[:n_results]
+            # Check if documents and metadatas are the same length
+            if len(documents) != len(metadatas):
+                logger.warning(f"Length mismatch: documents={len(documents)}, metadatas={len(metadatas)}")
             
-            # Separate back into documents, metadatas, and distances
-            final_documents = [item[0] for item in final_results]
-            final_metadatas = [item[1] for item in final_results]
-            final_distances = [item[2] for item in final_results]
-            
-            # Log final RAG selection
-            logger.info(f"✅ RAG SELECTION: Returning top {len(final_results)} most relevant documents")
+            logger.info(f"✅ Found {len(documents)} relevant documents")
             
             return {
-                'documents': [final_documents],
-                'metadatas': [final_metadatas],
-                'distances': [final_distances]
+                'documents': [documents],
+                'metadatas': [metadatas],
+                'distances': [distances] if distances else [[]]
             }
             
         except Exception as e:
-            logger.error(f"Error in enhanced query for similar documents: {str(e)}")
-            # Return empty result structure instead of raising
+            logger.error(f"❌ Error in query_similar: {str(e)}")
+            import traceback
+            logger.error(f"❌ Traceback: {traceback.format_exc()}")
+            # Return empty result structure
             return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
     
     def get_count(self):
         """Get the number of documents in the collection."""
         try:
-            count = self.collection.count()
-            logger.info(f"Collection contains {count} documents")
-            return count
+            # Check if collection is properly initialized
+            if not hasattr(self, 'collection') or self.collection is None:
+                logger.error("Collection not properly initialized")
+                return 0
+                
+            # Try with timeout and exponential backoff
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    count = self.collection.count()
+                    logger.info(f"Collection contains {count} documents")
+                    return count
+                except Exception as retry_err:
+                    if attempt < max_retries - 1:
+                        retry_delay = 2 ** attempt  # Exponential backoff
+                        logger.warning(f"Get count failed (attempt {attempt+1}/{max_retries}), retrying in {retry_delay}s: {str(retry_err)}")
+                        import time
+                        time.sleep(retry_delay)
+                    else:
+                        logger.error(f"All {max_retries} attempts to get collection count failed")
+                        raise
+            
+            return 0  # Fallback
         except Exception as e:
             logger.error(f"Error getting collection count: {str(e)}")
             return 0
     
-    def add_posts(self, posts, primary_username):
+    def add_posts(self, posts, primary_username, is_competitor=False):
         """
         Add social media posts to the vector database with username metadata.
-        Checks for existing embeddings to prevent duplicates.
+        Uses enhanced duplicate detection and batch processing with retries.
         
         Args:
             posts: List of post dictionaries
             primary_username: Primary username to differentiate posts
+            is_competitor: Set to True when adding competitor content (changes duplicate handling)
             
         Returns:
             int: Number of posts added
@@ -306,19 +582,43 @@ class VectorDatabaseManager:
             metadatas = []
             post_count = 0
             skipped_count = 0
+            processed_count = 0
             
-            # Get existing IDs to check for duplicates
+            # Calculate a content hash for later duplicate detection
+            def calculate_content_hash(text, timestamp='', platform=''):
+                base_string = f"{text[:100]}{timestamp[:10]}{platform}"
+                return abs(hash(base_string))
+            
+            # Get existing IDs and content to check for duplicates
             existing_ids = set()
+            existing_content_hashes = set()
+            
             try:
-                # Query all documents with no filter to get existing IDs
-                existing_results = self.collection.get(include=['metadatas'])
+                # Query all documents with minimal fields to get existing IDs
+                existing_results = self.collection.get(include=['metadatas', 'documents'])
+                
                 if existing_results and 'ids' in existing_results:
                     existing_ids = set(existing_results['ids'])
+                    
+                    # Calculate content hashes for existing docs
+                    if 'documents' in existing_results and 'metadatas' in existing_results:
+                        for doc, meta in zip(existing_results['documents'], existing_results['metadatas']):
+                            if doc and meta:
+                                platform = meta.get('platform', '')
+                                timestamp = meta.get('timestamp', '')
+                                content_hash = calculate_content_hash(doc, timestamp, platform)
+                                existing_content_hashes.add(content_hash)
+                    
                     logger.info(f"Found {len(existing_ids)} existing documents in vector database")
             except Exception as e:
-                logger.warning(f"Could not retrieve existing IDs: {str(e)}")
+                logger.warning(f"Could not retrieve existing IDs for duplicate check: {str(e)}")
+                # Continue without duplicate checking
+                logger.info("Proceeding without duplicate checking due to database access error")
             
+            # Process each post
             for post in posts:
+                processed_count += 1
+                
                 # Handle different field names between Instagram and Twitter
                 if 'caption' in post:
                     text = post.get('caption', '').strip()  # Instagram format
@@ -331,20 +631,6 @@ class VectorDatabaseManager:
                 if not text:
                     continue
                 
-                # Get engagement metrics with fallbacks for different formats
-                engagement = post.get('engagement', 0)
-                if engagement == 0:
-                    # Fallback: calculate from individual metrics
-                    likes = post.get('likes', 0)
-                    comments = post.get('comments', 0)
-                    shares = post.get('shares', 0)
-                    retweets = post.get('retweets', 0)
-                    replies = post.get('replies', 0)
-                    quotes = post.get('quotes', 0)
-                    
-                    # Sum available metrics based on platform type
-                    engagement = likes + comments + shares + retweets + replies + quotes
-                
                 # Get timestamp with fallback
                 timestamp = post.get('timestamp', '')
                 if not timestamp and 'created_at' in post:
@@ -356,37 +642,122 @@ class VectorDatabaseManager:
                 if username and username.startswith('@'):
                     username = username[1:]
                 
-                # Use stable ID generation for consistency
-                if 'id' in post:
-                    post_id = f"{username}_{post['id']}"
-                else:
-                    # Create a deterministic ID from content
-                    post_id = f"{username}_{abs(hash(text + timestamp))}"
+                # Get platform info
+                platform = post.get('platform', 'instagram')
+                if 'retweets' in post or 'replies' in post:
+                    platform = 'twitter'
+                    
+                # Calculate content hash for duplicate detection
+                content_hash = calculate_content_hash(text, timestamp, platform)
                 
-                # Check if this post already exists
-                if post_id in existing_ids:
-                    skipped_count += 1
-                    logger.debug(f"Skipping duplicate post ID: {post_id}")
+                # Use stable ID generation for consistency that avoids false duplicates
+                if 'id' in post:
+                    # Include timestamp in ID to avoid collisions when IDs might be reused
+                    post_id = f"{username}_{post['id']}_{timestamp[:10]}" if timestamp else f"{username}_{post['id']}"
+                else:
+                    # Create a more reliable deterministic ID from content
+                    # Use content hash for uniqueness
+                    post_id = f"{username}_{content_hash}_{timestamp[:10]}" if timestamp else f"{username}_{content_hash}"
+                
+                # Add platform info to ID if available to further reduce chances of collision
+                if platform:
+                    post_id = f"{post_id}_{platform[:2]}"
+                
+                # Check if this post already exists with more robust checking
+                is_duplicate = False
+                
+                # IMPROVED: More intelligent duplicate detection with custom behavior for competitors
+                if is_competitor:
+                    # For competitor data, only check for exact ID match (less strict)
+                    # This allows multiple competitors to have similar content
+                    if post_id in existing_ids:
+                        skipped_count += 1
+                        logger.debug(f"Skipping duplicate competitor post ID: {post_id}")
+                        is_duplicate = True
+                    else:
+                        is_duplicate = False
+                else:
+                    # For primary users, use MORE LENIENT duplicate detection
+                    # Only consider duplicate if ID, timestamp, username, and is_competitor flag all match exactly
+                    if post_id in existing_ids:
+                        # Then we need to check for exact timestamp and username match
+                        if existing_results and 'metadatas' in existing_results and existing_results['metadatas']:
+                            # Look through metadata for a match
+                            for meta in existing_results['metadatas']:
+                                if not meta:
+                                    continue
+                                    
+                                # Only consider duplicate if ALL these match - more precise matching
+                                if (meta.get('timestamp', '') == timestamp and 
+                                    meta.get('username', '') == username and 
+                                    meta.get('id', '') == post.get('id', '') and
+                                    meta.get('is_competitor', True) == False):
+                                    logger.debug(f"Found exact duplicate match for primary post: {post_id}")
+                                    is_duplicate = True
+                                    break
+                            
+                            if is_duplicate:
+                                skipped_count += 1
+                                logger.debug(f"Skipping duplicate primary post: {post_id}")
+                            else:
+                                logger.debug(f"Primary post ID exists but metadata differs, allowing indexing: {post_id}")
+                        else:
+                            logger.debug(f"Cannot verify metadata for primary post, allowing indexing: {post_id}")
+                    else:
+                        logger.debug(f"New primary post with unique ID: {post_id}")
+                
+                # Skip if duplicate
+                if is_duplicate:
                     continue
+                
+                # Get engagement metrics with fallbacks for different formats
+                engagement = post.get('engagement', 0)
+                if engagement == 0:
+                    # Fallback: calculate from individual metrics
+                    likes = post.get('likes', 0) or 0  # Ensure None values become 0
+                    comments = post.get('comments', 0) or 0
+                    shares = post.get('shares', 0) or 0
+                    retweets = post.get('retweets', 0) or 0
+                    replies = post.get('replies', 0) or 0
+                    quotes = post.get('quotes', 0) or 0
+                    
+                    # Sum available metrics based on platform type
+                    engagement = likes + comments + shares + retweets + replies + quotes
+                    
+                # Ensure engagement is never 0 for visibility in analytics
+                engagement = max(1, engagement)
                 
                 # Create document and metadata
                 documents.append(text)
                 ids.append(post_id)
+                existing_ids.add(post_id)  # Add to existing IDs to prevent duplicates in this batch
+                existing_content_hashes.add(content_hash)  # Add to content hashes
                 
                 metadata = {
                     "username": username,
                     "primary_username": primary_username,
                     "engagement": engagement,
                     "timestamp": timestamp,
-                    "platform": post.get('platform', 'instagram')  # Default to Instagram if not specified
+                    "platform": platform,
+                    "content_hash": content_hash,
+                    "is_competitor": is_competitor
                 }
                 
+                # Enhanced metadata for competitor posts - ensure flags are set properly
+                if is_competitor:
+                    # Log competitor metadata to help with debugging
+                    logger.debug(f"Adding competitor post: username={username}, primary_username={primary_username}, is_competitor={is_competitor}")
+                    # Double-check is_competitor flag is set to True for competitor content
+                    metadata["is_competitor"] = True
+                    
+                    # FIXED: Ensure the competitor field is set explicitly to improve querying
+                    metadata["competitor"] = username
+                
                 # Add platform-specific metadata
-                if 'retweets' in post or 'replies' in post:
-                    metadata['platform'] = 'twitter'
-                    metadata['retweets'] = post.get('retweets', 0)
-                    metadata['replies'] = post.get('replies', 0)
-                    metadata['quotes'] = post.get('quotes', 0)
+                if platform == 'twitter':
+                    metadata['retweets'] = post.get('retweets', 0) or 0
+                    metadata['replies'] = post.get('replies', 0) or 0
+                    metadata['quotes'] = post.get('quotes', 0) or 0
                 
                 metadatas.append(metadata)
                 post_count += 1
@@ -394,34 +765,57 @@ class VectorDatabaseManager:
             if post_count > 0:
                 # Generate embeddings and add to collection - ONLY if we have new posts
                 logger.info(f"📊 Generating embeddings for {post_count} new posts")
-                embeddings = self._get_embeddings(documents)
                 
-                # Double-check that we don't have any duplicates before adding
-                final_documents = []
-                final_ids = []
-                final_metadatas = []
-                final_embeddings = []
+                try:
+                    embeddings = self._get_embeddings(documents)
+                    
+                    # Safety check
+                    if len(embeddings) != len(documents):
+                        logger.error(f"Embedding count mismatch: {len(embeddings)} embeddings for {len(documents)} documents")
+                        return 0
+                    
+                    # Try to upsert in batches with retry logic
+                    batch_size = 25  # Small batch size to avoid overloading Chroma
+                    success_count = 0
+                    
+                    for i in range(0, len(documents), batch_size):
+                        # Get the current batch
+                        batch_end = min(i + batch_size, len(documents))
+                        current_batch_size = batch_end - i
+                        
+                        # Retry logic for each batch
+                        max_retries = 3
+                        for attempt in range(max_retries):
+                            try:
+                                self.collection.upsert(
+                                    documents=documents[i:batch_end],
+                                    embeddings=embeddings[i:batch_end],
+                                    ids=ids[i:batch_end],
+                                    metadatas=metadatas[i:batch_end]
+                                )
+                                success_count += current_batch_size
+                                logger.info(f"✅ Batch {i//batch_size + 1}: Successfully added {current_batch_size} posts (attempt {attempt+1})")
+                                break
+                            except Exception as batch_error:
+                                if attempt < max_retries - 1:
+                                    retry_delay = 2 ** attempt  # Exponential backoff
+                                    logger.warning(f"❌ Batch {i//batch_size + 1} error (attempt {attempt+1}/{max_retries}): {str(batch_error)}")
+                                    logger.info(f"Retrying batch {i//batch_size + 1} in {retry_delay}s...")
+                                    time.sleep(retry_delay)
+                                else:
+                                    logger.error(f"❌ All attempts failed for batch {i//batch_size + 1}: {str(batch_error)}")
+                    
+                    logger.info(f"✅ RAG INDEX: Successfully added {success_count}/{post_count} posts for {primary_username} (competitor: {is_competitor})")
+                    
+                except Exception as e:
+                    logger.error(f"❌ RAG INDEX: Error adding posts to vector DB: {str(e)}")
+                    import traceback
+                    logger.error(traceback.format_exc())
                 
-                for i, doc_id in enumerate(ids):
-                    if doc_id not in existing_ids:
-                        final_documents.append(documents[i])
-                        final_ids.append(doc_id)
-                        final_metadatas.append(metadatas[i])
-                        final_embeddings.append(embeddings[i])
-                
-                if final_documents:
-                    # Use upsert instead of add to handle duplicates gracefully
-                    self.collection.upsert(
-                        documents=final_documents,
-                        embeddings=final_embeddings,
-                        ids=final_ids,
-                        metadatas=final_metadatas
-                    )
-                    logger.info(f"✅ RAG INDEX: Successfully upserted {len(final_documents)} posts for {primary_username} (graceful duplicate handling)")
-                else:
-                    logger.info(f"⚠️ RAG INDEX: All posts were duplicates, nothing added for {primary_username}")
+                # Return how many posts we processed (not necessarily successfully added)
+                return post_count
             else:
-                logger.info(f"⚠️ RAG INDEX: No new posts to add for {primary_username} (skipped {skipped_count} duplicates)")
+                logger.info(f"⚠️ RAG INDEX: No new posts to add for {primary_username} (processed {processed_count}, skipped {skipped_count} duplicates)")
                 
             return post_count
         except Exception as e:
@@ -433,15 +827,209 @@ class VectorDatabaseManager:
     def clear_collection(self):
         """Clear all documents from the collection."""
         try:
-            count_before = self.get_count()
-            self.client.delete_collection(self.config['collection_name'])
+            # Check if we have a valid collection
+            if not hasattr(self, 'collection') or not self.collection:
+                logger.warning("No collection to clear")
+                self.collection = self._get_or_create_collection()
+                return True
+            
+            # Get count before clearing
+            try:
+                count_before = self.get_count()
+            except Exception:
+                count_before = "unknown"
+            
+            # Try to delete and recreate
+            try:
+                # Delete collection
+                self.client.delete_collection(self.config['collection_name'])
+                logger.info(f"Deleted collection: {self.config['collection_name']}")
+            except Exception as e:
+                logger.error(f"Error deleting collection: {str(e)}")
+                
+            # Always recreate the collection
             self.collection = self._get_or_create_collection()
             self.vectorizer = TfidfVectorizer(max_features=self.embedding_dimension)
             self.fitted = False
+            
             logger.info(f"Cleared collection with {count_before} documents")
             return True
         except Exception as e:
             logger.error(f"Error clearing collection: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            
+            # Attempt recovery by recreating
+            try:
+                self.collection = self._get_or_create_collection()
+                self.vectorizer = TfidfVectorizer(max_features=self.embedding_dimension)
+                self.fitted = False
+                logger.info("Collection recreated after error")
+                return True
+            except Exception as recovery_error:
+                logger.error(f"Recovery failed: {str(recovery_error)}")
+                return False
+
+    def normalize_vector_database_usernames(self):
+        """
+        Utility method to ensure all usernames in the vector database are consistently normalized.
+        This is useful for improving retrieval accuracy, especially across runs.
+        """
+        try:
+            # Check if collection exists and has documents
+            collection_size = self.get_count()
+            if collection_size == 0:
+                logger.info("Vector database is empty, no normalization needed")
+                return True
+                
+            logger.info(f"Normalizing usernames in vector database ({collection_size} documents)")
+            
+            # Get all documents with metadata
+            results = self.collection.get(include=['metadatas'])
+            if not results or 'metadatas' not in results or not results['metadatas']:
+                logger.warning("No documents with metadata found for normalization")
+                return False
+                
+            # Track what needs updating
+            update_count = 0
+            competitor_count = 0
+            primary_count = 0
+            
+            # Process each document to normalize usernames
+            for i, metadata in enumerate(results['metadatas']):
+                if not metadata:
+                    continue
+                    
+                needs_update = False
+                
+                # Make sure username/primary_username fields exist
+                if 'username' not in metadata:
+                    metadata['username'] = metadata.get('primary_username', 'unknown')
+                    needs_update = True
+                    
+                if 'primary_username' not in metadata:
+                    metadata['primary_username'] = metadata.get('username', 'unknown')
+                    needs_update = True
+                
+                # Remove @ prefix if present in either field
+                if metadata['username'] and metadata['username'].startswith('@'):
+                    metadata['username'] = metadata['username'][1:]
+                    needs_update = True
+                    
+                if metadata['primary_username'] and metadata['primary_username'].startswith('@'):
+                    metadata['primary_username'] = metadata['primary_username'][1:]
+                    needs_update = True
+                
+                # ADDED: Make sure is_competitor flag is set correctly
+                is_competitor = metadata.get('is_competitor', False)
+                
+                # ADDED: Ensure the competitor field is set for competitor content
+                if is_competitor and 'competitor' not in metadata:
+                    metadata['competitor'] = metadata['username']
+                    logger.debug(f"Added competitor field '{metadata['username']}' to document {i}")
+                    needs_update = True
+                    competitor_count += 1
+                
+                # Make sure the engagement field is normalized
+                if 'engagement' in metadata and metadata['engagement'] == 0:
+                    metadata['engagement'] = 1
+                    needs_update = True
+                
+                # If we need to update this document
+                if needs_update:
+                    update_count += 1
+                    if is_competitor:
+                        competitor_count += 1
+                    else:
+                        primary_count += 1
+                    
+                    # Use the collection.update method to apply the changes
+                    try:
+                        # Use the id from the results
+                        if 'ids' in results and i < len(results['ids']):
+                            doc_id = results['ids'][i]
+                            self.collection.update(ids=[doc_id], metadatas=[metadata])
+                            logger.debug(f"Updated document {i} with ID {doc_id}")
+                    except Exception as update_error:
+                        logger.warning(f"Could not update document {i}: {str(update_error)}")
+            
+            logger.info(f"✅ Successfully normalized {update_count} documents ({primary_count} primary, {competitor_count} competitor)")
+            return True
+        except Exception as e:
+            logger.error(f"Error normalizing usernames: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return False
+
+    def clear_and_reinitialize(self, force=False):
+        """Clear the collection and reinitialize it to solve persistent issues.
+        Use with force=True to fix serious database corruption issues.
+        """
+        try:
+            logger.info(f"🔄 Reinitializing vector database (force={force})")
+            
+            # Check collection status
+            if not force:
+                try:
+                    count = self.get_count()
+                    logger.info(f"Current collection contains {count} documents")
+                    if count > 0:
+                        # Try a sample query to check health
+                        test_result = self.query_similar("test query", n_results=1)
+                        if test_result and 'documents' in test_result and test_result['documents'][0]:
+                            logger.info("Vector database seems healthy, skipping reinitialization")
+                            return True
+                except Exception as e:
+                    logger.warning(f"Vector database health check failed: {str(e)}")
+                    # Continue with reinitialization
+            
+            # Clear the collection
+            success = self.clear_collection()
+            if not success:
+                logger.error("Failed to clear collection")
+                return False
+                
+            # Reinitialize the vectorizer
+            self.vectorizer = TfidfVectorizer(
+                max_features=self.embedding_dimension,
+                ngram_range=(1, 2),
+                min_df=1, 
+                max_df=0.9
+            )
+            self.fitted = False
+            
+            # Create a test document to verify functionality
+            test_doc = "Vector database initialization test document"
+            test_id = f"init_test_{int(time.time())}"
+            test_meta = {"test": "initialization", "timestamp": datetime.now().isoformat()}
+            
+            # Generate embedding
+            test_embedding = self._get_embeddings([test_doc])[0]
+            
+            # Add test document
+            self.collection.upsert(
+                ids=[test_id],
+                documents=[test_doc],
+                embeddings=[test_embedding],
+                metadatas=[test_meta]
+            )
+            
+            # Verify it worked
+            test_result = self.collection.get(ids=[test_id])
+            if test_result and 'documents' in test_result and test_result['documents']:
+                logger.info("✅ Vector database successfully reinitialized and verified")
+                
+                # Clean up test document
+                self.collection.delete(ids=[test_id])
+                return True
+            else:
+                logger.error("❌ Vector database reinitialization verification failed")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error in clear_and_reinitialize: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
             return False
 
 
@@ -514,6 +1102,62 @@ def test_vector_db_multi_user():
         return False
 
 
+def seed_test_competitor_data():
+    """Utility function to seed test competitor data into the vector database."""
+    
+    # Initialize the vector database
+    vdb = VectorDatabaseManager()
+    
+    # Create some test competitor data
+    competitor_data = {
+        "fentybeauty": [
+            {
+                "caption": "New Fenty Beauty collection launching today! #fentybeauty #makeup",
+                "engagement": 5000,
+                "timestamp": datetime.now().isoformat(),
+                "username": "fentybeauty"
+            },
+            {
+                "caption": "Our bestselling foundation now available in 5 new shades! #fentybeauty",
+                "engagement": 8000,
+                "timestamp": datetime.now().isoformat(),
+                "username": "fentybeauty"
+            }
+        ],
+        "toofaced": [
+            {
+                "caption": "Too Faced new holiday collection is here! #toofaced #makeup #beauty",
+                "engagement": 3500,
+                "timestamp": datetime.now().isoformat(),
+                "username": "toofaced"
+            },
+            {
+                "caption": "Our iconic Better Than Sex mascara has a new look! #toofaced",
+                "engagement": 6200,
+                "timestamp": datetime.now().isoformat(),
+                "username": "toofaced"
+            }
+        ]
+    }
+    
+    # Add competitor data to the vector database
+    total_added = 0
+    for competitor, posts in competitor_data.items():
+        added = vdb.add_posts(posts, competitor, is_competitor=True)
+        total_added += added
+        print(f"Added {added} posts for competitor {competitor}")
+    
+    print(f"Total competitor posts added: {total_added}")
+    
+    # Verify data was added
+    for competitor in competitor_data.keys():
+        results = vdb.query_similar("makeup", filter_username=competitor, is_competitor=True)
+        found = len(results.get('documents', [[]])[0])
+        print(f"Found {found} posts for competitor {competitor}")
+    
+    return total_added
+
+
 if __name__ == "__main__":
-    success = test_vector_db_multi_user()
-    print(f"Multi-user vector database test {'successful' if success else 'failed'}")
+    # Run the seed function if this file is executed directly
+    seed_test_competitor_data()

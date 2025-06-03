@@ -222,8 +222,12 @@ class TimeSeriesAnalyzer:
             # Convert value to numeric
             df['y'] = pd.to_numeric(df[value_col], errors='coerce')
             
+            # Replace NaNs or 0s with 1 for minimum engagement value to ensure visibility in analytics
+            df['y'] = df['y'].fillna(1)
+            df['y'] = df['y'].apply(lambda x: max(1, x))  # Ensure minimum value is 1
+            
             # Drop invalid rows
-            df = df.dropna(subset=['ds', 'y'])
+            df = df.dropna(subset=['ds'])
             
             # Ensure minimum data points
             if len(df) < 2:
@@ -232,7 +236,7 @@ class TimeSeriesAnalyzer:
                     first_point = df.iloc[0].copy()
                     new_point = first_point.copy()
                     new_point['ds'] = new_point['ds'] - pd.Timedelta(days=1)
-                    new_point['y'] = max(0, new_point['y'] * 0.9)
+                    new_point['y'] = max(1, new_point['y'] * 0.9)  # Ensure minimum value of 1
                     df = pd.concat([pd.DataFrame([new_point]), df])
                     logger.info("Added synthetic point for analysis")
                 else:

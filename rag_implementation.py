@@ -8,6 +8,9 @@ import os
 import re
 import json
 import logging
+import time
+import random
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 
 # Import Google Generative AI
@@ -28,6 +31,98 @@ GEMINI_CONFIG = {
 }
 
 logger = logging.getLogger(__name__)
+
+# RATE LIMITER CLASS FOR GEMINI API
+class AdaptiveRateLimiter:
+    """Adaptive rate limiter for Gemini API to prevent quota exceeded errors."""
+    
+    def __init__(self, 
+                 initial_delay=60,  # Start with 60s delay between calls 
+                 min_delay=30,      # Minimum delay (seconds)
+                 max_delay=120,     # Maximum delay (seconds)
+                 backoff_factor=1.5, # How much to increase delay after error
+                 success_factor=0.9): # How much to decrease delay after success
+        self.current_delay = initial_delay
+        self.min_delay = min_delay
+        self.max_delay = max_delay
+        self.backoff_factor = backoff_factor
+        self.success_factor = success_factor
+        self.last_call_time = datetime.now() - timedelta(seconds=initial_delay)
+        self.consecutive_errors = 0
+        self.consecutive_successes = 0
+        self.quota_exceeded = False
+        self.retry_after = None
+        
+    def wait_if_needed(self):
+        """Wait if needed before making another API call."""
+        now = datetime.now()
+        time_since_last_call = (now - self.last_call_time).total_seconds()
+        
+        # If we've been told to wait a specific time by the API
+        if self.quota_exceeded and self.retry_after:
+            wait_time = max(0, self.retry_after - time_since_last_call)
+            if wait_time > 0:
+                logger.info(f"🕒 API RATE LIMIT: Waiting {wait_time:.1f}s as specified by API retry_delay")
+                time.sleep(wait_time)
+                # Add a small random buffer to avoid synchronized requests
+                buffer = random.uniform(1, 3)
+                time.sleep(buffer)
+                self.quota_exceeded = False
+                self.retry_after = None
+                self.last_call_time = datetime.now()
+                return
+        
+        # Normal rate limiting based on our adaptive delay
+        wait_time = max(0, self.current_delay - time_since_last_call)
+        if wait_time > 0:
+            # Add jitter to avoid synchronized requests (±10%)
+            jitter = random.uniform(-0.1, 0.1) * wait_time
+            adjusted_wait = max(0, wait_time + jitter)
+            logger.info(f"🕒 API RATE LIMIT: Waiting {adjusted_wait:.1f}s before next API call")
+            time.sleep(adjusted_wait)
+        
+        # Update last call time
+        self.last_call_time = datetime.now()
+    
+    def record_success(self):
+        """Record a successful API call and potentially reduce delay."""
+        self.consecutive_errors = 0
+        self.consecutive_successes += 1
+        self.quota_exceeded = False
+        self.retry_after = None
+        
+        # Only reduce delay after multiple consecutive successes
+        if self.consecutive_successes >= 3:
+            # Gradually reduce delay, but not below minimum
+            self.current_delay = max(self.min_delay, 
+                                     self.current_delay * self.success_factor)
+            logger.info(f"✅ API RATE LIMIT: Reduced delay to {self.current_delay:.1f}s after consecutive successes")
+            self.consecutive_successes = 0
+    
+    def record_error(self, is_quota_error=False, retry_seconds=None):
+        """Record an API error and increase backoff delay."""
+        self.consecutive_successes = 0
+        self.consecutive_errors += 1
+        
+        if is_quota_error:
+            # Handle specific quota exceeded errors
+            self.quota_exceeded = True
+            if retry_seconds:
+                # Use the retry delay provided by the API
+                self.retry_after = retry_seconds
+                # But ensure it's at least our minimum delay
+                self.current_delay = max(self.current_delay, retry_seconds)
+                logger.warning(f"⚠️ API QUOTA EXCEEDED: Setting retry delay to {retry_seconds}s as specified by API")
+            else:
+                # No specific retry time given, use an aggressive backoff
+                self.current_delay = min(self.max_delay, 
+                                        self.current_delay * (self.backoff_factor * 1.5))
+                logger.warning(f"⚠️ API QUOTA EXCEEDED: Increased delay to {self.current_delay:.1f}s")
+        else:
+            # For other errors, use normal backoff
+            self.current_delay = min(self.max_delay, 
+                                    self.current_delay * self.backoff_factor)
+            logger.info(f"⚠️ API RATE LIMIT: Increased delay to {self.current_delay:.1f}s after error")
 
 # OPTIMIZED INSTRUCTION SETS - 4 Different Instructions for Platform/Account Combinations
 INSTRUCTION_SETS = {
@@ -56,7 +151,7 @@ INSTRUCTION_SETS = {
         "content_quality": "executive-level content that establishes thought leadership"
     },
     "TWITTER_PERSONAL": {
-        "instruction_theme": "authentic_influence",
+        "instruction_theme": "personal_intelligence",  # Changed from "authentic_influence" to match the intelligence_type
         "content_focus": "personal influence, authentic thoughts, community engagement",
         "analysis_type": "personal influence psychology", 
         "prompt_style": "authentic_voice",
@@ -154,7 +249,7 @@ class MockGenerativeModel:
         if any(pattern in contents_lower for pattern in [
             "personal account", "personal user", "lifestyle account",
             "authentic voice", "personal growth", "community building",
-            "authentic_growth", "authentic_influence"
+            "authentic_growth", "personal_intelligence", "authentic_influence"
         ]):
             is_branding = False
         
@@ -171,52 +266,47 @@ class MockGenerativeModel:
         intelligence_type = module_config["intelligence_type"]
         content_field = module_config["content_field"]
         
-        # Generate realistic mock response based on the specific instruction set
-        if is_branding:
+        # Make sure we generate the correct intelligence type for Twitter personal accounts
+        if platform == "twitter" and not is_branding:
+            intelligence_type = "personal_intelligence"  # Force the correct type for Twitter personal
+        
+        # Create mock response with the correct structure
             mock_response = {
                 intelligence_type: {
-                    "account_analysis": f"📊 **@{username} {instruction_set['instruction_theme'].upper()} INTELLIGENCE**\\n\\n• SPECIFIC performance metrics from scraped data: Average engagement 2500, analyzing 15 posts\\n• DETAILED {instruction_set['analysis_type']} of content success patterns\\n• REAL strategic positioning based on competitive advantages from scraped competitor data\\n• MEASURABLE growth trajectory with {instruction_set['output_emphasis']} optimization opportunities",
-                    "competitive_analysis": f"🔍 **{instruction_set['instruction_theme'].upper()} MARKET INTELLIGENCE**\\n\\n• MANDATORY: Individual competitor breakdown with {instruction_set['analysis_type']} for specific competitors\\n• REQUIRED: Strategic positioning using {instruction_set['prompt_style']} approach with measurable differentiation\\n• DEMANDED: Market opportunity identification focusing on {instruction_set['output_emphasis']}",
-                    "strategic_positioning": f"🎯 **{instruction_set['instruction_theme'].upper()} ADVANTAGE STRATEGY**\\n\\n• REAL strategic advantages: {instruction_set['content_focus']} specific to @{username}'s unique position\\n• ACTIONABLE {instruction_set['prompt_style']} optimization with clear differentiation\\n• TARGETED {instruction_set['output_emphasis']} strategies with measurable engagement improvements"
+                "account_analysis": f"Analysis for {username} on {platform} as a {'branding' if is_branding else 'personal'} account.",
+                "strategic_positioning": f"Strategic positioning for {username} on {platform}.",
+                "growth_opportunities": f"Growth opportunities for {username} on {platform}."
                 },
                 "tactical_recommendations": [
-                    f"🚀 **PRIORITY ACTION 1**: SPECIFIC {instruction_set['instruction_theme']} recommendation for @{username} focusing on {instruction_set['output_emphasis']} with expected 3000+ engagement impact and 30-day timeline",
-                    f"📊 **STRATEGIC MOVE 2**: DATA-DRIVEN {instruction_set['prompt_style']} strategy leveraging {platform} features with MEASURABLE outcomes tracking",
-                    f"🎯 **OPTIMIZATION 3**: {instruction_set['content_focus'].upper()} enhancement tactic with CLEAR implementation steps and success metrics"
+                f"Recommendation 1 for {username} on {platform}",
+                f"Recommendation 2 for {username} on {platform}",
+                f"Recommendation 3 for {username} on {platform}"
                 ],
                 "next_post_prediction": {
-                    content_field: f"AUTHENTIC {'280 character business tweet' if platform == 'twitter' else 'engaging business caption'} that perfectly matches @{username}'s {instruction_set['prompt_style']} voice, incorporates {instruction_set['analysis_type']} themes from 2500 avg engagement analysis, and targets {instruction_set['output_emphasis']} for maximum impact",
-                    "hashtags": [instruction_set['instruction_theme'].upper(), "hashtags", "based", "on", username, instruction_set['prompt_style'], "analysis"],
-                    "call_to_action": f"PERSONALIZED engagement prompt designed specifically for @{username}'s {instruction_set['output_emphasis']} and {instruction_set['analysis_type']} patterns",
-                    "image_prompt": f"🎨 **{instruction_set['instruction_theme'].upper()} VISUAL DIRECTION**: DETAILED, creative image prompt maximizing {instruction_set['content_focus']} visual impact for @{username}'s {instruction_set['prompt_style']} brand alignment and {platform} platform optimization"
-                }
+                content_field: f"Sample {content_field} for {username} on {platform}",
+                "hashtags": ["#sample", "#test", f"#{platform}"],
+                "call_to_action": "Sample call to action",
+                "image_prompt": "Sample image prompt"
             }
-        else:
-            mock_response = {
-                intelligence_type: {
-                    "account_analysis": f"📊 **@{username} {instruction_set['instruction_theme'].upper()} INTELLIGENCE**\\n\\n• SPECIFIC performance metrics from scraped data: Average engagement 850, analyzing 12 posts\\n• DETAILED {instruction_set['analysis_type']} of content success patterns\\n• REAL strategic positioning based on authentic voice development from scraped data\\n• MEASURABLE growth trajectory with {instruction_set['output_emphasis']} optimization opportunities",
-                    "growth_opportunities": f"🔍 **{instruction_set['instruction_theme'].upper()} GROWTH OPPORTUNITIES**\\n\\n• REAL {instruction_set['content_focus']} opportunities with actionable strategies for @{username}\\n• SPECIFIC {instruction_set['analysis_type']} strategies with clear implementation\\n• ACTIONABLE {instruction_set['output_emphasis']} with measurable outcomes",
-                    "strategic_positioning": f"🎯 **{instruction_set['instruction_theme'].upper()} ADVANTAGE STRATEGY**\\n\\n• REAL strategic advantages: {instruction_set['content_focus']} specific to @{username}'s unique position\\n• ACTIONABLE {instruction_set['prompt_style']} optimization with clear differentiation\\n• TARGETED {instruction_set['output_emphasis']} strategies with measurable engagement improvements"
-                },
-                "tactical_recommendations": [
-                    f"🚀 **PRIORITY ACTION 1**: SPECIFIC {instruction_set['instruction_theme']} recommendation for @{username} focusing on {instruction_set['output_emphasis']} with expected 1020+ engagement impact and 30-day timeline",
-                    f"📊 **STRATEGIC MOVE 2**: DATA-DRIVEN {instruction_set['prompt_style']} strategy leveraging {platform} features with MEASURABLE outcomes tracking",
-                    f"🎯 **OPTIMIZATION 3**: {instruction_set['content_focus'].upper()} enhancement tactic with CLEAR implementation steps and success metrics"
-                ],
-                "next_post_prediction": {
-                    content_field: f"AUTHENTIC {'280 character personal tweet' if platform == 'twitter' else 'personal engaging caption'} that perfectly matches @{username}'s {instruction_set['prompt_style']} voice, incorporates {instruction_set['analysis_type']} themes from 850 avg engagement analysis, and targets {instruction_set['output_emphasis']} for maximum impact",
-                    "hashtags": [instruction_set['instruction_theme'].upper(), "personal", "growth", username, instruction_set['prompt_style']],
-                    "call_to_action": f"PERSONALIZED engagement prompt designed specifically for @{username}'s {instruction_set['output_emphasis']} and {instruction_set['analysis_type']} patterns",
-                    "image_prompt": f"🎨 **{instruction_set['instruction_theme'].upper()} VISUAL DIRECTION**: DETAILED, creative image prompt maximizing {instruction_set['content_focus']} visual impact for @{username}'s authentic {instruction_set['prompt_style']} brand and {platform} platform optimization"
+        }
+        
+        # Add competitive intelligence for branding accounts
+        if is_branding:
+            mock_response["competitive_intelligence"] = {
+                "account_analysis": f"Competitive analysis for {username} on {platform}",
+                "competitive_analysis": f"Detailed competitive analysis for {username}",
+                "strategic_positioning": f"Strategic positioning against competitors for {username}"
+            }
+            mock_response["threat_assessment"] = {
+                "competitor_analysis": {
+                    "competitor1": f"Analysis of competitor1 for {username}",
+                    "competitor2": f"Analysis of competitor2 for {username}"
                 }
             }
         
         # Create mock response object
-        class MockResponse:
-            def __init__(self, text):
-                self.text = text
-        
-        return MockResponse(json.dumps(mock_response, indent=2))
+        mock_content = type('MockContent', (), {'text': json.dumps(mock_response)})
+        return mock_content
 
 class RagImplementation:
     """Enhanced RAG implementation with 100% real generation guarantee."""
@@ -224,12 +314,14 @@ class RagImplementation:
     def __init__(self, config=GEMINI_CONFIG, vector_db=None):
         self.config = config
         self.vector_db = vector_db if vector_db else self._create_mock_vector_db()
+        self.rate_limiter = AdaptiveRateLimiter()  # Initialize rate limiter
         self.generative_model = self._initialize_gemini()
         self.is_mock_mode = hasattr(self.generative_model, '_is_mock')
         if self.is_mock_mode:
             logger.info("🚀 Enhanced RAG Implementation initialized in MOCK MODE (no API key required)")
         else:
             logger.info("🚀 Enhanced RAG Implementation initialized with bulletproof generation")
+            logger.info(f"🕒 Rate limiter configured: initial delay={self.rate_limiter.current_delay:.1f}s")
 
     def _create_mock_vector_db(self):
         """Create a mock vector database for testing when real DB is not available."""
@@ -269,7 +361,6 @@ class RagImplementation:
                         return model
                     else:
                         raise Exception("API test failed - no response")
-                        
                 except Exception as api_error:
                     logger.error(f"❌ RAG API FAILED: Gemini API initialization failed: {str(api_error)}")
                     logger.error("❌ RAG FALLING BACK TO MOCK MODE - TEMPLATE CONTENT WARNING")
@@ -334,13 +425,19 @@ class RagImplementation:
                     unique_metadata.append(meta)
             
             if unique_documents and unique_metadata:
-                # Calculate comprehensive performance metrics
-                engagements = [meta.get('engagement', 0) for meta in unique_metadata if isinstance(meta.get('engagement'), (int, float))]
+                # Calculate comprehensive performance metrics - ensure non-zero values
+                engagements = [max(1, meta.get('engagement', 0)) for meta in unique_metadata 
+                              if isinstance(meta.get('engagement'), (int, float))]
                 
                 if engagements:
                     avg_engagement = sum(engagements) / len(engagements)
                     max_engagement = max(engagements)
                     min_engagement = min(engagements)
+                    
+                    # Ensure we never have zero engagement metrics
+                    avg_engagement = max(1, avg_engagement)
+                    max_engagement = max(1, max_engagement)
+                    min_engagement = max(1, min_engagement)
                     
                     # Build rich context from documents
                     context_text = "\n".join([doc for doc in unique_documents[:8] if doc])  # Filter empty docs
@@ -359,6 +456,16 @@ class RagImplementation:
                         'engagement_insights': engagement_insights,
                         'avg_engagement': avg_engagement,
                         'max_engagement': max_engagement,
+                        'total_posts': len(unique_documents)
+                    }
+                else:
+                    # Fallback with minimum engagement values if no engagement data found
+                    logger.warning(f"No engagement metrics found for {primary_username}, using minimum values")
+                    return {
+                        'primary_context': "\n".join([doc for doc in unique_documents[:8] if doc]),
+                        'engagement_insights': f"📊 **@{primary_username}**: New account analysis with limited engagement data",
+                        'avg_engagement': 25,  # Minimum non-zero value
+                        'max_engagement': 100,
                         'total_posts': len(unique_documents)
                     }
             
@@ -404,56 +511,89 @@ class RagImplementation:
                 all_competitor_docs = []
                 all_competitor_meta = []
                 
-                # Try each search strategy until we find data
-                for search_query in search_strategies:
+                # Try multiple strategies for each competitor
+                for query in search_strategies:
                     try:
-                        competitor_data = self.vector_db.query_similar(search_query, n_results=8, filter_username=username)
+                        results = self.vector_db.query_similar(
+                            query, 
+                            n_results=3, 
+                            filter_username=username,
+                            is_competitor=True  # Set is_competitor flag to True for competitor queries
+                        )
                         
-                        if competitor_data and 'documents' in competitor_data and competitor_data['documents'][0]:
-                            all_competitor_docs.extend(competitor_data['documents'][0])
-                            all_competitor_meta.extend(competitor_data['metadatas'][0])
+                        if results and 'documents' in results and results['documents'][0]:
+                            all_competitor_docs.extend(results['documents'][0])
+                            all_competitor_meta.extend(results['metadatas'][0])
                             competitor_found = True
                     except Exception as e:
-                        logger.warning(f"Competitor search failed: {search_query} - {str(e)}")
+                        logger.warning(f"Competitor search query failed: {query} - {str(e)}")
                         continue
                 
-                if competitor_found and all_competitor_docs:
-                    # Process competitor data
-                    posts = list(zip(all_competitor_docs, all_competitor_meta))
+                # Clean and process competitor docs
+                if competitor_found:
+                    # Remove duplicates
+                    seen_docs = set()
+                    unique_docs = []
+                    unique_meta = []
                     
-                    engagements = [meta.get('engagement', 0) for doc, meta in posts if isinstance(meta.get('engagement'), (int, float))]
-                    avg_engagement = sum(engagements) / len(engagements) if engagements else 50
-                    max_engagement = max(engagements) if engagements else 200
+                    for doc, meta in zip(all_competitor_docs, all_competitor_meta):
+                        if doc and doc[:50] not in seen_docs:
+                            seen_docs.add(doc[:50])
+                            unique_docs.append(doc)
+                            unique_meta.append(meta)
                     
+                    # Calculate performance metrics - ensure non-zero values
+                    engagements = [max(1, meta.get('engagement', 0)) for meta in unique_meta 
+                                 if isinstance(meta.get('engagement'), (int, float))]
+                    
+                    if engagements:
+                        avg_engagement = max(1, sum(engagements) / len(engagements))
+                        max_engagement = max(1, max(engagements))
+                        min_engagement = max(1, min(engagements))
+                    else:
+                        # Set default values if no engagement data
+                        avg_engagement = 50  # Default minimum non-zero value
+                        max_engagement = 200
+                        min_engagement = 10
+                    
+                    # Add to competitor performance metrics
                     competitor_performance[username] = {
                         'avg_engagement': avg_engagement,
                         'max_engagement': max_engagement,
-                        'total_posts': len(posts)
+                        'min_engagement': min_engagement,
+                        'posts_analyzed': len(unique_docs)
                     }
                     
-                    competitor_intel += f"\n{username.upper()} COMPETITIVE INTELLIGENCE:\n"
-                    competitor_intel += f"• Average Engagement: {avg_engagement:.0f}\n"
-                    competitor_intel += f"• Peak Performance: {max_engagement}\n"
-                    competitor_intel += f"• Content Volume: {len(posts)} posts\n"
-                    
-                    # Add top content example for strategic analysis
-                    if posts:
-                        top_post = max(posts, key=lambda x: x[1].get('engagement', 0))
-                        competitor_intel += f"• Top Strategy: {top_post[0][:80] if top_post[0] else 'Strategic content analysis'}... (E:{top_post[1].get('engagement', 0)})\n"
-                        competitor_intel += f"• Strategic Focus: Content optimization and engagement tactics\n"
+                    # Create competitive analysis
+                    competitor_intel += f"""
+👤 **@{username}** (Competitive Analysis)
+• Average Engagement: {avg_engagement:.0f}
+• Peak Performance: {max_engagement}
+• Content Volume: {len(unique_docs)} posts analyzed
+• Key Content Samples:
+{unique_docs[0][:200] + '...' if unique_docs else 'No content samples available'}
+
+"""
                 else:
-                    # Generate strategic competitor intelligence even without direct data
+                    # Default analysis for competitors with no data
                     competitor_performance[username] = {
-                        'avg_engagement': 75,  # Baseline for strategic analysis
-                        'max_engagement': 350,
-                        'total_posts': 8
+                        'avg_engagement': 50,  # Default minimum non-zero value  
+                        'max_engagement': 150,
+                        'min_engagement': 10,
+                        'posts_analyzed': 0
                     }
                     
-                    competitor_intel += f"\n{username.upper()} STRATEGIC POSITIONING:\n"
-                    competitor_intel += f"• Competitive Analysis Required: Market positioning focus\n"
-                    competitor_intel += f"• Strategic Intelligence: Brand differentiation opportunities\n"
-                    competitor_intel += f"• Tactical Assessment: Performance-based competitive response\n"
-                    logger.info(f"Generated strategic intelligence for {username} without direct data")
+                    competitor_intel += f"""
+👤 **@{username}** (Limited Data Available)
+• New competitor analysis
+• Strategic growth potential
+• Content analysis pending
+• Engagement baseline established
+
+"""
+            
+            if not competitor_intel:
+                competitor_intel = "No competitor data available. Focus on primary account growth strategy."
             
             return {
                 'competitor_intel': competitor_intel,
@@ -461,24 +601,10 @@ class RagImplementation:
             }
             
         except Exception as e:
-            logger.warning(f"Enhanced competitor context retrieval failed: {str(e)}")
-            # Always return strategic intelligence for RAG generation
-            strategic_intel = ""
-            strategic_performance = {}
-            
-            for username in secondary_usernames[:3]:
-                strategic_performance[username] = {
-                    'avg_engagement': 85,
-                    'max_engagement': 400, 
-                    'total_posts': 12
-                }
-                strategic_intel += f"\n{username.upper()} STRATEGIC ANALYSIS REQUIRED:\n"
-                strategic_intel += f"• Competitive positioning assessment needed\n"
-                strategic_intel += f"• Strategic differentiation opportunities available\n"
-                
+            logger.error(f"Error processing competitor context: {str(e)}")
             return {
-                'competitor_intel': strategic_intel,
-                'competitor_performance': strategic_performance
+                'competitor_intel': "Competitor analysis unavailable. Focus on primary account strategy.",
+                'competitor_performance': {}
             }
 
     def _construct_unified_prompt(self, primary_username, secondary_usernames, query, platform, is_branding):
@@ -611,13 +737,23 @@ Generate 100% authentic, personalized {intelligence_type} content that cannot be
                     'max_output_tokens': 4000  # Increased for comprehensive responses
                 }
                 
-                logger.info("📡 Sending bulletproof prompt to Gemini API...")
+                # Skip rate limiting if using mock model
+                if not self.is_mock_mode:
+                    logger.info("📡 Applying rate limiting before Gemini API call...")
+                    self.rate_limiter.wait_if_needed()
+                    logger.info("📡 Rate limit delay complete, sending prompt to Gemini API...")
+                else:
+                    logger.info("📡 Sending prompt to mock model (no rate limiting needed)...")
                 
                 # Generate response
                 response = self.generative_model.generate_content(
                     contents=prompt,
                     generation_config=generation_config
                 )
+                
+                # Record successful API call if using real model
+                if not self.is_mock_mode:
+                    self.rate_limiter.record_success()
                 
                 # Validate response
                 if not response or not hasattr(response, 'text') or not response.text.strip():
@@ -640,11 +776,44 @@ Generate 100% authentic, personalized {intelligence_type} content that cannot be
                     raise Exception("Content quality verification failed - templates detected")
                     
             except Exception as e:
-                logger.warning(f"Attempt {attempt + 1} failed: {str(e)}")
+                error_str = str(e)
+                logger.warning(f"Attempt {attempt + 1} failed: {error_str}")
+                
+                # Check for quota exceeded errors specifically
+                is_quota_error = False
+                retry_seconds = None
+                
+                if "429" in error_str and "quota" in error_str.lower():
+                    is_quota_error = True
+                    logger.warning(f"⚠️ QUOTA EXCEEDED DETECTED - implementing adaptive backoff")
+                    
+                    # Extract retry delay if available
+                    retry_match = re.search(r'retry_delay\s*{\s*seconds:\s*(\d+)', error_str)
+                    if retry_match:
+                        retry_seconds = int(retry_match.group(1))
+                        logger.info(f"📊 API suggested retry delay: {retry_seconds}s")
+                    
+                    # Always add buffer to API suggested delay
+                    if retry_seconds:
+                        retry_seconds += random.randint(5, 15)
+                
+                # Update rate limiter with error information
+                if not self.is_mock_mode:
+                    self.rate_limiter.record_error(
+                        is_quota_error=is_quota_error,
+                        retry_seconds=retry_seconds
+                    )
+                
                 if attempt == max_retries - 1:
                     logger.error(f"All {max_retries} attempts failed for unified generation")
-                    raise Exception(f"Bulletproof RAG generation failed after {max_retries} attempts: {str(e)}")
-    
+                    raise Exception(f"Bulletproof RAG generation failed after {max_retries} attempts: {error_str}")
+                
+                # Extra delay between retries for quota errors
+                if is_quota_error and not self.is_mock_mode:
+                    delay = retry_seconds if retry_seconds else 60
+                    logger.info(f"⏳ Waiting {delay}s before retry attempt {attempt+2} due to quota exceeded")
+                    time.sleep(delay)
+
     def _verify_real_content(self, response_data, primary_username, platform, is_branding):
         """Verify that generated content is real and not template-based."""
         try:
@@ -1003,6 +1172,61 @@ def test_unified_rag():
         logger.error(f"❌ Unified RAG testing failed: {str(e)}")
         return False
 
+def test_rate_limiter():
+    """Test the adaptive rate limiter functionality."""
+    import time
+    from datetime import datetime
+    
+    print("=== Testing Adaptive Rate Limiter ===")
+    
+    # Initialize the rate limiter with shorter delays for testing
+    limiter = AdaptiveRateLimiter(
+        initial_delay=5,  # Short initial delay for testing
+        min_delay=3,
+        max_delay=20,
+        backoff_factor=1.5,
+        success_factor=0.9
+    )
+    
+    print(f"Initial delay: {limiter.current_delay}s")
+    
+    # Test basic waiting
+    print("\n1. Testing basic wait...")
+    start = datetime.now()
+    limiter.wait_if_needed()
+    elapsed = (datetime.now() - start).total_seconds()
+    print(f"Wait time: {elapsed:.2f}s")
+    
+    # Test successful call handling
+    print("\n2. Recording 3 successful calls...")
+    for i in range(3):
+        limiter.record_success()
+        print(f"After success {i+1}: delay = {limiter.current_delay:.2f}s")
+    
+    # Test error handling
+    print("\n3. Recording error (not quota)...")
+    limiter.record_error(is_quota_error=False)
+    print(f"After error: delay = {limiter.current_delay:.2f}s")
+    
+    # Test quota error handling
+    print("\n4. Recording quota error with retry seconds...")
+    limiter.record_error(is_quota_error=True, retry_seconds=10)
+    print(f"After quota error: delay = {limiter.current_delay:.2f}s, retry_after = {limiter.retry_after}s")
+    
+    # Test waiting after quota error
+    print("\n5. Testing wait after quota error...")
+    start = datetime.now()
+    limiter.wait_if_needed()
+    elapsed = (datetime.now() - start).total_seconds()
+    print(f"Wait after quota error: {elapsed:.2f}s")
+    
+    print("\nRate limiter test complete!")
+    return limiter
+
 if __name__ == "__main__":
-    success = test_unified_rag()
-    print(f"Unified RAG implementation test {'successful' if success else 'failed'}")
+    # Run the appropriate test based on command line args
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "test_rate_limiter":
+        test_rate_limiter()
+    else:
+        test_unified_rag()

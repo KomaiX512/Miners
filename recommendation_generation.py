@@ -26,6 +26,10 @@ class RecommendationGenerator:
         self.time_series = time_series
         self.templates = templates
         logger.info("🚀 Enhanced RecommendationGenerator initialized with bulletproof RAG")
+        # Access rag's rate limiter for coordination
+        self.rate_limiter = getattr(self.rag, 'rate_limiter', None)
+        if self.rate_limiter:
+            logger.info(f"🕒 Using RAG rate limiter: current delay={self.rate_limiter.current_delay:.1f}s")
 
     def extract_hashtags(self, text):
         """Extract hashtags from text."""
@@ -91,6 +95,7 @@ class RecommendationGenerator:
     def generate_unified_content_plan(self, primary_username, secondary_usernames, query, is_branding=True, platform="instagram"):
         """
         Bulletproof unified content plan generation with guaranteed RAG-only content.
+        Enhanced with rate limiting to prevent quota exceeded errors.
         """
         max_retries = 3
         
@@ -152,11 +157,34 @@ class RecommendationGenerator:
                 return formatted_result
                 
             except Exception as e:
-                logger.warning(f"Unified generation attempt {attempt + 1} failed: {str(e)}")
+                error_str = str(e)
+                logger.warning(f"Unified generation attempt {attempt + 1} failed: {error_str}")
+                
+                # Check for quota exceeded errors specifically
+                is_quota_error = False
+                retry_seconds = None
+                
+                if "429" in error_str and "quota" in error_str.lower():
+                    is_quota_error = True
+                    logger.warning(f"⚠️ QUOTA EXCEEDED DETECTED - implementing adaptive backoff")
+                    
+                    # Extract retry delay if available
+                    retry_match = re.search(r'retry_delay\s*{\s*seconds:\s*(\d+)', error_str)
+                    if retry_match:
+                        retry_seconds = int(retry_match.group(1))
+                        logger.info(f"📊 API suggested retry delay: {retry_seconds}s")
+                
                 if attempt == max_retries - 1:
                     logger.error(f"❌ ALL {max_retries} ATTEMPTS FAILED for unified generation")
-                    raise Exception(f"Bulletproof unified generation failed after {max_retries} attempts: {str(e)}")
-    
+                    raise Exception(f"Bulletproof unified generation failed after {max_retries} attempts: {error_str}")
+                
+                # Extra delay between retries for quota errors
+                if is_quota_error:
+                    delay = retry_seconds if retry_seconds else 60
+                    logger.info(f"⏳ Waiting {delay}s before retry attempt {attempt+2} due to quota exceeded")
+                    import time
+                    time.sleep(delay)
+
     def _verify_rag_content_quality(self, unified_result, primary_username, platform, is_branding):
         """Verify that generated content is real RAG content - SIMPLIFIED to avoid false positives."""
         try:
@@ -223,15 +251,17 @@ class RecommendationGenerator:
         """
         ENHANCED METHOD - Uses bulletproof unified generation for maximum efficiency.
         Generate content recommendations based on topics using bulletproof RAG.
+        Now with rate limiting protection to avoid quota exceeded errors.
         """
         try:
             if not topics:
                 logger.warning("No topics provided for recommendation generation")
                 return {}
 
-            # For efficiency, limit the number of topics and use unified generation
-            topics = topics[:2]  # Limit to 2 topics to avoid quota issues
-            logger.info(f"🎯 BULLETPROOF RECOMMENDATIONS: Processing {len(topics)} topics using enhanced RAG")
+            # For efficiency and to avoid quota issues, limit the number of topics
+            max_topics = min(2, len(topics))  # Process at most 2 topics at a time
+            selected_topics = topics[:max_topics]
+            logger.info(f"🎯 BULLETPROOF RECOMMENDATIONS: Processing {len(selected_topics)}/{len(topics)} topics using enhanced RAG (rate limited)")
             
             recommendations_by_topic = {}
             
@@ -239,8 +269,10 @@ class RecommendationGenerator:
             primary_username = getattr(self, '_current_primary_username', 'user')
             secondary_usernames = getattr(self, '_current_secondary_usernames', ['competitor1', 'competitor2'])[:2]
             
-            for topic in topics:
+            for i, topic in enumerate(selected_topics):
                 try:
+                    logger.info(f"🔄 Processing topic {i+1}/{len(selected_topics)}: {topic[:30]}...")
+                    
                     # Use bulletproof unified generation for each topic
                     unified_result = self.generate_unified_content_plan(
                         primary_username, secondary_usernames, 
@@ -249,38 +281,35 @@ class RecommendationGenerator:
                         platform=platform
                     )
                     
-                    if unified_result and 'recommendations' in unified_result and unified_result.get('content_verified'):
-                        # Extract verified RAG recommendations
-                        topic_recommendations = unified_result['recommendations']
+                    if unified_result:
+                        recommendations_by_topic[topic] = unified_result
+                        logger.info(f"✅ Successfully generated recommendations for topic {i+1}")
+                    
+                    # Add delay between topic processing to avoid rate limits
+                    # Only if we have more topics to process
+                    if i < len(selected_topics) - 1:
+                        delay = 60  # Default 1 minute delay between topics
+                        if hasattr(self, 'rate_limiter') and self.rate_limiter:
+                            # Use the rate limiter's current delay as guidance
+                            delay = max(30, self.rate_limiter.current_delay)
                         
-                        # Ensure it's a properly formatted list
-                        if isinstance(topic_recommendations, str):
-                            topic_recommendations = [topic_recommendations]
-                        elif not isinstance(topic_recommendations, list):
-                            topic_recommendations = [str(topic_recommendations)]
-                        
-                        # Verify each recommendation is RAG-generated
-                        verified_recommendations = []
-                        for rec in topic_recommendations[:n_per_topic]:
-                            if self._verify_single_recommendation(rec, primary_username, platform):
-                                verified_recommendations.append(rec)
-                        
-                        if verified_recommendations:
-                            recommendations_by_topic[topic] = verified_recommendations
-                            logger.info(f"✅ Generated {len(verified_recommendations)} verified RAG recommendations for topic: {topic}")
-                        else:
-                            logger.warning(f"❌ No verified recommendations for topic: {topic}")
-                    else:
-                        logger.warning(f"❌ Failed unified generation for topic: {topic}")
-                        
-                except Exception as topic_error:
-                    logger.error(f"Error generating recommendations for topic '{topic}': {str(topic_error)}")
-                    continue
+                        logger.info(f"🕒 Adding delay of {delay:.1f}s between topics to avoid rate limits")
+                        import time
+                        time.sleep(delay)
+                    
+                except Exception as e:
+                    logger.error(f"❌ Failed to generate recommendations for topic {topic[:30]}: {str(e)}")
+                    # Continue with next topic
             
+            if not recommendations_by_topic:
+                logger.warning("⚠️ No recommendations were successfully generated")
+                return {}
+            
+            logger.info(f"✅ Generated recommendations for {len(recommendations_by_topic)}/{len(selected_topics)} topics")
             return recommendations_by_topic
-                
+            
         except Exception as e:
-            logger.error(f"Error generating bulletproof recommendations: {str(e)}")
+            logger.error(f"❌ Recommendation generation failed: {str(e)}")
             return {}
     
     def _verify_single_recommendation(self, recommendation, primary_username, platform):

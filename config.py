@@ -21,7 +21,11 @@ TIME_SERIES_CONFIG = {
 # Vector Database Configuration
 VECTOR_DB_CONFIG = {
     'collection_name': 'social_posts',
-    'embedding_model': 'all-MiniLM-L6-v2'  # Sentence transformer model
+    'embedding_model': 'all-MiniLM-L6-v2',  # Sentence transformer model
+    'hnsw_space': 'cosine',
+    'hnsw_M': 16,  # Higher M value for better performance, default is too small
+    'hnsw_ef_construction': 100,  # Higher ef_construction value for better indexing
+    'hnsw_ef_search': 20  # Higher ef_search value for more reliable search results
 }
 
 # Gemini API Configuration
@@ -31,7 +35,9 @@ GEMINI_CONFIG = {
     'max_tokens': 2000,
     'temperature': 0.2,  # Lower temperature for more focused, analytical responses
     'top_p': 0.95,       # Slightly more deterministic for business analysis
-    'top_k': 40          # Broader selection of tokens for more detailed responses
+    'top_k': 40,         # Broader selection of tokens for more detailed responses
+    'twitter_enabled': True,  # Enable Twitter-specific processing
+    'platform_detection': True  # Enable automatic platform detection
 }
 
 # Content Templates
