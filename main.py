@@ -82,7 +82,6 @@ def start_module2_thread():
     thread.start()
     logger.info("Module2 thread started")
     return thread
-
 class ContentRecommendationSystem:
     """Class for the complete content recommendation system."""
     def __init__(self):
@@ -127,7 +126,7 @@ class ContentRecommendationSystem:
         )
         self.r2_storage = R2StorageManager()
         self.running = False  # Flag for controlling processing loops
-    
+
     def _check_vector_db_health(self):
         """Check if the vector database is healthy and working properly."""
         try:
@@ -1092,7 +1091,7 @@ class ContentRecommendationSystem:
             competitor_insights = {
                 "overview": "",
                 "strengths": [],
-                "vulnerabilities": [],
+                "vulnerabilities": [], 
                 "strategies": [],
                 "themes": [],
                 "recommendations": [],
@@ -1264,7 +1263,6 @@ class ContentRecommendationSystem:
                 "recommended_counter_strategies": [f"Strategy development for {competitor_username}"],
                 "top_content_themes": []
             }
-
     def _extract_rag_competitor_insights(self, rag_content, competitor_name):
         """Extract specific competitor insights from RAG content."""
         try:
@@ -1310,7 +1308,6 @@ class ContentRecommendationSystem:
                 "differentiation": f"RAG differentiation analysis needed for {competitor_name}",
                 "opportunity": f"RAG opportunity analysis needed for {competitor_name}"
             }
-
     def _extract_main_intelligence_module(self, recommendation, is_branding, platform):
         """Extract main intelligence module with proper platform support (Twitter/Instagram) and account type (brand/personal)."""
         
@@ -5327,7 +5324,7 @@ class ContentRecommendationSystem:
             logger.error(f"Error analyzing competitor from vector: {str(e)}")
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
-            return {
+        return {
                 "overview": f"Error analyzing {competitor_username}. {str(e)}",
                 "intelligence_source": "error",
                 "engagement_metrics": {"average_engagement": 0, "posts_analyzed": 0}

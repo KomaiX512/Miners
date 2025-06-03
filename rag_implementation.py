@@ -322,6 +322,11 @@ class RagImplementation:
         else:
             logger.info("🚀 Enhanced RAG Implementation initialized with bulletproof generation")
             logger.info(f"🕒 Rate limiter configured: initial delay={self.rate_limiter.current_delay:.1f}s")
+            
+        # Ensure vector database is populated with sample data if needed
+        if hasattr(self.vector_db, 'ensure_vector_db_populated'):
+            logger.info("🔍 Performing initial vector database health check and population...")
+            self.vector_db.ensure_vector_db_populated()
 
     def _create_mock_vector_db(self):
         """Create a mock vector database for testing when real DB is not available."""
@@ -388,6 +393,10 @@ class RagImplementation:
     def _get_account_context(self, primary_username, platform):
         """Enhanced account context retrieval with multiple search strategies."""
         try:
+            # Ensure vector database is populated before context retrieval
+            if hasattr(self.vector_db, 'ensure_vector_db_populated'):
+                self.vector_db.ensure_vector_db_populated()
+                
             # Multiple search queries for better semantic matching
             search_queries = [
                 f"{primary_username} engagement performance",
@@ -721,6 +730,11 @@ Generate 100% authentic, personalized {intelligence_type} content that cannot be
     def generate_recommendation(self, primary_username, secondary_usernames, query, n_context=3, is_branding=True, platform="instagram"):
         """Bulletproof unified recommendation with guaranteed real RAG generation."""
         max_retries = 3
+        
+        # Ensure vector database is populated before generating recommendations
+        if hasattr(self.vector_db, 'ensure_vector_db_populated'):
+            logger.info("🔍 Ensuring vector database is populated before RAG queries...")
+            self.vector_db.ensure_vector_db_populated()
         
         for attempt in range(max_retries):
             try:

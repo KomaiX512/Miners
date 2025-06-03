@@ -30,6 +30,11 @@ class RecommendationGenerator:
         self.rate_limiter = getattr(self.rag, 'rate_limiter', None)
         if self.rate_limiter:
             logger.info(f"🕒 Using RAG rate limiter: current delay={self.rate_limiter.current_delay:.1f}s")
+            
+        # Ensure the vector database is populated if available
+        if hasattr(self.rag, 'vector_db') and self.rag.vector_db and hasattr(self.rag.vector_db, 'ensure_vector_db_populated'):
+            logger.info("🔍 Ensuring vector database is populated during recommendation generator initialization...")
+            self.rag.vector_db.ensure_vector_db_populated()
 
     def extract_hashtags(self, text):
         """Extract hashtags from text."""
