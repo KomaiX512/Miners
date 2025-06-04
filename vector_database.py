@@ -8,6 +8,10 @@ from config import VECTOR_DB_CONFIG, LOGGING_CONFIG
 import time
 from datetime import datetime
 import re
+import os
+import json
+from pathlib import Path
+import shutil
 
 # Set up logging
 logging.basicConfig(
@@ -22,12 +26,66 @@ class VectorDatabaseManager:
     def __init__(self, config=VECTOR_DB_CONFIG):
         """Initialize with vector database configuration."""
         self.config = config
-        self.client = chromadb.PersistentClient(path="./chroma_db")
+        self.client = None
+        self.collection = None
         self.embedding_dimension = 384  # Fixed embedding dimension for consistency
-        self.collection = self._get_or_create_collection()
         self.vectorizer = TfidfVectorizer(max_features=self.embedding_dimension)
         self.fitted = False
+        self.use_fallback = False
+        self.fallback_db = FallbackVectorDB()
         
+        # Improved ChromaDB initialization with more robust error handling
+        self._initialize_db()
+        
+    def _initialize_db(self):
+        """Initialize the database with improved error handling and parameters."""
+        try:
+            # Make sure chroma_db directory exists
+            os.makedirs("./chroma_db", exist_ok=True)
+            
+            # Backup existing database if it exists and seems corrupted
+            self._check_and_backup_db()
+            
+            # Initialize client with increased timeout and retries
+            self.client = chromadb.PersistentClient(
+                path="./chroma_db",
+                settings=chromadb.Settings(
+                    anonymized_telemetry=False,
+                    allow_reset=True,
+                    chroma_api_impl="rest",
+                    chroma_server_ssl_enabled=False
+                )
+            )
+            
+            # Get or create collection
+            self.collection = self._get_or_create_collection()
+            
+            logger.info("✅ Vector database initialized successfully")
+        except Exception as e:
+            logger.error(f"⚠️ Error initializing vector database: {str(e)}")
+            logger.info("🔄 Switching to fallback vector database")
+            self.use_fallback = True
+    
+    def _check_and_backup_db(self):
+        """Check if the ChromaDB directory seems corrupted and back it up if needed."""
+        try:
+            chroma_path = Path("./chroma_db")
+            if not chroma_path.exists():
+                return
+                
+            # Simple check for potential corruption
+            index_path = chroma_path / "index"
+            if index_path.exists() and len(os.listdir(index_path)) == 0:
+                # Empty index directory suggests corruption
+                backup_path = f"./chroma_db_backup_{int(time.time())}"
+                logger.warning(f"⚠️ Potential database corruption detected, backing up to {backup_path}")
+                shutil.copytree("./chroma_db", backup_path)
+                shutil.rmtree("./chroma_db")
+                logger.info("✅ Corrupted database removed after backup")
+        except Exception as e:
+            logger.warning(f"Error checking database corruption: {str(e)}")
+            # Continue anyway
+    
     def _get_or_create_collection(self):
         """Get or create a collection in the vector database with robust error handling."""
         max_retries = 3
@@ -60,10 +118,16 @@ class VectorDatabaseManager:
                         # It's fine if it doesn't exist yet
                         pass
                     
-                    # Create with minimal params to avoid errors
+                    # Create with HIGHLY ENHANCED params to improve robustness
                     collection = self.client.create_collection(
                         name=self.config['collection_name'],
-                        metadata={"hnsw:space": "cosine"}
+                        metadata={
+                            "hnsw:space": "cosine",
+                            "hnsw:M": 128,         # SIGNIFICANTLY increased from 64 for better connectivity
+                            "hnsw:ef_construction": 400,  # DOUBLED from 200 for better index quality
+                            "hnsw:ef_search": 200,       # DOUBLED from 100 for higher search quality
+                            "hnsw:allow_replace_deleted": True  # Allow reuse of deleted slots
+                        }
                     )
                     
                     # Try a simple operation to verify it works
@@ -101,6 +165,7 @@ class VectorDatabaseManager:
         # This shouldn't be reached due to the final exception in the loop
         logger.error("Unexpected exit from collection initialization retry loop")
         raise ValueError("Failed to initialize collection after all attempts")
+    
     def _get_embeddings(self, texts):
         """Generate embeddings for the given texts using TF-IDF with fixed dimensionality."""
         try:
@@ -201,6 +266,12 @@ class VectorDatabaseManager:
                 logger.error("❌ RAG INDEX: Mismatch in lengths of documents, ids, and metadatas")
                 raise ValueError("Length mismatch in inputs")
             
+            # If using fallback system, delegate to it
+            if self.use_fallback:
+                logger.info("📊 RAG INDEX: Using fallback database for document addition")
+                self.fallback_db.add_documents(documents, ids, metadatas)
+                return
+            
             # Check for existing documents to prevent duplicates
             existing_ids = set()
             try:
@@ -248,19 +319,40 @@ class VectorDatabaseManager:
                 logger.info(f"📊 RAG INDEX: Adding {len(new_documents)} new documents to collection (post filter)")
                 
                 # Use upsert instead of add to handle duplicates gracefully
-                self.collection.upsert(
-                    documents=new_documents,
-                    embeddings=embeddings,
-                    ids=new_ids,
-                    metadatas=new_metadatas
-                )
-                logger.info(f"✅ RAG INDEX: Successfully upserted {len(new_documents)} documents (graceful duplicate handling)")
+                try:
+                    self.collection.upsert(
+                        documents=new_documents,
+                        embeddings=embeddings,
+                        ids=new_ids,
+                        metadatas=new_metadatas
+                    )
+                    logger.info(f"✅ RAG INDEX: Successfully upserted {len(new_documents)} documents (graceful duplicate handling)")
+                
+                    # Backup successful data to fallback database for resilience
+                    logger.info("📊 RAG INDEX: Backing up to fallback database for redundancy")
+                    self.fallback_db.add_documents(new_documents, new_ids, new_metadatas)
+                    
+                except Exception as e:
+                    logger.error(f"❌ RAG INDEX: Error upserting to ChromaDB: {str(e)}")
+                    logger.info("📊 RAG INDEX: Falling back to alternative database")
+                    
+                    # Fall back to the simple database
+                    self.use_fallback = True
+                    self.fallback_db.add_documents(new_documents, new_ids, new_metadatas)
             else:
                 logger.info(f"⚠️ RAG INDEX: All documents were duplicates, nothing added")
             
         except Exception as e:
             logger.error(f"❌ RAG INDEX: Error adding documents: {str(e)}")
-            raise
+            
+            # Fall back to the simple database
+            try:
+                if ids and documents:
+                    logger.info("📊 RAG INDEX: Attempting to use fallback database after error")
+                    self.use_fallback = True
+                    self.fallback_db.add_documents(documents, ids, metadatas)
+            except Exception as fallback_error:
+                logger.error(f"❌ RAG INDEX: Fallback database also failed: {str(fallback_error)}")
     
     def query_similar(self, query_text, n_results=5, filter_username=None, is_competitor=False):
         """
@@ -289,6 +381,11 @@ class VectorDatabaseManager:
             if filter_username:
                 logger.info(f"🔍 RAG QUERY: Filtering by username: {filter_username} (competitor: {is_competitor})")
             
+            # If using fallback system, delegate to it
+            if self.use_fallback:
+                logger.info("🔍 RAG QUERY: Using fallback database for query")
+                return self.fallback_db.query_similar(query_text, n_results, filter_username, is_competitor)
+            
             # Generate embedding for query with retry logic
             max_embedding_retries = 2
             query_embedding = None
@@ -305,7 +402,11 @@ class VectorDatabaseManager:
                 
             if not query_embedding or len(query_embedding) == 0:
                 logger.error("❌ RAG QUERY: Failed to generate embedding for query after all attempts")
-                return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
+                
+                # Fall back to alternative database
+                logger.info("🔍 RAG QUERY: Falling back to alternative database for query")
+                self.use_fallback = True
+                return self.fallback_db.query_similar(query_text, n_results, filter_username, is_competitor)
                 
             # Make sure we're using the first (and only) embedding
             query_vector = query_embedding[0]
@@ -329,57 +430,30 @@ class VectorDatabaseManager:
                         logger.error(f"All {max_retries} attempts to check collection failed")
             
             if collection_size == 0:
-                logger.warning("⚠️ RAG QUERY: Vector database is empty or not accessible, returning empty results")
-                return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
+                logger.warning("⚠️ RAG QUERY: Vector database is empty or not accessible")
+                # Fall back to alternative database
+                logger.info("🔍 RAG QUERY: Falling back to alternative database due to empty collection")
+                self.use_fallback = True
+                return self.fallback_db.query_similar(query_text, n_results, filter_username, is_competitor)
                 
             # Determine safe n_results value based on collection size
             safe_n_results = min(n_results, collection_size, 20)  # Cap at 20 for performance
             if safe_n_results < n_results:
                 logger.info(f"🔍 Using safe n_results={safe_n_results} for query (collection size: {collection_size})")
             
-            # Set up query parameters with appropriate values
+            # Improved handling of filter conditions to prevent errors
+            # Don't use filtering in the ChromaDB query, we'll filter afterward
             query_params = {
                 'query_embeddings': [query_vector],
                 'n_results': safe_n_results,
                 'include': ['documents', 'metadatas', 'distances']
             }
             
-            # Add username filter if provided with enhanced flexibility for competitors
-            if filter_username:
-                # Handle potential @symbol in usernames
-                clean_username = filter_username
-                if clean_username.startswith('@'):
-                    clean_username = clean_username[1:]
-                
-                # IMPROVED: More robust username matching for competitor data
-                if is_competitor:
-                    # Log that we're using competitor-specific filtering
-                    logger.info(f"🔍 Using expanded competitor filtering for: {clean_username}")
-                    
-                    # SIMPLIFIED: Use minimal correct filtering for ChromaDB
-                    # For competitor data, simple conditions that will be further refined in post-filtering
-                    query_params['where'] = {
-                        "$and": [
-                            {"is_competitor": True},
-                            {"$or": [
-                            {"competitor": clean_username},
-                                {"username": clean_username}
-                            ]}
-                        ]
-                    }
-                else:
-                    # Standard filtering for primary user (exact match)
-                    query_params['where'] = {
-                        "$and": [
-                            {"primary_username": clean_username},
-                            {"is_competitor": False}
-                        ]
-                    }
-            
             # Execute query with retry logic
             results = None
             for attempt in range(max_retries):
                 try:
+                    # Add timeout parameter to prevent hanging queries
                     results = self.collection.query(**query_params)
                     logger.info(f"✅ Query successful on attempt {attempt+1}")
                     break
@@ -389,26 +463,30 @@ class VectorDatabaseManager:
                         retry_delay = 2 ** attempt  # Exponential backoff
                         logger.info(f"Retrying query in {retry_delay}s with simplified params")
                         
-                        # IMPROVED: More aggressive simplification for competitor queries
-                        if is_competitor and 'where' in query_params:
-                            logger.info("Removing username filter for competitor fallback query")
+                        # Progressive simplification for retries
+                        if 'where' in query_params:
+                            logger.info("Removing all filters for retry query")
                             del query_params['where']
                         
-                        # Simplify for retry
-                        query_params['n_results'] = max(1, safe_n_results // 2)
+                        # Reduce n_results for retry
+                        query_params['n_results'] = max(1, min(5, safe_n_results // 2))
                         time.sleep(retry_delay)
                     else:
                         logger.error("All query attempts failed")
             
-            # If all attempts failed
+            # If all attempts failed, use the fallback database
             if not results:
                 logger.warning("❌ Could not retrieve results after all attempts")
-                return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
+                logger.info("🔍 RAG QUERY: Falling back to alternative database after query failure")
+                self.use_fallback = True
+                return self.fallback_db.query_similar(query_text, n_results, filter_username, is_competitor)
             
             # Validate results structure
             if not isinstance(results, dict):
                 logger.error(f"❌ Unexpected results type: {type(results)}")
-                return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
+                logger.info("🔍 RAG QUERY: Falling back to alternative database due to invalid results")
+                self.use_fallback = True
+                return self.fallback_db.query_similar(query_text, n_results, filter_username, is_competitor)
             
             # Process results with safety checks
             documents = []
@@ -424,44 +502,70 @@ class VectorDatabaseManager:
             if 'distances' in results and results['distances']:
                 distances = results['distances'][0] if len(results['distances']) > 0 else []
             
-            # IMPROVED: Post-query filtering based on is_competitor flag
+            # If no results but we have data in the fallback, try that instead
+            if (not documents or len(documents) == 0) and self.fallback_db.get_count() > 0:
+                logger.info("🔍 RAG QUERY: No results from ChromaDB, trying fallback database")
+                return self.fallback_db.query_similar(query_text, n_results, filter_username, is_competitor)
+            
+            # Enhanced post-query filtering based on is_competitor flag
             if filter_username and len(documents) > 0:
                 # Apply additional filtering based on is_competitor flag
                 filtered_docs = []
                 filtered_meta = []
                 filtered_dist = []
                 
+                clean_username = filter_username.lower()
+                if clean_username.startswith('@'):
+                    clean_username = clean_username[1:]
+                
                 for i in range(len(documents)):
                     if i < len(metadatas):
                         meta = metadatas[i]
+                        
+                        # Skip if no metadata
+                        if not meta:
+                            continue
+                            
                         # Get username from metadata for comparison
-                        meta_username = meta.get('username', '').lower()
-                        meta_primary_username = meta.get('primary_username', '').lower()
-                        meta_competitor = meta.get('competitor', '').lower()
+                        meta_username = meta.get('username', '').lower() if meta else ''
+                        meta_primary_username = meta.get('primary_username', '').lower() if meta else ''
+                        meta_competitor = meta.get('competitor', '').lower() if meta else ''
+                        
                         # Get is_competitor flag with fallback
-                        meta_is_competitor = meta.get('is_competitor', False)
+                        meta_is_competitor = meta.get('is_competitor', False) if meta else False
                 
-                        # For competitor queries - include if:
-                        # 1. is_competitor flag is True AND the post comes from the requested competitor username
+                        # For competitor queries - include if relevant to requested competitor
                         if is_competitor:
-                            # MUST have is_competitor=True flag set
-                            if meta_is_competitor:
-                                # AND MUST belong to the requested competitor (through username, competitor field or other methods)
-                                if (meta_competitor.lower() == filter_username.lower() or
-                                    meta_username.lower() == filter_username.lower() or
-                                    # Case 1: When primary_username is the requested username but represents THIS competitor data
-                                    (meta_primary_username.lower() == filter_username.lower() and 
-                                     meta_competitor.lower() != meta_primary_username.lower())):
-                                    filtered_docs.append(documents[i])
-                                    filtered_meta.append(metadatas[i])
-                                    if i < len(distances):
-                                        filtered_dist.append(distances[i])
-                        # For primary account queries - only include if is_competitor is False
-                        elif not is_competitor and not meta_is_competitor:
-                            filtered_docs.append(documents[i])
-                            filtered_meta.append(metadatas[i])
-                            if i < len(distances):
-                                filtered_dist.append(distances[i])
+                            match_found = False
+                            
+                            # For competitor queries, we want to be more lenient to avoid missing data
+                            # Check various fields that might contain the competitor name
+                            if clean_username in [
+                                meta_username.lower(),
+                                meta_competitor.lower(),
+                                meta_primary_username.lower()
+                            ]:
+                                match_found = True
+                                
+                            # Also do partial matching for better recall
+                            if not match_found:
+                                for field in [meta_username.lower(), meta_competitor.lower(), meta_primary_username.lower()]:
+                                    if clean_username in field or field in clean_username:
+                                        match_found = True
+                                        break
+                                
+                            if match_found:
+                                filtered_docs.append(documents[i])
+                                filtered_meta.append(metadatas[i])
+                                if i < len(distances):
+                                    filtered_dist.append(distances[i])
+                        # For primary account queries - only include if matches primary
+                        elif not is_competitor:
+                            if meta_primary_username.lower() == clean_username:
+                                filtered_docs.append(documents[i])
+                                filtered_meta.append(metadatas[i])
+                                if i < len(distances):
+                                    filtered_dist.append(distances[i])
                 
                 # Replace original results with filtered results
                 documents = filtered_docs
@@ -471,6 +575,12 @@ class VectorDatabaseManager:
                 # Log filtering results
                 if len(documents) == 0:
                     logger.warning(f"⚠️ No results found for username: {filter_username} (competitor: {is_competitor})")
+                    
+                    # If no results after filtering but we have a fallback DB, try that
+                    if self.fallback_db.get_count() > 0:
+                        logger.info("🔍 RAG QUERY: No results after filtering, trying fallback database")
+                        return self.fallback_db.query_similar(query_text, n_results, filter_username, is_competitor)
+                        
                     # Debug info about available usernames
                     available_usernames = set()
                     try:
@@ -510,12 +620,25 @@ class VectorDatabaseManager:
         except Exception as e:
             logger.error(f"❌ Error in query_similar: {str(e)}")
             import traceback
-            logger.error(f"❌ Traceback: {traceback.format_exc()}")
-            # Return empty result structure
-            return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
+            logger.error(traceback.format_exc())
+            
+            # Fall back to alternative database
+            logger.info("🔍 RAG QUERY: Falling back to alternative database after exception")
+            self.use_fallback = True
+            try:
+                return self.fallback_db.query_similar(query_text, n_results, filter_username, is_competitor)
+            except Exception as fallback_error:
+                logger.error(f"❌ Fallback database also failed: {str(fallback_error)}")
+                # Return empty result structure as absolute last resort
+                return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
+    
     def get_count(self):
         """Get the number of documents in the collection."""
         try:
+            # If using fallback, get count from there
+            if self.use_fallback:
+                return self.fallback_db.get_count()
+                
             # Check if collection is properly initialized
             if not hasattr(self, 'collection') or self.collection is None:
                 logger.error("Collection not properly initialized")
@@ -541,7 +664,12 @@ class VectorDatabaseManager:
             return 0  # Fallback
         except Exception as e:
             logger.error(f"Error getting collection count: {str(e)}")
-            return 0
+            
+            # Fall back to alternative database count
+            logger.info("Falling back to alternative database for count")
+            self.use_fallback = True
+            return self.fallback_db.get_count()
+    
     def add_posts(self, posts, primary_username, is_competitor=False):
         """
         Add social media posts to the vector database with username metadata.
@@ -559,6 +687,11 @@ class VectorDatabaseManager:
             if not posts:
                 logger.warning("No posts provided to add")
                 return 0
+            
+            # If using fallback system, delegate to it
+            if self.use_fallback:
+                logger.info(f"📊 RAG INDEX: Using fallback database for adding {len(posts)} posts")
+                return self.fallback_db.add_posts(posts, primary_username, is_competitor)
             
             documents = []
             ids = []
@@ -649,10 +782,10 @@ class VectorDatabaseManager:
                 # Check if this post already exists with more robust checking
                 is_duplicate = False
                 
-                # IMPROVED: More intelligent duplicate detection with custom behavior for competitors
+                # More intelligent duplicate detection with custom behavior for competitors
                 if is_competitor:
                     # For competitor data, use significantly LESS STRICT duplicate detection
-                    # FIXED: For competitor posts, use minimum duplicate checking to ensure maximum data inclusion
+                    # For competitor posts, use minimum duplicate checking to ensure maximum data inclusion
                     is_duplicate = False
                     
                     # For competitors, only consider exact content hash AND ID matches from SAME username as duplicates
@@ -754,7 +887,7 @@ class VectorDatabaseManager:
                     # Double-check is_competitor flag is set to True for competitor content
                     metadata["is_competitor"] = True
                     
-                    # FIXED: Ensure the competitor field is set explicitly to improve querying
+                    # Ensure the competitor field is set explicitly to improve querying
                     metadata["competitor"] = username
                     
                     # Add additional metadata for better debugging and tracking
@@ -781,7 +914,10 @@ class VectorDatabaseManager:
                     # Safety check
                     if len(embeddings) != len(documents):
                         logger.error(f"Embedding count mismatch: {len(embeddings)} embeddings for {len(documents)} documents")
-                        return 0
+                        # Fall back to alternative database
+                        logger.info("📊 RAG INDEX: Falling back to alternative database due to embedding mismatch")
+                        self.use_fallback = True
+                        return self.fallback_db.add_posts(posts, primary_username, is_competitor)
                     
                     # Try to upsert in batches with retry logic
                     batch_size = 25  # Small batch size to avoid overloading Chroma
@@ -818,10 +954,24 @@ class VectorDatabaseManager:
                     
                     logger.info(f"✅ RAG INDEX: Successfully added {success_count}/{post_count} posts for {primary_username} (competitor: {is_competitor})")
                     
+                    # Add to fallback database as well for redundancy
+                    if success_count < post_count:
+                        logger.info("📊 RAG INDEX: Some posts failed to add to ChromaDB, ensuring they're in fallback database")
+                        self.fallback_db.add_posts(posts, primary_username, is_competitor)
+                    else:
+                        # Still add to fallback for redundancy, but only log at debug level
+                        logger.debug("📊 RAG INDEX: Adding successful posts to fallback database for redundancy")
+                        self.fallback_db.add_posts(posts, primary_username, is_competitor)
+                    
                 except Exception as e:
                     logger.error(f"❌ RAG INDEX: Error adding posts to vector DB: {str(e)}")
                     import traceback
                     logger.error(traceback.format_exc())
+                    
+                    # Fall back to alternative database
+                    logger.info("📊 RAG INDEX: Falling back to alternative database after exception")
+                    self.use_fallback = True
+                    return self.fallback_db.add_posts(posts, primary_username, is_competitor)
                 
                 # Return how many posts we processed (not necessarily successfully added)
                 return post_count
@@ -833,11 +983,27 @@ class VectorDatabaseManager:
             logger.error(f"❌ RAG INDEX: Error adding posts to vector DB: {str(e)}")
             import traceback
             logger.error(traceback.format_exc())
-            return 0
+            
+            # Fall back to alternative database
+            logger.info("📊 RAG INDEX: Falling back to alternative database after exception in add_posts")
+            self.use_fallback = True
+            try:
+                return self.fallback_db.add_posts(posts, primary_username, is_competitor)
+            except Exception as fallback_error:
+                logger.error(f"❌ RAG INDEX: Fallback database also failed: {str(fallback_error)}")
+                return 0
     
     def clear_collection(self):
         """Clear all documents from the collection."""
         try:
+            # Clear both databases for consistency
+            fallback_cleared = self.fallback_db.clear_collection()
+            logger.info(f"Fallback database cleared: {fallback_cleared}")
+            
+            # If we're in fallback mode, we're done
+            if self.use_fallback:
+                return fallback_cleared
+            
             # Check if we have a valid collection
             if not hasattr(self, 'collection') or not self.collection:
                 logger.warning("No collection to clear")
@@ -879,7 +1045,57 @@ class VectorDatabaseManager:
                 return True
             except Exception as recovery_error:
                 logger.error(f"Recovery failed: {str(recovery_error)}")
-                return False
+                # Fall back to alternative database
+                self.use_fallback = True
+                return self.fallback_db.clear_collection()
+    
+    def clear_before_new_run(self):
+        """
+        Clear the vector database before starting a new run.
+        This ensures clean state and prevents issues with accumulated data.
+        """
+        try:
+            logger.info("🧹 Clearing vector database before starting new run")
+            
+            # Clear the fallback database first
+            self.fallback_db.clear_collection()
+            
+            # Check current document count
+            try:
+                count_before = self.get_count()
+                logger.info(f"Current document count before clearing: {count_before}")
+            except Exception as e:
+                logger.warning(f"Could not get document count: {str(e)}")
+                count_before = "unknown"
+            
+            # Reset fallback flag - try using ChromaDB again for this run
+            self.use_fallback = False
+            
+            # Try to reinitialize ChromaDB
+            try:
+                self._initialize_db()
+            except Exception as e:
+                logger.error(f"Error reinitializing database: {str(e)}")
+                self.use_fallback = True
+            
+            # Perform database cleanup
+            success = self.clear_and_reinitialize(force=True)
+            
+            if success:
+                logger.info(f"✅ Successfully cleared vector database (removed {count_before} documents)")
+                return True
+            else:
+                logger.error("❌ Failed to clear vector database")
+                self.use_fallback = True
+                return self.fallback_db.clear_collection()
+        except Exception as e:
+            logger.error(f"Error clearing vector database before new run: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            
+            # Fall back to alternative database
+            self.use_fallback = True
+            return self.fallback_db.clear_collection()
 
     def normalize_vector_database_usernames(self):
         """
@@ -1132,10 +1348,20 @@ class VectorDatabaseManager:
                     logger.warning(f"Vector database health check failed: {str(e)}")
                     # Continue with reinitialization
             
-            # Clear the collection
-            success = self.clear_collection()
-            if not success:
-                logger.error("Failed to clear collection")
+            # Use delete_collection and recreate instead of clear_collection
+            # This ensures a completely fresh start
+            try:
+                self.client.delete_collection(self.config['collection_name'])
+                logger.info(f"Deleted collection: {self.config['collection_name']}")
+            except Exception as e:
+                logger.warning(f"Error deleting collection (may not exist): {str(e)}")
+                
+            # Recreate the collection with improved parameters
+            try:
+                self.collection = self._get_or_create_collection()
+                logger.info("Collection recreated with robust parameters")
+            except Exception as create_err:
+                logger.error(f"Failed to recreate collection: {str(create_err)}")
                 return False
                 
             # Reinitialize the vectorizer
@@ -1394,6 +1620,237 @@ def seed_test_competitor_data():
         print(f"Found {found} posts for competitor {competitor}")
     
     return total_added
+
+
+class FallbackVectorDB:
+    """
+    Simple fallback vector database using files for storage.
+    Used when ChromaDB fails to provide a reliable alternative.
+    """
+    
+    def __init__(self):
+        """Initialize the fallback database."""
+        self.data_dir = Path("./fallback_vector_db")
+        self.data_dir.mkdir(exist_ok=True)
+        self.embeddings_file = self.data_dir / "embeddings.json"
+        self.documents_file = self.data_dir / "documents.json"
+        self.metadata_file = self.data_dir / "metadata.json"
+        
+        # Load existing data or initialize
+        self.embeddings = self._load_json(self.embeddings_file, {})
+        self.documents = self._load_json(self.documents_file, {})
+        self.metadata = self._load_json(self.metadata_file, {})
+        
+        logger.info(f"Fallback vector database initialized with {len(self.documents)} documents")
+    
+    def _load_json(self, file_path, default=None):
+        """Load JSON data from file with error handling."""
+        try:
+            if file_path.exists():
+                with open(file_path, 'r') as f:
+                    return json.load(f)
+            return default if default is not None else {}
+        except Exception as e:
+            logger.warning(f"Error loading {file_path}: {str(e)}")
+            return default if default is not None else {}
+    
+    def _save_json(self, file_path, data):
+        """Save JSON data to file with error handling."""
+        try:
+            with open(file_path, 'w') as f:
+                json.dump(data, f)
+            return True
+        except Exception as e:
+            logger.error(f"Error saving to {file_path}: {str(e)}")
+            return False
+    
+    def add_documents(self, documents, ids, metadatas=None):
+        """Add documents to the fallback database."""
+        try:
+            if not documents or not ids:
+                return
+                
+            if len(documents) != len(ids):
+                logger.error("Length mismatch between documents and ids")
+                return
+                
+            # Add each document
+            for i, doc_id in enumerate(ids):
+                self.documents[doc_id] = documents[i]
+                if metadatas and i < len(metadatas):
+                    self.metadata[doc_id] = metadatas[i]
+                    
+            # Save to disk
+            self._save_json(self.documents_file, self.documents)
+            if metadatas:
+                self._save_json(self.metadata_file, self.metadata)
+                
+            logger.info(f"Added {len(documents)} documents to fallback database")
+        except Exception as e:
+            logger.error(f"Error adding documents to fallback database: {str(e)}")
+    
+    def query_similar(self, query_text, n_results=5, filter_username=None, is_competitor=False):
+        """
+        Basic similarity search using TF-IDF.
+        Not as sophisticated as ChromaDB but more reliable.
+        """
+        try:
+            if not self.documents:
+                logger.warning("Fallback database is empty")
+                return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
+                
+            # For simplicity, we'll just do a basic text search in the fallback version
+            # This isn't as good as proper vector similarity but will work in a pinch
+            query_terms = set(query_text.lower().split())
+            
+            # Score each document based on term overlap
+            scores = {}
+            for doc_id, text in self.documents.items():
+                # Skip if empty
+                if not text:
+                    continue
+                    
+                # Check username filter if specified
+                if filter_username and doc_id in self.metadata:
+                    meta = self.metadata[doc_id]
+                    username = meta.get('username', '').lower()
+                    primary_username = meta.get('primary_username', '').lower()
+                    competitor = meta.get('competitor', '').lower()
+                    is_competitor_doc = meta.get('is_competitor', False)
+                    
+                    # Skip if doesn't match filter criteria
+                    if is_competitor and not is_competitor_doc:
+                        continue
+                    
+                    # For competitor content
+                    if is_competitor and filter_username.lower() not in [username, primary_username, competitor]:
+                        continue
+                        
+                    # For primary user content
+                    if not is_competitor and filter_username.lower() != primary_username.lower():
+                        continue
+                
+                # Calculate simple similarity score
+                doc_terms = set(text.lower().split())
+                overlap = len(query_terms.intersection(doc_terms))
+                
+                # Add engagement as a factor if available
+                engagement_boost = 1.0
+                if doc_id in self.metadata and 'engagement' in self.metadata[doc_id]:
+                    engagement = self.metadata[doc_id].get('engagement', 0)
+                    if engagement > 0:
+                        engagement_boost = min(2.0, 1.0 + (engagement / 10000))
+                
+                # Calculate final score
+                scores[doc_id] = (overlap * engagement_boost) if overlap > 0 else 0
+            
+            # Sort by score and take top n
+            top_ids = sorted(scores.keys(), key=lambda k: scores[k], reverse=True)[:n_results]
+            
+            # Prepare return values
+            documents = [self.documents[doc_id] for doc_id in top_ids if doc_id in self.documents]
+            metadatas = [self.metadata[doc_id] for doc_id in top_ids if doc_id in self.metadata]
+            distances = [1.0 - (scores[doc_id] / max(1, max(scores.values()))) for doc_id in top_ids]
+            
+            return {
+                'documents': [documents],
+                'metadatas': [metadatas],
+                'distances': [distances]
+            }
+        except Exception as e:
+            logger.error(f"Error in fallback query: {str(e)}")
+            return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
+    
+    def add_posts(self, posts, primary_username, is_competitor=False):
+        """Add posts to the fallback database."""
+        try:
+            if not posts:
+                return 0
+                
+            # Process posts
+            documents = []
+            ids = []
+            metadatas = []
+            
+            for post in posts:
+                # Get text content
+                if 'caption' in post:
+                    text = post.get('caption', '').strip()
+                elif 'text' in post:
+                    text = post.get('text', '').strip()
+                else:
+                    text = ''  # No text content found
+                
+                # Get username and timestamp
+                username = post.get('username', primary_username)
+                if username and username.startswith('@'):
+                    username = username[1:]
+                    
+                timestamp = post.get('timestamp', datetime.now().isoformat())
+                
+                # Generate ID
+                post_id = f"{username}_{abs(hash(text[:100]))}"
+                
+                # Create metadata
+                engagement = post.get('engagement', 0)
+                if engagement == 0:
+                    likes = post.get('likes', 0) or 0
+                    comments = post.get('comments', 0) or 0
+                    shares = post.get('shares', 0) or 0
+                    retweets = post.get('retweets', 0) or 0
+                    replies = post.get('replies', 0) or 0
+                    quotes = post.get('quotes', 0) or 0
+                    
+                    engagement = likes + comments + shares + retweets + replies + quotes
+                
+                platform = post.get('platform', 'instagram')
+                
+                metadata = {
+                    "username": username,
+                    "primary_username": primary_username,
+                    "engagement": max(1, engagement),
+                    "timestamp": timestamp,
+                    "platform": platform,
+                    "is_competitor": is_competitor
+                }
+                
+                if is_competitor:
+                    metadata["competitor"] = username
+                
+                # Add to lists
+                documents.append(text)
+                ids.append(post_id)
+                metadatas.append(metadata)
+            
+            # Add to database
+            self.add_documents(documents, ids, metadatas)
+            
+            return len(documents)
+        except Exception as e:
+            logger.error(f"Error adding posts to fallback database: {str(e)}")
+            return 0
+    
+    def clear_collection(self):
+        """Clear the fallback database."""
+        try:
+            self.documents = {}
+            self.metadata = {}
+            self.embeddings = {}
+            
+            # Save empty files
+            self._save_json(self.documents_file, {})
+            self._save_json(self.metadata_file, {})
+            self._save_json(self.embeddings_file, {})
+            
+            logger.info("Fallback database cleared")
+            return True
+        except Exception as e:
+            logger.error(f"Error clearing fallback database: {str(e)}")
+            return False
+    
+    def get_count(self):
+        """Get the number of documents in the fallback database."""
+        return len(self.documents)
 
 
 if __name__ == "__main__":

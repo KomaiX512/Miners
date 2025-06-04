@@ -222,3 +222,44 @@ The solution was verified by:
 
 ## Prevention Measures
 The improved fix_competitor_analysis.py script now performs more thorough checks and applies more robust fixes, making it much less likely for the 'strategies' field error to occur in the future.
+
+# Vector Database Performance Fix
+
+## Problem
+The vector database was experiencing issues with ChromaDB queries failing with the following error:
+```
+Cannot return the results in a contigious 2D array. Probably ef or M is too small
+```
+
+This was causing RAG queries to fail, particularly for competitor analysis.
+
+## Solution
+We've implemented several improvements to make the vector database more robust:
+
+1. **Enhanced ChromaDB Parameters**: We've increased the `hnsw:M`, `hnsw:ef_construction`, and `hnsw:ef_search` parameters to handle larger datasets and improve query performance.
+
+2. **Automatic Database Clearing**: The vector database is now cleared automatically at the start of each processing run to prevent issues with accumulated data.
+
+3. **Improved Query Logic**: The query retry mechanism has been enhanced to handle failures more gracefully, with progressive simplification of query parameters.
+
+4. **Post-Query Filtering**: We've implemented more robust post-query filtering instead of relying on complex ChromaDB filters.
+
+## Usage
+To ensure the vector database is properly cleared between runs, the system now includes a `clear_before_new_run()` method that can be called at the start of any processing pipeline.
+
+You can also run the `fix_vector_database_persistence.py` script to fix the vector database issues:
+
+```bash
+python3 fix_vector_database_persistence.py
+```
+
+This script will:
+1. Clear the existing vector database
+2. Reinitialize it with improved parameters
+3. Test the database functionality
+4. Provide a summary of the improvements
+
+## Important Notes
+- The vector database should be cleared at the start of each processing run to prevent issues
+- Large queries should use post-filtering rather than complex ChromaDB filters
+- If you encounter persistent issues, try running the fix script before starting your main application
