@@ -257,6 +257,29 @@ class MockGenerativeModel:
         username_match = re.search(r'@(\w+)', contents)
         username = username_match.group(1) if username_match else "user"
         
+        # Extract competitor usernames from prompt - ENHANCED
+        competitor_matches = re.findall(r'MANDATORY STRATEGIC COMPETITOR BREAKDOWN.*?(?:• \*\*([A-Za-z0-9_]+)\*\*|\*\*([A-Za-z0-9_]+)\*\*)', contents, re.DOTALL)
+        competitors = []
+        for match in competitor_matches:
+            comp = match[0] if match[0] else match[1]
+            if comp and comp != username and comp not in competitors:
+                competitors.append(comp)
+        
+        # Ensure we have at least some competitors
+        if not competitors:
+            # Extract directly from the prompt
+            competitor_matches = re.findall(r'competitor[:\s]+([A-Za-z0-9_]+)', contents_lower)
+            for match in competitor_matches:
+                if match and match != username.lower() and match not in [c.lower() for c in competitors]:
+                    competitors.append(match)
+        
+        # If still no competitors, use defaults
+        if not competitors:
+            if is_branding:
+                competitors = ["competitor1", "competitor2"]
+            else:
+                competitors = ["friend1", "friend2"]
+        
         # Determine the correct instruction set and module structure
         module_key = f"{platform.upper()}_{'BRANDING' if is_branding else 'PERSONAL'}"
         module_config = UNIFIED_MODULE_STRUCTURE[module_key]
@@ -271,37 +294,81 @@ class MockGenerativeModel:
             intelligence_type = "personal_intelligence"  # Force the correct type for Twitter personal
         
         # Create mock response with the correct structure
-            mock_response = {
-                intelligence_type: {
-                "account_analysis": f"Analysis for {username} on {platform} as a {'branding' if is_branding else 'personal'} account.",
-                "strategic_positioning": f"Strategic positioning for {username} on {platform}.",
-                "growth_opportunities": f"Growth opportunities for {username} on {platform}."
-                },
-                "tactical_recommendations": [
-                f"Recommendation 1 for {username} on {platform}",
-                f"Recommendation 2 for {username} on {platform}",
-                f"Recommendation 3 for {username} on {platform}"
-                ],
-                "next_post_prediction": {
-                content_field: f"Sample {content_field} for {username} on {platform}",
-                "hashtags": ["#sample", "#test", f"#{platform}"],
-                "call_to_action": "Sample call to action",
-                "image_prompt": "Sample image prompt"
+        mock_response = {
+            intelligence_type: {
+                "account_analysis": f"Analysis for {username} on {platform} as a {'branding' if is_branding else 'personal'} account. The account shows strong engagement with metrics averaging 2495 per post. Content themes include product launches, industry insights, and community engagement.",
+                "strategic_positioning": f"Strategic positioning for {username} on {platform} leverages unique strengths in {platform} marketing with peak performance reaching over 5000 engagements. The account demonstrates consistent growth and audience development.",
+                "growth_opportunities": f"Growth opportunities for {username} on {platform} include expanding reach through strategic partnerships, enhanced content themes, and deeper community engagement strategies."
+            },
+            "tactical_recommendations": [
+                f"Implement a weekly themed content series for {username} on {platform} targeting a 15% increase in engagement (2869 average) by focusing on top-performing topics from competitor analysis",
+                f"Develop collaborative campaigns with similar accounts to {competitors[0] if competitors else 'peers'}, aiming for cross-promotion opportunities and a 20% audience growth over 3 months",
+                f"Create {platform}-specific interactive content formats that differentiate from {competitors[1] if len(competitors) > 1 else 'industry standards'}, emphasizing unique brand personality and authentic voice"
+            ],
+            "next_post_prediction": {
+                content_field: f"Exciting news! We're launching our new feature that many of you have been asking for. Stay tuned for more details next week! #{'Brand' if is_branding else 'Personal'}Journey #{platform}Growth",
+                "hashtags": [f"#{username}", f"#{platform}Content", "#GrowthStrategy", "#CommunityEngagement"],
+                "call_to_action": f"What features would you like to see next? Share your thoughts below and tag a friend who would love this update!",
+                "image_prompt": f"A visually striking announcement graphic featuring the new product with {username}'s brand colors and styling, optimized for {platform} feed dimensions"
             }
         }
+        
+        # Create enhanced threat assessment with detailed competitor analysis
+        threat_assessment = {
+            "competitor_analysis": {}
+        }
+        
+        # Add detailed analysis for each competitor
+        for i, competitor in enumerate(competitors[:3]):
+            # Different analysis based on account type
+            if is_branding:
+                threat_assessment["competitor_analysis"][competitor] = {
+                    "overview": f"Detailed competitive analysis of {competitor} shows they average 1750 engagements per post, 30% lower than {username}.",
+                    "strengths": [
+                        f"Consistent posting frequency (5 posts per week)",
+                        f"High-quality product tutorials (+25% engagement vs other content)",
+                        f"Strong visual branding and color consistency"
+                    ],
+                    "vulnerabilities": [
+                        f"Limited community engagement (response rate below 10%)",
+                        f"Inconsistent hashtag strategy reducing discoverability",
+                        f"Repetitive content formats showing audience fatigue"
+                    ],
+                    "recommended_counter_strategies": [
+                        f"Emphasize {username}'s superior community engagement with response rates >40%",
+                        f"Develop more diverse content formats to differentiate from {competitor}",
+                        f"Target {competitor}'s audience with strategic partnerships and collaborations"
+                    ]
+                }
+            else:
+                threat_assessment["competitor_analysis"][competitor] = {
+                    "overview": f"Analysis of {competitor}'s personal content strategy reveals they focus primarily on lifestyle content with average engagement of 1840 per post.",
+                    "strengths": [
+                        f"Authentic voice that resonates with audience through storytelling",
+                        f"Consistent aesthetic and visual style across posts",
+                        f"Effective use of carousel posts (+30% engagement)"
+                    ],
+                    "vulnerabilities": [
+                        f"Irregular posting schedule (inconsistent weekly cadence)",
+                        f"Limited use of trending audio/features on platform",
+                        f"Minimal cross-platform promotion reducing audience growth"
+                    ],
+                    "recommended_counter_strategies": [
+                        f"Maintain {username}'s superior posting consistency with 2-day schedule",
+                        f"Develop more personal narrative content while maintaining authenticity",
+                        f"Leverage platform-specific features more effectively than {competitor}"
+                    ]
+                }
+        
+        # Add threat assessment to main response
+        mock_response["threat_assessment"] = threat_assessment
         
         # Add competitive intelligence for branding accounts
         if is_branding:
             mock_response["competitive_intelligence"] = {
-                "account_analysis": f"Competitive analysis for {username} on {platform}",
-                "competitive_analysis": f"Detailed competitive analysis for {username}",
-                "strategic_positioning": f"Strategic positioning against competitors for {username}"
-            }
-            mock_response["threat_assessment"] = {
-                "competitor_analysis": {
-                    "competitor1": f"Analysis of competitor1 for {username}",
-                    "competitor2": f"Analysis of competitor2 for {username}"
-                }
+                "account_analysis": f"Competitive analysis for {username} on {platform} shows strong market positioning with consistent audience growth and content engagement rates 25% above industry average. Key differentiators include product presentation and community responsiveness.",
+                "competitive_analysis": f"Detailed competitive analysis for {username} compared to {', '.join(competitors[:2])} reveals opportunities in content categories including product tutorials (+35% engagement) and behind-the-scenes content (+40% engagement).",
+                "strategic_positioning": f"Strategic positioning against competitors for {username} should emphasize unique product features, superior customer service, and authentic brand voice that has generated peak engagement of 5000+."
             }
         
         # Create mock response object
@@ -713,6 +780,12 @@ You are analyzing @{primary_username} on {platform} with the following REAL DATA
         "Third recommendation with brand-specific elements and clear implementation steps"
     ],
     
+    "threat_assessment": {{
+        "competitor_analysis": {{
+            {','.join([f'"{name}": {{"overview": "DETAILED analysis of {name} as a competitor to {primary_username}, including strengths, weaknesses, and specific metrics like engagement ({competitor_context["competitor_performance"].get(name, {}).get("avg_engagement", 50):.0f}).", "strengths": ["Key strength of {name} based on content analysis", "Another strength area for {name}"], "vulnerabilities": ["Vulnerability in {name} strategy", "Gap in {name} content approach"], "recommended_counter_strategies": ["How {primary_username} can outperform {name}", "Strategic differentiation from {name}"]}}' for name in secondary_usernames[:3]])}
+        }}
+    }},
+    
     "next_post_prediction": {{
         "{content_field}": "Brand-specific {content_length} for @{primary_username} that matches their unique voice and includes specific product/theme references",
         "hashtags": ["#{primary_username}", "brand-specific", "hashtags", "based", "on", "actual", "content"],
@@ -871,6 +944,49 @@ Generate 100% authentic, personalized {intelligence_type} content that cannot be
                         if has_template_content(str(field_value)):
                             logger.warning(f"Template content detected in next_post.{field_name}")
                             return False
+            
+            # Verify competitor analysis in threat_assessment
+            if "threat_assessment" in response_data:
+                threat_assessment = response_data["threat_assessment"]
+                
+                # Check if threat_assessment has competitor_analysis
+                if not isinstance(threat_assessment, dict) or "competitor_analysis" not in threat_assessment:
+                    logger.warning("Missing competitor_analysis in threat_assessment")
+                    # Don't return False here, as this might be optional for some use cases
+                
+                # Verify competitor_analysis quality if it exists
+                elif "competitor_analysis" in threat_assessment:
+                    competitor_analysis = threat_assessment["competitor_analysis"]
+                    
+                    # Should be a dictionary with competitor names as keys
+                    if not isinstance(competitor_analysis, dict):
+                        logger.warning("competitor_analysis is not a dictionary")
+                        return False
+                    
+                    # Should contain at least one competitor
+                    if len(competitor_analysis) == 0:
+                        logger.warning("Empty competitor_analysis")
+                        return False
+                    
+                    # Check each competitor analysis
+                    for competitor, analysis in competitor_analysis.items():
+                        # Check for template content in competitor analysis
+                        if has_template_content(str(analysis)):
+                            logger.warning(f"Template content detected in competitor analysis for {competitor}")
+                            return False
+                        
+                        # Check for minimum length/content 
+                        if isinstance(analysis, str) and len(analysis) < 50:
+                            logger.warning(f"Competitor analysis for {competitor} is too short")
+                            return False
+                        
+                        # If it's a dictionary, check required fields
+                        if isinstance(analysis, dict):
+                            required_fields = ["overview", "strengths", "weaknesses"]
+                            missing_fields = [field for field in required_fields if field not in analysis]
+                            if missing_fields:
+                                logger.warning(f"Missing fields in competitor analysis for {competitor}: {missing_fields}")
+                                # Don't fail completely on missing fields
             
             # Verify username-specific content
             username_check = primary_username.lower().replace('@', '')
@@ -1137,6 +1253,182 @@ Generate 100% authentic, personalized {intelligence_type} content that cannot be
         except Exception as e:
             logger.error(f"RAG field completion failed: {str(e)}")
             raise Exception("Unable to complete missing fields with RAG content")
+
+    def generate_competitor_analysis_from_rag(self, primary_username, competitor_usernames, platform='instagram'):
+        """
+        Generate competitor analysis specifically designed to extract from RAG content.
+        This provides dedicated competitor analysis with proper RAG extraction.
+        """
+        logger.info(f"🔄 Generating dedicated RAG competitor analysis for {len(competitor_usernames)} competitors")
+        
+        competitor_analyses = {}
+        
+        # For each competitor, we'll generate a specific RAG analysis
+        for competitor in competitor_usernames:
+            try:
+                # Craft specific competitor analysis prompt
+                prompt = self._generate_robust_competitor_prompt(primary_username, competitor, platform)
+                
+                # Process request with backoff
+                success, response_text = self._process_api_request_with_backoff(prompt)
+                
+                if success and response_text:
+                    # Extract structured data
+                    competitor_data = self._extract_competitor_data_from_response(response_text, competitor)
+                    
+                    if competitor_data:
+                        competitor_analyses[competitor] = competitor_data
+                        logger.info(f"✅ Generated RAG competitor analysis for {competitor}")
+                    else:
+                        logger.warning(f"⚠️ Failed to extract structured competitor data for {competitor}")
+                        competitor_analyses[competitor] = self._create_fallback_competitor_data(competitor)
+                else:
+                    logger.error(f"❌ Failed to get RAG analysis for competitor {competitor}")
+                    competitor_analyses[competitor] = self._create_fallback_competitor_data(competitor)
+                
+            except Exception as e:
+                logger.error(f"❌ Error generating competitor analysis for {competitor}: {str(e)}")
+                competitor_analyses[competitor] = self._create_fallback_competitor_data(competitor)
+        
+        return competitor_analyses
+
+    def _generate_robust_competitor_prompt(self, primary_username, competitor_username, platform):
+        """Generate robust prompt specifically for competitor analysis."""
+        prompt = f"""
+        Based on the vector database content and available information, provide a detailed competitive analysis of {competitor_username} compared to {primary_username} on {platform}.
+        
+        Format your response as a JSON object with the following structure:
+        ```json
+        {{
+          "overview": "Comprehensive analysis of how {competitor_username} compares to {primary_username}",
+          "strengths": ["Strength 1", "Strength 2", "Strength 3"],
+          "vulnerabilities": ["Vulnerability 1", "Vulnerability 2", "Vulnerability 3"],
+          "recommended_counter_strategies": ["Strategy 1", "Strategy 2", "Strategy 3"],
+          "top_content_themes": ["Theme 1", "Theme 2", "Theme 3"]
+        }}
+        ```
+        
+        Make the analysis specific and data-driven, mentioning engagement metrics when available.
+        """
+        return prompt
+
+    def _extract_competitor_data_from_response(self, response_text, competitor_username):
+        """Extract structured competitor data from RAG response."""
+        try:
+            # First try to extract JSON directly
+            json_match = re.search(r'```json\s*(.*?)```', response_text, re.DOTALL)
+            if json_match:
+                json_text = json_match.group(1).strip()
+                data = json.loads(json_text)
+                
+                # Validate required fields
+                required_fields = ["overview", "strengths", "vulnerabilities", "recommended_counter_strategies"]
+                if all(field in data for field in required_fields):
+                    # Ensure top_content_themes exists
+                    if "top_content_themes" not in data:
+                        data["top_content_themes"] = []
+                    
+                    # Ensure weaknesses field exists - copy from vulnerabilities if needed
+                    if "weaknesses" not in data:
+                        data["weaknesses"] = data.get("vulnerabilities", []).copy() if data.get("vulnerabilities") else []
+                    
+                    # Ensure strategies field exists - copy from recommended_counter_strategies if needed
+                    if "strategies" not in data:
+                        data["strategies"] = data.get("recommended_counter_strategies", []).copy() if data.get("recommended_counter_strategies") else []
+                    
+                    # Add source marker
+                    data["intelligence_source"] = "dedicated_rag"
+                    return data
+            
+            # If that fails, try to extract parts manually through pattern matching
+            data = {
+                "overview": f"Analysis of {competitor_username}",
+                "strengths": [],
+                "vulnerabilities": [],
+                "weaknesses": [],  # Add explicit weaknesses field
+                "recommended_counter_strategies": [],
+                "strategies": [],  # Add explicit strategies field
+                "top_content_themes": [],
+                "intelligence_source": "partially_extracted_rag"
+            }
+            
+            # Extract overview
+            overview_match = re.search(r'"overview":\s*"([^"]+)"', response_text)
+            if overview_match:
+                data["overview"] = overview_match.group(1)
+            
+            # Extract strengths
+            strengths_match = re.search(r'"strengths":\s*\[(.*?)\]', response_text, re.DOTALL)
+            if strengths_match:
+                strengths_text = strengths_match.group(1)
+                strengths_items = re.findall(r'"([^"]+)"', strengths_text)
+                if strengths_items:
+                    data["strengths"] = strengths_items
+            
+            # Extract vulnerabilities
+            vulnerabilities_match = re.search(r'"vulnerabilities":\s*\[(.*?)\]', response_text, re.DOTALL)
+            if vulnerabilities_match:
+                vulnerabilities_text = vulnerabilities_match.group(1)
+                vulnerabilities_items = re.findall(r'"([^"]+)"', vulnerabilities_text)
+                if vulnerabilities_items:
+                    data["vulnerabilities"] = vulnerabilities_items
+            
+            # Extract weaknesses (try directly or use vulnerabilities as fallback)
+            weaknesses_match = re.search(r'"weaknesses":\s*\[(.*?)\]', response_text, re.DOTALL)
+            if weaknesses_match:
+                weaknesses_text = weaknesses_match.group(1)
+                weaknesses_items = re.findall(r'"([^"]+)"', weaknesses_text)
+                if weaknesses_items:
+                    data["weaknesses"] = weaknesses_items
+            elif data["vulnerabilities"]:
+                data["weaknesses"] = data["vulnerabilities"].copy()
+            
+            # Extract strategies
+            strategies_match = re.search(r'"recommended_counter_strategies":\s*\[(.*?)\]', response_text, re.DOTALL)
+            if strategies_match:
+                strategies_text = strategies_match.group(1)
+                strategies_items = re.findall(r'"([^"]+)"', strategies_text)
+                if strategies_items:
+                    data["recommended_counter_strategies"] = strategies_items
+                    # Also populate strategies field
+                    data["strategies"] = strategies_items.copy()
+            
+            # Extract direct strategies field if available
+            direct_strategies_match = re.search(r'"strategies":\s*\[(.*?)\]', response_text, re.DOTALL)
+            if direct_strategies_match:
+                strategies_text = direct_strategies_match.group(1)
+                strategies_items = re.findall(r'"([^"]+)"', strategies_text)
+                if strategies_items:
+                    data["strategies"] = strategies_items
+            
+            # Extract themes
+            themes_match = re.search(r'"top_content_themes":\s*\[(.*?)\]', response_text, re.DOTALL)
+            if themes_match:
+                themes_text = themes_match.group(1)
+                themes_items = re.findall(r'"([^"]+)"', themes_text)
+                if themes_items:
+                    data["top_content_themes"] = themes_items
+            
+            return data
+        
+        except Exception as e:
+            logger.error(f"Error extracting competitor data from response: {str(e)}")
+            return None
+
+    def _create_fallback_competitor_data(self, competitor_username):
+        """Create fallback competitor data structure."""
+        return {
+            "overview": f"Analysis of {competitor_username}",
+            "strengths": [f"Need more data on {competitor_username} to identify strengths"],
+            "vulnerabilities": [f"Need more data on {competitor_username} to identify vulnerabilities"],
+            "weaknesses": [f"Need more data on {competitor_username} to identify weaknesses"],
+            "recommended_counter_strategies": [f"Monitor {competitor_username} content strategy",
+                                              f"Collect more data on {competitor_username} performance"],
+            "strategies": [f"Monitor {competitor_username} content strategy",
+                          f"Collect more data on {competitor_username} performance"],
+            "top_content_themes": [],
+            "intelligence_source": "fallback_structure"
+        }
 
 def test_unified_rag():
     """Test the unified RAG implementation with real data."""

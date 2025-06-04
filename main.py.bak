@@ -64,7 +64,6 @@ def run_module2():
         logger.error(f"Error running Module2: {str(e)}")
         logger.error(traceback.format_exc())
         return None
-
 def start_module2_thread():
     """Start Module2 in a separate thread."""
     def module2_thread_func():
@@ -82,7 +81,6 @@ def start_module2_thread():
     thread.start()
     logger.info("Module2 thread started")
     return thread
-
 class ContentRecommendationSystem:
     """Class for the complete content recommendation system."""
     def __init__(self):
@@ -93,7 +91,33 @@ class ContentRecommendationSystem:
         # Add a retriever for the 'tasks' bucket for AccountInfo fetches
         from config import R2_CONFIG
         self.tasks_data_retriever = R2DataRetriever({**R2_CONFIG, 'bucket_name': R2_CONFIG['bucket_name2']})
-        self.vector_db = VectorDatabaseManager()
+        
+        # Initialize vector database with better error handling and health checks
+        try:
+            self.vector_db = VectorDatabaseManager()
+            
+            # Do an initial health check of the vector database
+            db_health_check = self._check_vector_db_health()
+            
+            if not db_health_check:
+                logger.warning("Initial vector database health check failed, attempting repair...")
+                self.vector_db.clear_and_reinitialize(force=False)
+                
+                # Check health again after initial repair
+                if not self._check_vector_db_health():
+                    logger.warning("Vector database still unhealthy after repair, forcing reinitialize...")
+                    self.vector_db.clear_and_reinitialize(force=True)
+        except Exception as e:
+            logger.error(f"Error initializing vector database: {str(e)}")
+            # Create a new instance as a last resort
+            self.vector_db = VectorDatabaseManager()
+            try:
+                # Force clear and reinitialize
+                self.vector_db.clear_and_reinitialize(force=True)
+            except Exception as repair_err:
+                logger.error(f"Emergency vector database repair failed: {str(repair_err)}")
+                raise  # Re-raise to prevent continuing with broken DB
+        
         self.time_series = TimeSeriesAnalyzer()
         self.rag = RagImplementation(vector_db=self.vector_db)
         self.recommendation_generator = RecommendationGenerator(
@@ -102,6 +126,38 @@ class ContentRecommendationSystem:
         )
         self.r2_storage = R2StorageManager()
         self.running = False  # Flag for controlling processing loops
+
+    def _check_vector_db_health(self):
+        """Check if the vector database is healthy and working properly."""
+        try:
+            # Try to get count
+            count = self.vector_db.get_count()
+            logger.info(f"Vector database contains {count} documents")
+            
+            # Try a simple query to verify functionality
+            test_result = self.vector_db.query_similar("test health check", n_results=1)
+            if not test_result or 'documents' not in test_result:
+                logger.warning("Vector database query test failed")
+                return False
+                
+            # Try to normalize usernames
+            normalize_success = self.vector_db.normalize_vector_database_usernames()
+            if not normalize_success:
+                logger.warning("Vector database username normalization failed")
+                return False
+            
+            # FIXED: Normalize competitor data to ensure proper metadata fields
+            try:
+                self.vector_db.normalize_competitor_data()
+                logger.info("Vector database competitor data normalization completed")
+            except Exception as e:
+                logger.warning(f"Vector database competitor normalization failed (non-critical): {str(e)}")
+                
+            logger.info("Vector database health check passed")
+            return True
+        except Exception as e:
+            logger.error(f"Vector database health check error: {str(e)}")
+            return False
 
     def ensure_sample_data_in_r2(self):
         """Ensure sample data exists in R2 (stub implementation)."""
@@ -532,15 +588,104 @@ class ContentRecommendationSystem:
     def index_posts(self, posts, primary_username):
         """Index posts in the vector database with primary_username."""
         try:
+            if not posts:
+                logger.warning(f"No posts to index for {primary_username}")
+                return False
+                
             logger.info(f"Indexing {len(posts)} posts for {primary_username}")
-            count = self.vector_db.add_posts(posts, primary_username)
-            logger.info(f"Successfully indexed {count} posts")
             
-            # Return True if posts exist (either newly added or already in database)
-            # This handles the case where posts are already indexed
+            # First check what data already exists for this user
+            try:
+                existing_results = self.vector_db.query_similar(
+                    "content", 
+                    n_results=20,  # Increased from 5 to 20 to get a better sample
+                    filter_username=primary_username, 
+                    is_competitor=False
+                )
+                existing_count = 0
+                if existing_results and 'documents' in existing_results:
+                    existing_count = len(existing_results['documents'][0])
+                logger.info(f"Found {existing_count} existing posts for {primary_username}")
+            except Exception as e:
+                logger.warning(f"Error checking existing posts: {str(e)}")
+                existing_count = 0
+            
+            # Get total DB count for debugging
+            try:
+                total_docs = self.vector_db.get_count()
+                logger.info(f"Found {total_docs} existing documents in vector database")
+            except Exception as e:
+                logger.warning(f"Could not get document count: {str(e)}")
+            
+            # Explicitly set is_competitor=False for primary accounts
+            count = self.vector_db.add_posts(posts, primary_username, is_competitor=False)
+            
+            # If no posts were added, verify if they exist or try to repair
+            if count == 0:
+                logger.warning(f"No posts added for {primary_username}, checking if they exist...")
+                
+                # Check again after trying to add
+                after_results = self.vector_db.query_similar(
+                    "content", 
+                    n_results=20,
+                    filter_username=primary_username, 
+                    is_competitor=False
+                )
+                
+                after_count = 0
+                if after_results and 'documents' in after_results:
+                    after_count = len(after_results['documents'][0])
+                
+                logger.info(f"Found {after_count} posts for {primary_username} after indexing")
+                
+                # If posts exist in the database or existed before, it's successful
+                if after_count > 0:
+                    # Try a more specific query to verify content quality
+                    verification_query = f"{primary_username} content analysis"
+                    quality_check = self.vector_db.query_similar(
+                        verification_query,
+                        n_results=20,
+                        filter_username=primary_username,
+                        is_competitor=False
+                    )
+                    
+                    quality_count = 0
+                    if quality_check and 'documents' in quality_check:
+                        quality_count = len(quality_check['documents'][0])
+                    
+                    logger.info(f"✅ Posts available in vector database for {primary_username}: {quality_count}")
+                    return True
+                
+                # If we have no posts, we need to try repairing the database
+                logger.error(f"Failed to index posts for {primary_username} - attempting database repair")
+                
+                # Try clearing and reinitializing
+                repair_success = self.vector_db.clear_and_reinitialize(force=False)
+                if not repair_success:
+                    logger.error("First repair attempt failed, trying forced repair")
+                    repair_success = self.vector_db.clear_and_reinitialize(force=True)
+                
+                if repair_success:
+                    # Try adding posts again after repair
+                    logger.info(f"Database repair successful, retrying post indexing for {primary_username}")
+                    repair_count = self.vector_db.add_posts(posts, primary_username, is_competitor=False)
+                    
+                    if repair_count > 0:
+                        logger.info(f"Successfully indexed {repair_count} posts after repair")
+                        return True
+                    else:
+                        logger.error(f"Failed to index posts even after successful repair")
+                        return False
+                else:
+                    logger.error("Database repair failed")
+                    return False
+            
+            logger.info(f"Total posts indexed: {count} (Primary: {len(posts)}, Competitors: {existing_count - len(posts) if existing_count > len(posts) else 0})")
             return True
         except Exception as e:
             logger.error(f"Error indexing posts: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
             return False
     
     def analyze_engagement(self, data):
@@ -953,8 +1098,8 @@ class ContentRecommendationSystem:
             competitor_insights = {
                 "overview": "",
                 "strengths": [],
-                "vulnerabilities": [],
-                "strategies": [],
+                "vulnerabilities": [], 
+                "recommended_counter_strategies": [],
                 "themes": [],
                 "recommendations": [],
                 "engagement_metrics": {
@@ -1053,8 +1198,7 @@ class ContentRecommendationSystem:
                 competitor_insights["vulnerabilities"] = [f"Strategic opportunity assessment for {competitor_name}"]
             
             if not competitor_insights["strategies"]:
-                competitor_insights["strategies"] = [f"Competitive positioning strategy vs {competitor_name}"]
-            
+                    competitor_insights["strategies"] = [f"Competitive positioning strategy vs {competitor_name}"]
             # Make sure we include engagement metrics in the overview if extracted
             if competitor_insights["engagement_metrics"]["average_engagement"] > 50:
                 avg_engagement = competitor_insights["engagement_metrics"]["average_engagement"]
@@ -1069,7 +1213,7 @@ class ContentRecommendationSystem:
                 "overview": f"Competitive analysis for {competitor_name}",
                 "strengths": [f"Analysis available for {competitor_name}"],
                 "vulnerabilities": [f"Strategic assessment for {competitor_name}"],
-                "strategies": [f"Positioning strategy vs {competitor_name}"],
+                "recommended_counter_strategies": [f"Positioning strategy vs {competitor_name}"],
                 "themes": [],
                 "recommendations": [f"Competitive intelligence for {competitor_name}"],
                 "engagement_metrics": {
@@ -1101,7 +1245,7 @@ class ContentRecommendationSystem:
                 "intelligence_source": "rag_extraction",
                 "strengths": insights.get("strengths", [f"Performance analysis available for {competitor_username}"]),
                 "vulnerabilities": insights.get("vulnerabilities", [f"Strategic opportunity assessment for {competitor_username}"]),
-                "recommended_counter_strategies": insights.get("strategies", [f"Competitive positioning strategy vs {competitor_username}"]),
+                "recommended_counter_strategies": insights.get("recommended_counter_strategies", [f"Competitive positioning strategy vs {competitor_username}"]),
                 "top_content_themes": insights.get("themes", [])
             }
             
@@ -1126,7 +1270,6 @@ class ContentRecommendationSystem:
                 "recommended_counter_strategies": [f"Strategy development for {competitor_username}"],
                 "top_content_themes": []
             }
-
     def _extract_rag_competitor_insights(self, rag_content, competitor_name):
         """Extract specific competitor insights from RAG content."""
         try:
@@ -1134,8 +1277,8 @@ class ContentRecommendationSystem:
             competitor_insights = {
                 "overview": f"RAG analysis of {competitor_name}",
                 "strengths": [],
-                "vulnerabilities": [],
-                "strategies": [],
+                "vulnerabilities": [], 
+                "recommended_counter_strategies": [],
                 "themes": [],
                 "positioning": f"Strategic positioning vs {competitor_name}",
                 "differentiation": f"Differentiation strategy from {competitor_name}",
@@ -1151,7 +1294,7 @@ class ContentRecommendationSystem:
                     elif 'vulnerability' in line.lower() or 'weakness' in line.lower() or 'opportunity' in line.lower():
                         competitor_insights["vulnerabilities"].append(line.strip()[:100])
                     elif 'strategy' in line.lower() or 'recommend' in line.lower():
-                        competitor_insights["strategies"].append(line.strip()[:100])
+                        competitor_insights["recommended_counter_strategies"].append(line.strip()[:100])
                     elif '#' in line:
                         # Extract themes/hashtags
                         import re
@@ -1166,7 +1309,7 @@ class ContentRecommendationSystem:
                 "overview": f"RAG extraction failed for {competitor_name}",
                 "strengths": [],
                 "vulnerabilities": [],
-                "strategies": [],
+                "recommended_counter_strategies": [],
                 "themes": [],
                 "positioning": f"RAG positioning analysis needed for {competitor_name}",
                 "differentiation": f"RAG differentiation analysis needed for {competitor_name}",
@@ -1374,17 +1517,26 @@ class ContentRecommendationSystem:
                         # RAG provided structured analysis
                         competitor_analysis[competitor] = analysis
                     else:
-                        # RAG provided text analysis
+                        # RAG provided text analysis - extract detailed insights
+                        rag_insights = self._extract_rag_competitor_insights(str(analysis), competitor)
                         competitor_analysis[competitor] = {
-                            "overview": str(analysis),
-                            "intelligence_source": "RAG_analysis"
+                            "overview": rag_insights.get("overview", str(analysis)[:200]),
+                            "intelligence_source": "rag_extraction",
+                            "strengths": rag_insights.get("strengths", [f"Performance analysis available for {competitor}"]),
+                            "vulnerabilities": rag_insights.get("vulnerabilities", [f"Strategic opportunity assessment for {competitor}"]),
+                            "recommended_counter_strategies": rag_insights.get("recommended_counter_strategies", []),
+                            "top_content_themes": rag_insights.get("top_content_themes", [])
                         }
+                        logger.info(f"✅ Extracted detailed insights for competitor {competitor} from RAG content")
             elif isinstance(threat_assessment, str):
                 # Single string analysis - distribute among competitors
                 base_analysis = threat_assessment
                 for competitor in competitors[:3]:
                     competitor_analysis[competitor] = {
                         "overview": base_analysis.replace("competitor", competitor),
+                        "strengths": [f"Competitor analysis for {competitor}"],
+                        "vulnerabilities": [f"Strategic opportunity assessment for {competitor}"],
+                        "recommended_counter_strategies": [f"Strategic positioning against {competitor}"],
                         "intelligence_source": "RAG_analysis_distributed"
                     }
         
@@ -1426,7 +1578,13 @@ class ContentRecommendationSystem:
         try:
             # Try to get competitor data from the vector database
             if hasattr(self, 'vector_db') and self.vector_db:
-                competitor_posts = self.vector_db.query_similar("makeup beauty content", n_results=20, filter_username=competitor_username)
+                # IMPROVED: Use is_competitor flag for better competitor data retrieval
+                competitor_posts = self.vector_db.query_similar(
+                    "makeup beauty content", 
+                    n_results=20, 
+                    filter_username=competitor_username,
+                    is_competitor=True  # Mark as competitor query for enhanced filtering
+                )
                 
                 if competitor_posts and 'documents' in competitor_posts and competitor_posts['documents'][0]:
                     posts_data = list(zip(competitor_posts['documents'][0], competitor_posts['metadatas'][0]))
@@ -2423,7 +2581,7 @@ class ContentRecommendationSystem:
                             if candidate_username == primary_username:
                                 primary_profile = profile_candidate
                                 logger.info(f"✅ Found VERIFIED primary profile in raw_data for {primary_username}")
-                                break
+                        break
                     
                     if primary_profile and 'username' in primary_profile:
                         # Use the VERIFIED primary profile data
@@ -2946,7 +3104,7 @@ class ContentRecommendationSystem:
                         'competitive edge', 'market position', 'unique selling', 'differentiator'
                     ]
                     sentences = re.split(r'[.!?]', primary_analysis)
-                    for sentence in sentences:
+            for sentence in sentences:
                         if any(indicator in sentence.lower() for indicator in strength_indicators):
                             strengths.append(sentence.strip())
                             
@@ -3058,7 +3216,7 @@ class ContentRecommendationSystem:
                     if len(opp) > 25:  # Ensure substantial content
                         formatted_opportunities.append(opp[:200] + "..." if len(opp) > 200 else opp)
                 return formatted_opportunities
-            else:
+                else:
                 return ["Content optimization and strategic positioning offer significant growth potential"]
                 
         except Exception as e:
@@ -3131,7 +3289,7 @@ class ContentRecommendationSystem:
                     if len(strength) > 20:  # Ensure substantial content
                         formatted_strengths.append(strength[:150] + "..." if len(strength) > 150 else strength)
                 return formatted_strengths
-            else:
+                else:
                 return [f"Content analysis shows {competitor_name} has established market presence with consistent posting patterns"]
                 
         except Exception as e:
@@ -3194,7 +3352,7 @@ class ContentRecommendationSystem:
                 return formatted_weaknesses
             else:
                 return [f"Strategic analysis reveals potential opportunities to differentiate from {competitor_name}'s approach"]
-                
+            
         except Exception as e:
             logger.error(f"Error extracting competitor weaknesses: {str(e)}")
             return [f"Competitive gap analysis for {competitor_name} requires additional market intelligence"]
@@ -4564,7 +4722,12 @@ class ContentRecommendationSystem:
                     competitor_data = None
                     
                     # Method 1: Try to get from vector database first (fastest)
-                    competitor_posts_from_vector = self.vector_db.query_similar("makeup beauty content", n_results=20, filter_username=competitor_username)
+                    competitor_posts_from_vector = self.vector_db.query_similar(
+                        "makeup beauty content", 
+                        n_results=20, 
+                        filter_username=competitor_username,
+                        is_competitor=True  # Use competitor-specific handling
+                    )
                     if competitor_posts_from_vector and 'documents' in competitor_posts_from_vector and competitor_posts_from_vector['documents'][0]:
                         competitor_posts = list(zip(competitor_posts_from_vector['documents'][0], competitor_posts_from_vector['metadatas'][0]))
                         logger.info(f"✅ Found {len(competitor_posts)} posts for {competitor_username} in vector database")
@@ -4590,9 +4753,9 @@ class ContentRecommendationSystem:
                             logger.info(f"📊 Extracted competitor posts from structure: {len(competitor_posts)} posts for {competitor_username}")
                     
                     if competitor_posts and len(competitor_posts) > 0:
-                        # Store competitor posts in vector database with their username
-                        self.vector_db.add_posts(competitor_posts, competitor_username)
-                        logger.info(f"✅ Stored {len(competitor_posts)} competitor posts for {competitor_username} in vector DB")
+                        # FIXED: Store competitor posts in vector database with primary_username to ensure proper association
+                        self.vector_db.add_posts(competitor_posts, primary_username, is_competitor=True)
+                        logger.info(f"✅ Stored {len(competitor_posts)} competitor posts for {competitor_username} with primary_username={primary_username} in vector DB")
                         
                         # Analyze competitor performance
                         analysis = self._analyze_competitor_performance(competitor_posts, competitor_username, primary_username)
@@ -5078,72 +5241,110 @@ class ContentRecommendationSystem:
             }
 
     def _analyze_competitor_performance_from_vector(self, competitor_posts_with_meta, competitor_username, primary_username):
-        """
-        Analyze competitor performance using PURE RAG EXTRACTION - NO TEMPLATE CONTENT.
-        """
+        """Analyze competitor performance directly from vector database results."""
         try:
-            logger.info(f"🔍 RAG-ONLY competitor analysis for {competitor_username}")
-            
-            # Extract basic metrics for RAG context
-            total_posts = len(competitor_posts_with_meta)
-            engagements = [meta['engagement'] for _, meta in competitor_posts_with_meta]
-            timestamps = [meta.get('timestamp') for _, meta in competitor_posts_with_meta if meta.get('timestamp')]
-            
-            if not engagements:
-                logger.warning(f"⚠️ No engagement data for {competitor_username} - RAG analysis limited")
+            # First validate the format of the data
+            validated_posts = []
+            for item in competitor_posts_with_meta:
+                # Check if item is already in expected (doc, meta) tuple format
+                if isinstance(item, tuple) and len(item) == 2:
+                    validated_posts.append(item)
+                else:
+                    # Skip invalid items
+                    logger.warning(f"Skipping invalid post format in competitor data: {type(item)}")
+                    
+            # Use validated posts list for analysis
+            if not validated_posts:
+                logger.warning(f"⚠️ No valid formatted posts for {competitor_username} in vector database")
                 return {
-                    "overview": f"RAG ANALYSIS: {competitor_username} - insufficient engagement data for analysis",
-                    "intelligence_source": "rag_limited_data",
-                    "engagement_metrics": {
-                        "average_engagement": 0,
-                        "posts_analyzed": 0
-                    },
-                    "rag_status": "requires_enhanced_data_collection"
+                    "overview": f"Limited data available for {competitor_username}. Additional data collection needed.",
+                    "intelligence_source": "data_collection_limited",
+                    "engagement_metrics": {"average_engagement": 0, "posts_analyzed": 0},
+                    "top_content_themes": [],
+                    "posting_frequency_description": "unknown",
+                    "strengths": ["Needs more data for analysis"],
+                    "vulnerabilities": ["Data format issues"],
+                    "recommended_counter_strategies": ["Monitor for future analysis"]
+                }
+                
+            total_posts = len(validated_posts)
+            
+            if total_posts == 0:
+                logger.warning(f"⚠️ No posts found for competitor {competitor_username} in vector database")
+                return {
+                    "overview": f"Limited data available for {competitor_username}. Additional data collection needed.",
+                    "intelligence_source": "data_collection_limited",
+                    "engagement_metrics": {"average_engagement": 0, "posts_analyzed": 0},
+                    "top_content_themes": [],
+                    "posting_frequency_description": "unknown",
+                    "strengths": ["Needs more data for analysis"],
+                    "vulnerabilities": ["Data collection incomplete"],
+                    "recommended_counter_strategies": ["Monitor for future analysis"]
                 }
             
-            # Basic metrics for RAG context (not for template generation)
-            avg_engagement = sum(engagements) / len(engagements)
-            max_engagement = max(engagements)
-            min_engagement = min(engagements)
+            # Extract data from vector database results
+            engagements = [meta['engagement'] for _, meta in validated_posts]
+            avg_engagement = sum(engagements) / len(engagements) if engagements else 0
+            max_engagement = max(engagements) if engagements else 0
             
-            # Extract content themes from posts (for RAG context only)
+            # Find top performing posts
+            top_posts = sorted(validated_posts, key=lambda x: x[1]['engagement'], reverse=True)[:min(3, total_posts)]
+            
+            # Extract content themes from top posts
             content_themes = []
-            for doc, meta in competitor_posts_with_meta[:10]:  # Top 10 posts
+            viral_content = []
+            timestamps = []
+            
+            for doc, meta in validated_posts:
+                if 'timestamp' in meta and meta['timestamp']:
+                    timestamps.append(meta['timestamp'])
+                    
+                if meta['engagement'] > avg_engagement * 1.5:  # Posts with 50% more engagement than average
+                    viral_content.append(f"{doc[:100]}... (E:{meta['engagement']})")
+                
+                # Extract themes/hashtags
                 import re
                 hashtags = re.findall(r'#\w+', doc)
-                content_themes.extend(hashtags[:2])
+                content_themes.extend(hashtags)
             
-            # PURE RAG APPROACH: Return metrics for RAG processing, not template content
-            return {
-                "overview": f"RAG COMPETITOR METRICS: {competitor_username} shows {avg_engagement:.0f} average engagement across {total_posts} posts",
-                "intelligence_source": "rag_metrics_extraction",
+            # Calculate posting frequency
+            posting_frequency = self._calculate_posting_frequency(timestamps)
+            
+            # Identify strengths and vulnerabilities
+            # The _identify_competitor_vulnerabilities method returns a single string, not a tuple
+            vulnerabilities_str = self._identify_competitor_vulnerabilities(validated_posts, avg_engagement)
+            strengths = ["Content analysis performed from vector database"]
+            
+            # Build analysis object
+            analysis = {
+                "overview": f"{competitor_username} has an average engagement of {int(avg_engagement)} across {total_posts} analyzed posts.",
+                "intelligence_source": "vector_database",
                 "engagement_metrics": {
                     "average_engagement": avg_engagement,
                     "max_engagement": max_engagement,
-                    "min_engagement": min_engagement,
-                    "posts_analyzed": total_posts,
-                    "engagement_distribution": {
-                        "high_performing": len([e for e in engagements if e > avg_engagement * 1.5]),
-                        "low_performing": len([e for e in engagements if e < avg_engagement * 0.5])
-                    }
+                    "posts_analyzed": total_posts
                 },
-                "posting_frequency_description": f"Analyzed {len(timestamps)} posts - frequency analysis available",
-                "top_content_themes": list(set(content_themes[:5])),
-                "rag_analysis_status": "metrics_ready_for_rag_processing",
-                "competitive_context": {
-                    "engagement_level": "high" if avg_engagement > 5000 else "moderate" if avg_engagement > 1000 else "developing",
-                    "content_volume": "substantial" if total_posts > 20 else "moderate" if total_posts > 10 else "limited",
-                    "performance_consistency": "consistent" if max_engagement < avg_engagement * 3 else "variable"
-                }
+                "top_content_themes": list(set(content_themes))[:5],
+                "posting_frequency_description": posting_frequency,
+                "strengths": strengths,
+                "vulnerabilities": [vulnerabilities_str],
+                "recommended_counter_strategies": [
+                    f"Focus on areas where {competitor_username} shows weakness",
+                    f"Monitor {competitor_username}'s top performing content for insights",
+                    "Differentiate your content strategy from their strengths"
+                ]
             }
             
+            return analysis
+            
         except Exception as e:
-            logger.error(f"Error in RAG competitor analysis for {competitor_username}: {str(e)}")
+            logger.error(f"Error analyzing competitor from vector: {str(e)}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
         return {
-                "overview": f"RAG ANALYSIS ERROR: {competitor_username} analysis failed - {str(e)}",
-                "intelligence_source": "rag_analysis_error",
-            "engagement_metrics": {"average_engagement": 0, "posts_analyzed": 0},
-                "rag_status": "analysis_failed"
+                "overview": f"Error analyzing {competitor_username}. {str(e)}",
+                "intelligence_source": "error",
+                "engagement_metrics": {"average_engagement": 0, "posts_analyzed": 0}
             }
 
 def create_content_plan():

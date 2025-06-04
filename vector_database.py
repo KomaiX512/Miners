@@ -96,25 +96,11 @@ class VectorDatabaseManager:
                     time.sleep(delay)
                 else:
                     logger.error(f"All {max_retries} attempts to initialize collection failed. Final error: {str(e)}")
-                    
-                    # Last resort fallback collection
-                    try:
-                        fallback_name = f"{self.config['collection_name']}_fallback_{int(time.time())}"
-                        logger.info(f"Creating fallback collection as last resort: {fallback_name}")
-                        fallback_collection = self.client.create_collection(
-                            name=fallback_name,
-                            metadata={"hnsw:space": "cosine"}
-                        )
-                        return fallback_collection
-                    except Exception as fallback_err:
-                        logger.error(f"Even fallback collection creation failed: {str(fallback_err)}")
-                        # We truly cannot create a collection, raise the exception
-                        raise
+                    raise  # Raise the final exception after all retries are exhausted
         
         # This shouldn't be reached due to the final exception in the loop
         logger.error("Unexpected exit from collection initialization retry loop")
         raise ValueError("Failed to initialize collection after all attempts")
-    
     def _get_embeddings(self, texts):
         """Generate embeddings for the given texts using TF-IDF with fixed dimensionality."""
         try:
@@ -264,10 +250,10 @@ class VectorDatabaseManager:
                 # Use upsert instead of add to handle duplicates gracefully
                 self.collection.upsert(
                     documents=new_documents,
-                embeddings=embeddings,
+                    embeddings=embeddings,
                     ids=new_ids,
                     metadatas=new_metadatas
-            )
+                )
                 logger.info(f"✅ RAG INDEX: Successfully upserted {len(new_documents)} documents (graceful duplicate handling)")
             else:
                 logger.info(f"⚠️ RAG INDEX: All documents were duplicates, nothing added")
@@ -370,18 +356,14 @@ class VectorDatabaseManager:
                     # Log that we're using competitor-specific filtering
                     logger.info(f"🔍 Using expanded competitor filtering for: {clean_username}")
                     
-                    # FIXED: Improved competitor query filtering with proper syntax
-                    # For competitor data, explicitly use the competitor field
+                    # SIMPLIFIED: Use minimal correct filtering for ChromaDB
+                    # For competitor data, simple conditions that will be further refined in post-filtering
                     query_params['where'] = {
-                        "$or": [
+                        "$and": [
+                            {"is_competitor": True},
+                            {"$or": [
                             {"competitor": clean_username},
-                            {"$and": [
-                                {"username": clean_username},
-                                {"is_competitor": True}
-                            ]},
-                            {"$and": [
-                                {"primary_username": clean_username},
-                                {"is_competitor": True}
+                                {"username": clean_username}
                             ]}
                         ]
                     }
@@ -460,16 +442,20 @@ class VectorDatabaseManager:
                         meta_is_competitor = meta.get('is_competitor', False)
                 
                         # For competitor queries - include if:
-                        # 1. is_competitor flag is True AND either competitor field matches OR username matches
-                        if is_competitor and meta_is_competitor and (
-                            meta_competitor.lower() == filter_username.lower() or
-                            meta_username.lower() == filter_username.lower() or
-                            meta_primary_username.lower() == filter_username.lower()
-                        ):
-                            filtered_docs.append(documents[i])
-                            filtered_meta.append(metadatas[i])
-                            if i < len(distances):
-                                filtered_dist.append(distances[i])
+                        # 1. is_competitor flag is True AND the post comes from the requested competitor username
+                        if is_competitor:
+                            # MUST have is_competitor=True flag set
+                            if meta_is_competitor:
+                                # AND MUST belong to the requested competitor (through username, competitor field or other methods)
+                                if (meta_competitor.lower() == filter_username.lower() or
+                                    meta_username.lower() == filter_username.lower() or
+                                    # Case 1: When primary_username is the requested username but represents THIS competitor data
+                                    (meta_primary_username.lower() == filter_username.lower() and 
+                                     meta_competitor.lower() != meta_primary_username.lower())):
+                                    filtered_docs.append(documents[i])
+                                    filtered_meta.append(metadatas[i])
+                                    if i < len(distances):
+                                        filtered_dist.append(distances[i])
                         # For primary account queries - only include if is_competitor is False
                         elif not is_competitor and not meta_is_competitor:
                             filtered_docs.append(documents[i])
@@ -527,7 +513,6 @@ class VectorDatabaseManager:
             logger.error(f"❌ Traceback: {traceback.format_exc()}")
             # Return empty result structure
             return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
-    
     def get_count(self):
         """Get the number of documents in the collection."""
         try:
@@ -666,17 +651,39 @@ class VectorDatabaseManager:
                 
                 # IMPROVED: More intelligent duplicate detection with custom behavior for competitors
                 if is_competitor:
-                    # For competitor data, only check for exact ID match (less strict)
-                    # This allows multiple competitors to have similar content
-                    if post_id in existing_ids:
+                    # For competitor data, use significantly LESS STRICT duplicate detection
+                    # FIXED: For competitor posts, use minimum duplicate checking to ensure maximum data inclusion
+                    is_duplicate = False
+                    
+                    # For competitors, only consider exact content hash AND ID matches from SAME username as duplicates
+                    if content_hash in existing_content_hashes and post_id in existing_ids:
+                        # Double-check through metadata for exact match with VERY specific conditions
+                        if existing_results and 'metadatas' in existing_results and existing_results['metadatas']:
+                            for meta in existing_results['metadatas']:
+                                if not meta:
+                                    continue
+                                    
+                                # For competitor data, only consider duplicate if ALL these match precisely:
+                                # 1. Exact same username (same competitor)
+                                # 2. Exact same content_hash (same content)
+                                # 3. Exact same timestamp (posted at same time)
+                                # 4. Exact same ID (same post ID) 
+                                if (meta.get('username', '') == username and
+                                    meta.get('content_hash', 0) == content_hash and
+                                    meta.get('timestamp', '') == timestamp and
+                                    post_id == meta.get('id', '')):
+                                    logger.debug(f"Found exact duplicate competitor post: {post_id} for {username}")
+                                    is_duplicate = True
+                                    break
+                    
+                    if is_duplicate:
                         skipped_count += 1
-                        logger.debug(f"Skipping duplicate competitor post ID: {post_id}")
-                        is_duplicate = True
+                        logger.debug(f"Skipping duplicate competitor post: {post_id} for {username}")
                     else:
-                        is_duplicate = False
+                        logger.debug(f"Adding new competitor post: {post_id} for {username} under primary {primary_username}")
                 else:
-                    # For primary users, use MORE LENIENT duplicate detection
-                    # Only consider duplicate if ID, timestamp, username, and is_competitor flag all match exactly
+                    # For primary users, use stricter duplicate detection
+                    # Only consider duplicate if ID or content hash match exactly
                     if post_id in existing_ids:
                         # Then we need to check for exact timestamp and username match
                         if existing_results and 'metadatas' in existing_results and existing_results['metadatas']:
@@ -707,7 +714,6 @@ class VectorDatabaseManager:
                 # Skip if duplicate
                 if is_duplicate:
                     continue
-                
                 # Get engagement metrics with fallbacks for different formats
                 engagement = post.get('engagement', 0)
                 if engagement == 0:
@@ -750,6 +756,11 @@ class VectorDatabaseManager:
                     
                     # FIXED: Ensure the competitor field is set explicitly to improve querying
                     metadata["competitor"] = username
+                    
+                    # Add additional metadata for better debugging and tracking
+                    metadata["post_type"] = "competitor"
+                    metadata["associated_primary_account"] = primary_username
+                    metadata["id"] = post.get('id', content_hash)  # Preserve original ID if available
                 
                 # Add platform-specific metadata
                 if platform == 'twitter':
@@ -766,7 +777,7 @@ class VectorDatabaseManager:
                 
                 try:
                     embeddings = self._get_embeddings(documents)
-                
+                    
                     # Safety check
                     if len(embeddings) != len(documents):
                         logger.error(f"Embedding count mismatch: {len(embeddings)} embeddings for {len(documents)} documents")
@@ -783,6 +794,7 @@ class VectorDatabaseManager:
                         
                         # Retry logic for each batch
                         max_retries = 3
+                        batch_error = None
                         for attempt in range(max_retries):
                             try:
                                 self.collection.upsert(
@@ -794,14 +806,15 @@ class VectorDatabaseManager:
                                 success_count += current_batch_size
                                 logger.info(f"✅ Batch {i//batch_size + 1}: Successfully added {current_batch_size} posts (attempt {attempt+1})")
                                 break
-                            except Exception as batch_error:
+                            except Exception as e:
+                                batch_error = e
                                 if attempt < max_retries - 1:
                                     retry_delay = 2 ** attempt  # Exponential backoff
-                                    logger.warning(f"❌ Batch {i//batch_size + 1} error (attempt {attempt+1}/{max_retries}): {str(batch_error)}")
+                                    logger.warning(f"❌ Batch {i//batch_size + 1} error (attempt {attempt+1}/{max_retries}): {str(e)}")
                                     logger.info(f"Retrying batch {i//batch_size + 1} in {retry_delay}s...")
                                     time.sleep(retry_delay)
                                 else:
-                                    logger.error(f"❌ All attempts failed for batch {i//batch_size + 1}: {str(batch_error)}")
+                                    logger.error(f"❌ All attempts failed for batch {i//batch_size + 1}: {str(e)}")
                     
                     logger.info(f"✅ RAG INDEX: Successfully added {success_count}/{post_count} posts for {primary_username} (competitor: {is_competitor})")
                     
@@ -1164,6 +1177,95 @@ class VectorDatabaseManager:
                 
         except Exception as e:
             logger.error(f"Error in clear_and_reinitialize: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return False
+
+    def normalize_competitor_data(self):
+        """
+        Ensure all competitor data in the database has proper metadata fields set.
+        This is useful for fixing issues with competitor data after schema changes.
+        """
+        try:
+            # Check if collection exists and has documents
+            collection_size = self.get_count()
+            if collection_size == 0:
+                logger.info("Vector database is empty, no normalization needed")
+                return True
+                
+            logger.info(f"Normalizing competitor data in vector database ({collection_size} documents)")
+            
+            # Get all documents - ChromaDB doesn't support querying by is_competitor directly in 'where'
+            # and also doesn't support 'ids' in include, so we need to get all documents and filter
+            try:
+                # Get all documents with metadata - no filtering (Chroma limitation)
+                results = self.collection.get(include=['metadatas', 'documents'])
+                
+                if not results or 'metadatas' not in results or not results['metadatas'] or len(results['metadatas']) == 0:
+                    logger.info("No documents found for normalization")
+                    return False
+                    
+                # Filter for competitor documents
+                competitor_indices = []
+                for i, metadata in enumerate(results['metadatas']):
+                    if metadata and metadata.get('is_competitor', False):
+                        competitor_indices.append(i)
+                
+                logger.info(f"Found {len(competitor_indices)} competitor documents out of {len(results['metadatas'])} total documents")
+                
+                # Get document IDs (required for update)
+                all_ids = self.collection.get(include=[])['ids']
+                competitor_ids = [all_ids[i] for i in competitor_indices]
+                competitor_metadatas = [results['metadatas'][i] for i in competitor_indices]
+                
+                update_count = 0
+                for i, metadata in enumerate(competitor_metadatas):
+                    needs_update = False
+                    
+                    # Make sure username and primary_username fields exist
+                    if 'username' not in metadata:
+                        metadata['username'] = metadata.get('competitor', 'unknown')
+                        needs_update = True
+                        
+                    if 'primary_username' not in metadata:
+                        metadata['primary_username'] = metadata.get('associated_primary_account', 'unknown')
+                        needs_update = True
+                    
+                    # Ensure competitor field is set
+                    if 'competitor' not in metadata:
+                        metadata['competitor'] = metadata['username']
+                        needs_update = True
+                    
+                    # Add enhanced fields for better tracking
+                    if 'post_type' not in metadata:
+                        metadata['post_type'] = 'competitor'
+                        needs_update = True
+                    
+                    if 'associated_primary_account' not in metadata:
+                        metadata['associated_primary_account'] = metadata['primary_username']
+                        needs_update = True
+                    
+                    # Update the document if needed
+                    if needs_update:
+                        try:
+                            # Update just the metadata for this document
+                            self.collection.update(
+                                ids=[competitor_ids[i]],
+                                metadatas=[metadata]
+                            )
+                            update_count += 1
+                        except Exception as update_error:
+                            logger.error(f"Error updating competitor document: {str(update_error)}")
+                
+                logger.info(f"Normalized {update_count}/{len(competitor_indices)} competitor documents")
+                return True
+                
+            except Exception as e:
+                logger.error(f"Error retrieving competitor data for normalization: {str(e)}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error normalizing competitor data: {str(e)}")
             import traceback
             logger.error(traceback.format_exc())
             return False

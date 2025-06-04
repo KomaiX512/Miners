@@ -189,7 +189,7 @@ class RecommendationGenerator:
                     logger.info(f"⏳ Waiting {delay}s before retry attempt {attempt+2} due to quota exceeded")
                     import time
                     time.sleep(delay)
-
+    
     def _verify_rag_content_quality(self, unified_result, primary_username, platform, is_branding):
         """Verify that generated content is real RAG content - SIMPLIFIED to avoid false positives."""
         try:
@@ -312,7 +312,7 @@ class RecommendationGenerator:
             
             logger.info(f"✅ Generated recommendations for {len(recommendations_by_topic)}/{len(selected_topics)} topics")
             return recommendations_by_topic
-            
+                
         except Exception as e:
             logger.error(f"❌ Recommendation generation failed: {str(e)}")
             return {}

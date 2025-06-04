@@ -158,3 +158,67 @@ python test_export.py
 ```
 
 This will export the content plan sections from the existing `content_plan.json` file to R2 storage following the directory structure described above.
+
+# Competitor Analysis Fix
+
+## Problem Summary
+The system was encountering errors during the processing of competitor analysis data with error messages:
+```
+Error extracting detailed insights for narsissist: 'strategies'
+Error extracting detailed insights for fentybeauty: 'strategies'
+Error extracting detailed insights for maccosmetics: 'strategies'
+```
+
+The errors occurred because:
+1. The `_extract_detailed_competitor_insights` function in `main.py` was trying to access the 'strategies' field which was missing from the competitor analysis data structure
+2. The `fix_competitor_analysis.py` script wasn't properly handling or adding the 'strategies' field
+
+## Solution Implemented
+
+### 1. Enhanced fix_competitor_analysis.py
+- Added stronger field validation for both 'strategies' and 'weaknesses' fields
+- Improved the field fallback mechanism:
+  - Copy from 'recommended_counter_strategies' to 'strategies' when available
+  - Copy from 'vulnerabilities' to 'weaknesses' when available
+- Added detailed logging to track successful fixes
+- Added a verification step to ensure required fields are present
+
+### 2. Created verify_competitor_fields.py
+- Made a standalone verification script to check and fix critical fields
+- Implements field-specific fixes for missing fields
+- Provides detailed output about which fields are present for each competitor
+- Can be run independently to verify the data structure
+
+### 3. Created process_with_ai_competitors.py
+- Single entry point script that:
+  1. Backs up the content plan to prevent data loss
+  2. Runs fix_competitor_analysis.py to fix missing fields
+  3. Verifies that all competitors have the required fields
+  4. Runs the main pipeline
+  5. Performs a final verification step
+
+## How to Use
+
+### To fix competitor analysis:
+```
+python fix_competitor_analysis.py
+```
+
+### To verify competitor fields:
+```
+python verify_competitor_fields.py
+```
+
+### To run the complete process:
+```
+python process_with_ai_competitors.py
+```
+
+## Verification Tests
+The solution was verified by:
+1. Running fix_competitor_analysis.py to fix missing fields
+2. Running verify_competitor_fields.py to confirm all required fields are present
+3. Re-running the main pipeline to confirm no 'strategies' field errors occur
+
+## Prevention Measures
+The improved fix_competitor_analysis.py script now performs more thorough checks and applies more robust fixes, making it much less likely for the 'strategies' field error to occur in the future.

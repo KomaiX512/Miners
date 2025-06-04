@@ -64,7 +64,6 @@ def run_module2():
         logger.error(f"Error running Module2: {str(e)}")
         logger.error(traceback.format_exc())
         return None
-
 def start_module2_thread():
     """Start Module2 in a separate thread."""
     def module2_thread_func():
@@ -117,6 +116,7 @@ class ContentRecommendationSystem:
                 self.vector_db.clear_and_reinitialize(force=True)
             except Exception as repair_err:
                 logger.error(f"Emergency vector database repair failed: {str(repair_err)}")
+                raise  # Re-raise to prevent continuing with broken DB
         
         self.time_series = TimeSeriesAnalyzer()
         self.rag = RagImplementation(vector_db=self.vector_db)
@@ -145,6 +145,13 @@ class ContentRecommendationSystem:
             if not normalize_success:
                 logger.warning("Vector database username normalization failed")
                 return False
+            
+            # FIXED: Normalize competitor data to ensure proper metadata fields
+            try:
+                self.vector_db.normalize_competitor_data()
+                logger.info("Vector database competitor data normalization completed")
+            except Exception as e:
+                logger.warning(f"Vector database competitor normalization failed (non-critical): {str(e)}")
                 
             logger.info("Vector database health check passed")
             return True
@@ -1092,7 +1099,7 @@ class ContentRecommendationSystem:
                 "overview": "",
                 "strengths": [],
                 "vulnerabilities": [], 
-                "strategies": [],
+                "recommended_counter_strategies": [],
                 "themes": [],
                 "recommendations": [],
                 "engagement_metrics": {
@@ -1206,7 +1213,7 @@ class ContentRecommendationSystem:
                 "overview": f"Competitive analysis for {competitor_name}",
                 "strengths": [f"Analysis available for {competitor_name}"],
                 "vulnerabilities": [f"Strategic assessment for {competitor_name}"],
-                "strategies": [f"Positioning strategy vs {competitor_name}"],
+                "recommended_counter_strategies": [f"Positioning strategy vs {competitor_name}"],
                 "themes": [],
                 "recommendations": [f"Competitive intelligence for {competitor_name}"],
                 "engagement_metrics": {
@@ -1238,7 +1245,7 @@ class ContentRecommendationSystem:
                 "intelligence_source": "rag_extraction",
                 "strengths": insights.get("strengths", [f"Performance analysis available for {competitor_username}"]),
                 "vulnerabilities": insights.get("vulnerabilities", [f"Strategic opportunity assessment for {competitor_username}"]),
-                "recommended_counter_strategies": insights.get("strategies", [f"Competitive positioning strategy vs {competitor_username}"]),
+                "recommended_counter_strategies": insights.get("recommended_counter_strategies", [f"Competitive positioning strategy vs {competitor_username}"]),
                 "top_content_themes": insights.get("themes", [])
             }
             
@@ -1270,8 +1277,8 @@ class ContentRecommendationSystem:
             competitor_insights = {
                 "overview": f"RAG analysis of {competitor_name}",
                 "strengths": [],
-                "vulnerabilities": [],
-                "strategies": [],
+                "vulnerabilities": [], 
+                "recommended_counter_strategies": [],
                 "themes": [],
                 "positioning": f"Strategic positioning vs {competitor_name}",
                 "differentiation": f"Differentiation strategy from {competitor_name}",
@@ -1287,7 +1294,7 @@ class ContentRecommendationSystem:
                     elif 'vulnerability' in line.lower() or 'weakness' in line.lower() or 'opportunity' in line.lower():
                         competitor_insights["vulnerabilities"].append(line.strip()[:100])
                     elif 'strategy' in line.lower() or 'recommend' in line.lower():
-                        competitor_insights["strategies"].append(line.strip()[:100])
+                        competitor_insights["recommended_counter_strategies"].append(line.strip()[:100])
                     elif '#' in line:
                         # Extract themes/hashtags
                         import re
@@ -1302,12 +1309,13 @@ class ContentRecommendationSystem:
                 "overview": f"RAG extraction failed for {competitor_name}",
                 "strengths": [],
                 "vulnerabilities": [],
-                "strategies": [],
+                "recommended_counter_strategies": [],
                 "themes": [],
                 "positioning": f"RAG positioning analysis needed for {competitor_name}",
                 "differentiation": f"RAG differentiation analysis needed for {competitor_name}",
                 "opportunity": f"RAG opportunity analysis needed for {competitor_name}"
             }
+
     def _extract_main_intelligence_module(self, recommendation, is_branding, platform):
         """Extract main intelligence module with proper platform support (Twitter/Instagram) and account type (brand/personal)."""
         
@@ -1509,17 +1517,26 @@ class ContentRecommendationSystem:
                         # RAG provided structured analysis
                         competitor_analysis[competitor] = analysis
                     else:
-                        # RAG provided text analysis
+                        # RAG provided text analysis - extract detailed insights
+                        rag_insights = self._extract_rag_competitor_insights(str(analysis), competitor)
                         competitor_analysis[competitor] = {
-                            "overview": str(analysis),
-                            "intelligence_source": "RAG_analysis"
+                            "overview": rag_insights.get("overview", str(analysis)[:200]),
+                            "intelligence_source": "rag_extraction",
+                            "strengths": rag_insights.get("strengths", [f"Performance analysis available for {competitor}"]),
+                            "vulnerabilities": rag_insights.get("vulnerabilities", [f"Strategic opportunity assessment for {competitor}"]),
+                            "recommended_counter_strategies": rag_insights.get("recommended_counter_strategies", []),
+                            "top_content_themes": rag_insights.get("top_content_themes", [])
                         }
+                        logger.info(f"✅ Extracted detailed insights for competitor {competitor} from RAG content")
             elif isinstance(threat_assessment, str):
                 # Single string analysis - distribute among competitors
                 base_analysis = threat_assessment
                 for competitor in competitors[:3]:
                     competitor_analysis[competitor] = {
                         "overview": base_analysis.replace("competitor", competitor),
+                        "strengths": [f"Competitor analysis for {competitor}"],
+                        "vulnerabilities": [f"Strategic opportunity assessment for {competitor}"],
+                        "recommended_counter_strategies": [f"Strategic positioning against {competitor}"],
                         "intelligence_source": "RAG_analysis_distributed"
                     }
         
@@ -4736,9 +4753,9 @@ class ContentRecommendationSystem:
                             logger.info(f"📊 Extracted competitor posts from structure: {len(competitor_posts)} posts for {competitor_username}")
                     
                     if competitor_posts and len(competitor_posts) > 0:
-                        # Store competitor posts in vector database with their username
-                        self.vector_db.add_posts(competitor_posts, competitor_username, is_competitor=True)
-                        logger.info(f"✅ Stored {len(competitor_posts)} competitor posts for {competitor_username} in vector DB")
+                        # FIXED: Store competitor posts in vector database with primary_username to ensure proper association
+                        self.vector_db.add_posts(competitor_posts, primary_username, is_competitor=True)
+                        logger.info(f"✅ Stored {len(competitor_posts)} competitor posts for {competitor_username} with primary_username={primary_username} in vector DB")
                         
                         # Analyze competitor performance
                         analysis = self._analyze_competitor_performance(competitor_posts, competitor_username, primary_username)
