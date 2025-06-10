@@ -263,3 +263,61 @@ This script will:
 - The vector database should be cleared at the start of each processing run to prevent issues
 - Large queries should use post-filtering rather than complex ChromaDB filters
 - If you encounter persistent issues, try running the fix script before starting your main application
+
+## Content Plan and Image Generation Pipeline
+
+### Pipeline Overview
+
+The system processes content in three main stages:
+
+1. **Content Plan Export:**
+   - Exports content_plan.json into modular components
+   - Exports the recommendation module
+   - Exports the next_post_prediction module
+   - Exports competitor analysis modules
+
+2. **Next Post Processing by Image Generator:**
+   - Reads exported next post files from tasks bucket
+   - Generates images based on image_prompt
+   - Preserves original caption, hashtags, and call_to_action
+
+3. **Ready Post Export:**
+   - Creates ready post files with generated images
+   - Maintains exact original text content from next post
+   - Exports with same postfix identifier
+
+### Important Notes
+
+- The content_plan.json format expects next_post_prediction in the recommendation section
+- Caption, hashtags and call_to_action are preserved exactly as written in content plan
+- The image generator uses image_prompt to create the image but doesn't modify any text content
+
+### Data Flow
+
+```
+content_plan.json
+    │
+    ├── recommendation → recommendations/platform/username/recommendation_X.json
+    │
+    ├── next_post_prediction → next_posts/platform/username/post_X.json
+    │                           │
+    │                           ▼
+    │                         Image Generator
+    │                           │
+    │                           ▼
+    └── competitor_analysis   ready_post/platform/username/ready_post_X.json
+                              ready_post/platform/username/image_X.jpg
+```
+
+### Debugging Tips
+
+If you notice issues with the content in the final ready post files:
+
+1. Check that content_plan.json has proper next_post_prediction structure
+2. Verify that export_content_plan.py is finding and exporting the next post data
+3. Check image generator format detection in the _convert_nextpost_to_standard_format method
+4. Ensure _standardize_post_fields and _create_output_post are preserving data exactly
+
+Tests are available to verify each step of the pipeline:
+- `test_export_content_plan.py`: Verifies next post export
+- `test_image_generator.py`: Verifies preservation of content through image generation

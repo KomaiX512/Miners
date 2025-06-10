@@ -124,7 +124,7 @@ class AdaptiveRateLimiter:
                                     self.current_delay * self.backoff_factor)
             logger.info(f"⚠️ API RATE LIMIT: Increased delay to {self.current_delay:.1f}s after error")
 
-# OPTIMIZED INSTRUCTION SETS - 4 Different Instructions for Platform/Account Combinations
+# OPTIMIZED INSTRUCTION SETS - 6 Different Instructions for Platform/Account Combinations
 INSTRUCTION_SETS = {
     "INSTAGRAM_BRANDING": {
         "instruction_theme": "business_intelligence",
@@ -157,6 +157,22 @@ INSTRUCTION_SETS = {
         "prompt_style": "authentic_voice",
         "output_emphasis": "personal influence, authentic conversations, genuine connections",
         "content_quality": "authentic personal voice that builds genuine community"
+    },
+    "FACEBOOK_BRANDING": {
+        "instruction_theme": "community_business_intelligence",
+        "content_focus": "community engagement, brand storytelling, social proof building",
+        "analysis_type": "social community psychology",
+        "prompt_style": "community_strategic",
+        "output_emphasis": "community building, social engagement, brand trust, conversation starters",
+        "content_quality": "community-focused business content that drives meaningful conversations and social proof"
+    },
+    "FACEBOOK_PERSONAL": {
+        "instruction_theme": "social_connection_intelligence",
+        "content_focus": "social connections, life sharing, community participation",
+        "analysis_type": "social relationship psychology",
+        "prompt_style": "social_authentic",
+        "output_emphasis": "social bonds, life storytelling, community involvement, relationship building",
+        "content_quality": "authentic social content that strengthens personal connections and community ties"
     }
 }
 
@@ -221,6 +237,36 @@ UNIFIED_MODULE_STRUCTURE = {
             "personal_intelligence": ["account_analysis", "growth_opportunities", "strategic_positioning"],
             "next_post_prediction": ["tweet_text", "hashtags", "call_to_action", "image_prompt"]
         }
+    },
+    "FACEBOOK_BRANDING": {
+        "intelligence_type": "competitive_intelligence",
+        "content_field": "caption",
+        "platform_specs": "Facebook branding account with community-focused content",
+        "instruction_set": INSTRUCTION_SETS["FACEBOOK_BRANDING"],
+        "output_format": {
+            "competitive_intelligence": "Community-focused brand analysis with social engagement intelligence",
+            "tactical_recommendations": "List of 3-5 Facebook community building strategies",
+            "next_post_prediction": "Facebook-optimized business post with community engagement focus"
+        },
+        "required_fields": {
+            "competitive_intelligence": ["account_analysis", "competitive_analysis", "strategic_positioning"],
+            "next_post_prediction": ["caption", "hashtags", "call_to_action", "image_prompt"]
+        }
+    },
+    "FACEBOOK_PERSONAL": {
+        "intelligence_type": "personal_intelligence",
+        "content_field": "caption",
+        "platform_specs": "Facebook personal account with social connection focus",
+        "instruction_set": INSTRUCTION_SETS["FACEBOOK_PERSONAL"],
+        "output_format": {
+            "personal_intelligence": "Social connection analysis with community participation insights",
+            "tactical_recommendations": "List of 3-5 Facebook social engagement strategies",
+            "next_post_prediction": "Facebook-optimized personal post"
+        },
+        "required_fields": {
+            "personal_intelligence": ["account_analysis", "growth_opportunities", "strategic_positioning"],
+            "next_post_prediction": ["caption", "hashtags", "call_to_action", "image_prompt"]
+        }
     }
 }
 
@@ -231,10 +277,15 @@ class MockGenerativeModel:
         """Generate mock content that matches the expected format for all 4 instruction set combinations."""
         
         # Extract platform and account type from prompt
-        platform = "instagram" if "instagram" in contents.lower() else "twitter"
+        contents_lower = contents.lower()
+        if "facebook" in contents_lower:
+            platform = "facebook"
+        elif "twitter" in contents_lower:
+            platform = "twitter"
+        else:
+            platform = "instagram"  # Default to Instagram
         
         # 🔥 FIXED: More precise branding detection to avoid false positives with "personal branding"
-        contents_lower = contents.lower()
         is_branding = False
         
         # Check for explicit branding account indicators (not "personal branding")
@@ -289,9 +340,9 @@ class MockGenerativeModel:
         intelligence_type = module_config["intelligence_type"]
         content_field = module_config["content_field"]
         
-        # Make sure we generate the correct intelligence type for Twitter personal accounts
-        if platform == "twitter" and not is_branding:
-            intelligence_type = "personal_intelligence"  # Force the correct type for Twitter personal
+        # Make sure we generate the correct intelligence type for personal accounts
+        if not is_branding:
+            intelligence_type = "personal_intelligence"  # Force the correct type for all personal accounts
         
         # Create mock response with the correct structure
         mock_response = {
@@ -1528,6 +1579,10 @@ def test_rate_limiter():
     
     print("\nRate limiter test complete!")
     return limiter
+
+# Export individual instruction sets for easy importing
+FACEBOOK_BRANDING = INSTRUCTION_SETS["FACEBOOK_BRANDING"]
+FACEBOOK_PERSONAL = INSTRUCTION_SETS["FACEBOOK_PERSONAL"]
 
 if __name__ == "__main__":
     # Run the appropriate test based on command line args

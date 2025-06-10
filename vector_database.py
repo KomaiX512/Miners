@@ -46,16 +46,31 @@ class VectorDatabaseManager:
             # Backup existing database if it exists and seems corrupted
             self._check_and_backup_db()
             
-            # Initialize client with increased timeout and retries
-            self.client = chromadb.PersistentClient(
-                path="./chroma_db",
-                settings=chromadb.Settings(
-                    anonymized_telemetry=False,
-                    allow_reset=True,
-                    chroma_api_impl="rest",
-                    chroma_server_ssl_enabled=False
+            # Try different client initialization approaches
+            try:
+                # First try without the "rest" API implementation that may cause errors
+                self.client = chromadb.PersistentClient(
+                    path="./chroma_db",
+                    settings=chromadb.Settings(
+                        anonymized_telemetry=False,
+                        allow_reset=True
+                    )
                 )
-            )
+                logger.info("Successfully initialized ChromaDB client")
+            except Exception as client_err:
+                # Check if the error is about "rest" API implementation
+                if "Unsupported Chroma API implementation rest" in str(client_err):
+                    logger.warning("ChromaDB doesn't support 'rest' API implementation, trying alternative initialization")
+                    try:
+                        # Try with default settings
+                        self.client = chromadb.PersistentClient(path="./chroma_db")
+                        logger.info("Successfully initialized ChromaDB client with default settings")
+                    except Exception as alt_err:
+                        logger.error(f"Alternative client initialization also failed: {str(alt_err)}")
+                        raise
+                else:
+                    # Some other error occurred
+                    raise
             
             # Get or create collection
             self.collection = self._get_or_create_collection()
@@ -85,7 +100,7 @@ class VectorDatabaseManager:
         except Exception as e:
             logger.warning(f"Error checking database corruption: {str(e)}")
             # Continue anyway
-    
+        
     def _get_or_create_collection(self):
         """Get or create a collection in the vector database with robust error handling."""
         max_retries = 3
@@ -118,16 +133,10 @@ class VectorDatabaseManager:
                         # It's fine if it doesn't exist yet
                         pass
                     
-                    # Create with HIGHLY ENHANCED params to improve robustness
+                    # Create collection with simpler parameters
                     collection = self.client.create_collection(
                         name=self.config['collection_name'],
-                        metadata={
-                            "hnsw:space": "cosine",
-                            "hnsw:M": 128,         # SIGNIFICANTLY increased from 64 for better connectivity
-                            "hnsw:ef_construction": 400,  # DOUBLED from 200 for better index quality
-                            "hnsw:ef_search": 200,       # DOUBLED from 100 for higher search quality
-                            "hnsw:allow_replace_deleted": True  # Allow reuse of deleted slots
-                        }
+                        metadata={"hnsw:space": "cosine"}
                     )
                     
                     # Try a simple operation to verify it works
@@ -318,7 +327,6 @@ class VectorDatabaseManager:
             if new_metadatas:
                 logger.info(f"📊 RAG INDEX: Adding {len(new_documents)} new documents to collection (post filter)")
                 
-                # Use upsert instead of add to handle duplicates gracefully
                 try:
                     self.collection.upsert(
                         documents=new_documents,
@@ -327,7 +335,7 @@ class VectorDatabaseManager:
                         metadatas=new_metadatas
                     )
                     logger.info(f"✅ RAG INDEX: Successfully upserted {len(new_documents)} documents (graceful duplicate handling)")
-                
+                    
                     # Backup successful data to fallback database for resilience
                     logger.info("📊 RAG INDEX: Backing up to fallback database for redundancy")
                     self.fallback_db.add_documents(new_documents, new_ids, new_metadatas)
@@ -353,7 +361,6 @@ class VectorDatabaseManager:
                     self.fallback_db.add_documents(documents, ids, metadatas)
             except Exception as fallback_error:
                 logger.error(f"❌ RAG INDEX: Fallback database also failed: {str(fallback_error)}")
-    
     def query_similar(self, query_text, n_results=5, filter_username=None, is_competitor=False):
         """
         Query for similar documents with enhanced RAG retrieval, filtering, and robust error handling.
@@ -447,7 +454,7 @@ class VectorDatabaseManager:
                 'query_embeddings': [query_vector],
                 'n_results': safe_n_results,
                 'include': ['documents', 'metadatas', 'distances']
-            }
+                    }
             
             # Execute query with retry logic
             results = None
@@ -630,7 +637,7 @@ class VectorDatabaseManager:
             except Exception as fallback_error:
                 logger.error(f"❌ Fallback database also failed: {str(fallback_error)}")
                 # Return empty result structure as absolute last resort
-                return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
+            return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
     
     def get_count(self):
         """Get the number of documents in the collection."""
@@ -991,7 +998,7 @@ class VectorDatabaseManager:
                 return self.fallback_db.add_posts(posts, primary_username, is_competitor)
             except Exception as fallback_error:
                 logger.error(f"❌ RAG INDEX: Fallback database also failed: {str(fallback_error)}")
-                return 0
+            return 0
     
     def clear_collection(self):
         """Clear all documents from the collection."""
@@ -1103,6 +1110,12 @@ class VectorDatabaseManager:
         This is useful for improving retrieval accuracy, especially across runs.
         """
         try:
+            # Check if we're using fallback DB or if ChromaDB client is None
+            if self.use_fallback or self.client is None:
+                logger.info("Using fallback database, normalizing metadata in fallback storage")
+                # Normalize fallback database usernames
+                return self._normalize_fallback_usernames()
+                
             # Check if collection exists and has documents
             collection_size = self.get_count()
             if collection_size == 0:
@@ -1111,11 +1124,22 @@ class VectorDatabaseManager:
                 
             logger.info(f"Normalizing usernames in vector database ({collection_size} documents)")
             
+            # Check if collection is properly initialized
+            if not hasattr(self, 'collection') or self.collection is None:
+                logger.warning("Collection not properly initialized for normalization")
+                self.use_fallback = True
+                return self._normalize_fallback_usernames()
+                
             # Get all documents with metadata
-            results = self.collection.get(include=['metadatas'])
-            if not results or 'metadatas' not in results or not results['metadatas']:
-                logger.warning("No documents with metadata found for normalization")
-                return False
+            try:
+                results = self.collection.get(include=['metadatas'])
+                if not results or 'metadatas' not in results or not results['metadatas']:
+                    logger.warning("No documents with metadata found for normalization")
+                    return False
+            except Exception as e:
+                logger.error(f"Error retrieving documents for normalization: {str(e)}")
+                self.use_fallback = True
+                return self._normalize_fallback_usernames()
                 
             # Track what needs updating
             update_count = 0
@@ -1333,6 +1357,14 @@ class VectorDatabaseManager:
         try:
             logger.info(f"🔄 Reinitializing vector database (force={force})")
             
+            # Check if client is None - in this case, switch to fallback
+            if self.client is None:
+                logger.warning("ChromaDB client is None, switching to fallback database")
+                self.use_fallback = True
+                # Clear fallback database
+                self.fallback_db.clear_collection()
+                return True
+                
             # Check collection status
             if not force:
                 try:
@@ -1351,18 +1383,42 @@ class VectorDatabaseManager:
             # Use delete_collection and recreate instead of clear_collection
             # This ensures a completely fresh start
             try:
-                self.client.delete_collection(self.config['collection_name'])
-                logger.info(f"Deleted collection: {self.config['collection_name']}")
+                if self.client is not None:
+                    self.client.delete_collection(self.config['collection_name'])
+                    logger.info(f"Deleted collection: {self.config['collection_name']}")
             except Exception as e:
                 logger.warning(f"Error deleting collection (may not exist): {str(e)}")
                 
+            # Attempt to reinitialize the ChromaDB client if it failed previously
+            if self.client is None:
+                try:
+                    logger.info("Attempting to reinitialize ChromaDB client")
+                    self.client = chromadb.PersistentClient(
+                        path="./chroma_db",
+                        settings=chromadb.Settings(
+                            anonymized_telemetry=False,
+                            allow_reset=True
+                        )
+                    )
+                    logger.info("Successfully reinitialized ChromaDB client")
+                except Exception as init_err:
+                    logger.error(f"Failed to reinitialize ChromaDB client: {str(init_err)}")
+                    self.use_fallback = True
+                    return True
+                    
             # Recreate the collection with improved parameters
             try:
-                self.collection = self._get_or_create_collection()
-                logger.info("Collection recreated with robust parameters")
+                if self.client is not None:
+                    self.collection = self._get_or_create_collection()
+                    logger.info("Collection recreated with robust parameters")
+                else:
+                    logger.warning("ChromaDB client is None, cannot recreate collection")
+                    self.use_fallback = True
+                    return True
             except Exception as create_err:
                 logger.error(f"Failed to recreate collection: {str(create_err)}")
-                return False
+                self.use_fallback = True
+                return True
                 
             # Reinitialize the vectorizer
             self.vectorizer = TfidfVectorizer(
@@ -1494,6 +1550,22 @@ class VectorDatabaseManager:
             logger.error(f"Error normalizing competitor data: {str(e)}")
             import traceback
             logger.error(traceback.format_exc())
+            return False
+
+    def _normalize_fallback_usernames(self):
+        """
+        Normalize usernames in the fallback database.
+        """
+        try:
+            # Check if fallback database is properly initialized
+            if not hasattr(self, 'fallback_db'):
+                logger.warning("Fallback database not properly initialized")
+                return False
+                
+            # Delegate to the fallback database
+            return self.fallback_db.normalize_usernames()
+        except Exception as e:
+            logger.error(f"Error normalizing fallback usernames: {str(e)}")
             return False
 
 
@@ -1851,6 +1923,65 @@ class FallbackVectorDB:
     def get_count(self):
         """Get the number of documents in the fallback database."""
         return len(self.documents)
+
+    def normalize_usernames(self):
+        """Normalize usernames in the fallback database metadata."""
+        try:
+            if not self.metadata:
+                logger.info("No metadata to normalize in fallback database")
+                return True
+                
+            logger.info(f"Normalizing usernames in fallback database ({len(self.metadata)} documents)")
+            
+            updated_count = 0
+            for doc_id, metadata in self.metadata.items():
+                if not metadata:
+                    continue
+                    
+                needs_update = False
+                
+                # Make sure username and primary_username fields exist
+                if 'username' not in metadata:
+                    metadata['username'] = metadata.get('primary_username', 'unknown')
+                    needs_update = True
+                    
+                if 'primary_username' not in metadata:
+                    metadata['primary_username'] = metadata.get('username', 'unknown')
+                    needs_update = True
+                
+                # Remove @ prefix if present in either field
+                if metadata['username'] and isinstance(metadata['username'], str) and metadata['username'].startswith('@'):
+                    metadata['username'] = metadata['username'][1:]
+                    needs_update = True
+                    
+                if metadata['primary_username'] and isinstance(metadata['primary_username'], str) and metadata['primary_username'].startswith('@'):
+                    metadata['primary_username'] = metadata['primary_username'][1:]
+                    needs_update = True
+                
+                # Set is_competitor flag correctly
+                if 'is_competitor' not in metadata:
+                    metadata['is_competitor'] = False
+                    needs_update = True
+                
+                # Ensure competitor field is set for competitor content
+                if metadata.get('is_competitor', False) and 'competitor' not in metadata:
+                    metadata['competitor'] = metadata['username']
+                    needs_update = True
+                
+                # Update metadata
+                if needs_update:
+                    self.metadata[doc_id] = metadata
+                    updated_count += 1
+            
+            # Save updated metadata to disk
+            if updated_count > 0:
+                self._save_json(self.metadata_file, self.metadata)
+                logger.info(f"Updated {updated_count} documents in fallback database")
+            
+            return True
+        except Exception as e:
+            logger.error(f"Error normalizing fallback database usernames: {str(e)}")
+            return False
 
 
 if __name__ == "__main__":

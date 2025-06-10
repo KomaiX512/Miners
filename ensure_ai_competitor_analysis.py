@@ -65,36 +65,36 @@ def ensure_ai_competitor_analysis():
                 need_fix = True
             else:
                 threat_assessment_competitor_analysis = threat_assessment.get('competitor_analysis', {})
-                
-                # Check each competitor for AI-generated content
-                for competitor in competitor_usernames:
+        
+        # Check each competitor for AI-generated content
+        for competitor in competitor_usernames:
                     if competitor not in threat_assessment_competitor_analysis:
                         logger.info(f"Competitor {competitor} missing from threat_assessment competitor_analysis, fix needed")
-                        need_fix = True
-                        break
-                    
+                need_fix = True
+                break
+            
                     comp_data = threat_assessment_competitor_analysis[competitor]
-                    
-                    # Check if this appears to be placeholder content
-                    if "Analysis available for" in comp_data.get("overview", "") or "Competitive analysis for" in comp_data.get("overview", ""):
-                        logger.info(f"Competitor {competitor} has placeholder analysis, fix needed")
-                        need_fix = True
-                        break
-                    
+            
+            # Check if this appears to be placeholder content
+            if "Analysis available for" in comp_data.get("overview", "") or "Competitive analysis for" in comp_data.get("overview", ""):
+                logger.info(f"Competitor {competitor} has placeholder analysis, fix needed")
+                need_fix = True
+                break
+            
                     # Check for required fields: strengths, vulnerabilities, weaknesses, recommended_counter_strategies
                     if not all(field in comp_data for field in ["strengths", "vulnerabilities", "weaknesses", "recommended_counter_strategies"]):
-                        logger.info(f"Competitor {competitor} missing essential fields, fix needed")
-                        need_fix = True
-                        break
-                    
-                    # Check for sufficient content in fields
-                    if (len(comp_data.get("strengths", [])) < 2 or 
-                        len(comp_data.get("vulnerabilities", [])) < 2 or 
+                logger.info(f"Competitor {competitor} missing essential fields, fix needed")
+                need_fix = True
+                break
+            
+            # Check for sufficient content in fields
+            if (len(comp_data.get("strengths", [])) < 2 or 
+                len(comp_data.get("vulnerabilities", [])) < 2 or 
                         len(comp_data.get("weaknesses", [])) < 2 or
                         len(comp_data.get("recommended_counter_strategies", [])) < 2):
-                        logger.info(f"Competitor {competitor} has insufficient analysis content, fix needed")
-                        need_fix = True
-                        break
+                logger.info(f"Competitor {competitor} has insufficient analysis content, fix needed")
+                need_fix = True
+                break
     
     # Check for force fix parameter
     if len(sys.argv) > 1 and sys.argv[1] == '--force':
@@ -153,9 +153,9 @@ def ensure_ai_competitor_analysis():
                             
                             if missing_fields:
                                 logger.warning(f"Competitor {competitor} still missing required fields after fix: {missing_fields}")
-                                all_fixed = False
+                            all_fixed = False
                                 break
-                            
+                    
                     if all_fixed:
                         logger.info("✅ All competitors now have required fields in the correct structure")
                     
@@ -200,7 +200,7 @@ def manual_fix_competitor_data(content_plan_file='content_plan.json'):
             
         if 'competitor_analysis' not in content_plan['recommendation']['threat_assessment']:
             content_plan['recommendation']['threat_assessment']['competitor_analysis'] = {}
-            modified = True
+                    modified = True
             
         # Get competitors list
         competitors = content_plan.get('competitors', [])
@@ -219,14 +219,14 @@ def manual_fix_competitor_data(content_plan_file='content_plan.json'):
         for competitor in competitors:
             if competitor not in threat_assessment_competitor_analysis:
                 threat_assessment_competitor_analysis[competitor] = {}
-                modified = True
+                    modified = True
             
             comp_data = threat_assessment_competitor_analysis[competitor]
             
             # Enhance analysis with better content
             if "overview" not in comp_data or len(comp_data["overview"]) < 50:
                 comp_data["overview"] = f"In-depth analysis of {competitor} reveals both strategic challenges and opportunities. This competitor operates with distinct methodologies in the market that require careful consideration for effective response."
-                modified = True
+                    modified = True
             
             # Ensure all required fields have sufficient content
             for field in ["strengths", "vulnerabilities", "weaknesses", "recommended_counter_strategies"]:

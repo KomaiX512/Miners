@@ -25,6 +25,7 @@ from botocore.client import Config
 import boto3
 import numpy as np
 from twitter_scraper import TwitterScraper
+from export_content_plan import ContentPlanExporter
 
 
 # Set up logging
@@ -255,6 +256,97 @@ class ContentRecommendationSystem:
                 'timestamp': datetime.now().isoformat()
             }
 
+    def _read_facebook_account_info(self, username):
+        """
+        Read Facebook account info from tasks/ProfileInfo/facebook/<username>/profileinfo.json file.
+        This is the authoritative source for Facebook account_type and posting_style.
+        
+        Args:
+            username (str): The username to load info for
+            
+        Returns:
+            dict: Account info with account_type and posting_style or None if not found
+        """
+        try:
+            # Check for Facebook-specific account info
+            potential_paths = [
+                f"ProfileInfo/facebook/{username}/profileinfo.json",
+                f"AccountInfo/facebook/{username}/info.json",  # Alternative path
+            ]
+            
+            account_info = None
+            used_path = None
+            
+            # Try each potential path until we find one that works
+            for info_path in potential_paths:
+                logger.info(f"Attempting to read Facebook account info from {info_path} (bucket: tasks)")
+                try:
+                    # Use the tasks bucket retriever for AccountInfo fetches
+                    account_data = self.tasks_data_retriever.get_json_data(info_path)
+                    if account_data:
+                        account_info = account_data
+                        used_path = info_path
+                        logger.info(f"Successfully found Facebook account info at {info_path} (bucket: tasks)")
+                        break
+                except Exception as e:
+                    logger.warning(f"Could not read from {info_path} in tasks bucket: {str(e)}")
+                    continue
+                    
+            if account_info:
+                logger.info(f"Found Facebook account info for {username} at {used_path}: accountType={account_info.get('accountType')}, postingStyle={account_info.get('postingStyle')}")
+                return account_info
+            else:
+                logger.warning(f"No Facebook account info found in any location for {username}")
+                
+                # TESTING BYPASS: Create default account info for Facebook testing (matching Instagram approach)
+                logger.warning(f"TESTING BYPASS: Creating default Facebook account info for {username}")
+                
+                # Analyze username to guess account type
+                username_lower = username.lower()
+                if any(keyword in username_lower for keyword in ['official', 'brand', 'company', 'corp', 'inc', 'llc', 'business']):
+                    account_type = 'branding'
+                    posting_style = 'promotional'
+                    logger.info(f"Detected branding account for Facebook {username} based on username analysis")
+                elif any(keyword in username_lower for keyword in ['tech', 'science', 'news', 'education', 'learn']):
+                    account_type = 'branding'
+                    posting_style = 'educational'
+                    logger.info(f"Detected educational branding account for Facebook {username} based on username analysis")
+                else:
+                    # Default to non-branding for Facebook personal accounts
+                    account_type = 'personal'
+                    posting_style = 'informative'
+                    logger.info(f"Defaulting to personal account for Facebook {username}")
+                
+                # Create mock account info for testing
+                default_account_info = {
+                    'accountType': account_type,
+                    'postingStyle': posting_style,
+                    'competitors': [],  # Empty competitors for testing
+                    'username': username,
+                    'platform': 'facebook',
+                    'testing_mode': True,  # Mark as testing mode
+                    'timestamp': datetime.now().isoformat()
+                }
+                
+                logger.warning(f"TESTING MODE: Using default Facebook account info - accountType: {account_type}, postingStyle: {posting_style}")
+                return default_account_info
+                
+        except Exception as e:
+            logger.error(f"Error reading Facebook account info for {username}: {str(e)}")
+            
+            # FALLBACK: Create minimal default account info for testing
+            logger.warning(f"FALLBACK: Creating minimal default Facebook account info for {username}")
+            return {
+                'accountType': 'personal',
+                'postingStyle': 'informative',
+                'competitors': [],
+                'username': username,
+                'platform': 'facebook',
+                'testing_mode': True,
+                'fallback_mode': True,
+                'timestamp': datetime.now().isoformat()
+            }
+
     def _read_account_info(self, username):
         """
         Read account info from AccountInfo/instagram/<username>/info.json file.
@@ -350,6 +442,12 @@ class ContentRecommendationSystem:
                     path_parts = data_key.split('/')
                     if len(path_parts) >= 2:
                         primary_username = path_parts[1]  # instagram/username/...
+                # Check if it's a Facebook data key (facebook/username/username.json)
+                elif data_key.startswith('facebook/'):
+                    platform = 'facebook'
+                    path_parts = data_key.split('/')
+                    if len(path_parts) >= 2:
+                        primary_username = path_parts[1]  # facebook/username/...
                 else:
                     # Legacy Instagram format: username/username.json (backwards compatibility)
                     primary_username = data_key.split('/')[0]
@@ -362,6 +460,9 @@ class ContentRecommendationSystem:
                 if platform == 'twitter':
                     # For Twitter, look in twitter-specific directory
                     account_info = self._read_twitter_account_info(primary_username)
+                elif platform == 'facebook':
+                    # For Facebook, look in facebook-specific directory
+                    account_info = self._read_facebook_account_info(primary_username)
                 else:
                     # For Instagram, use existing method
                     account_info = self._read_account_info(primary_username)
@@ -370,6 +471,9 @@ class ContentRecommendationSystem:
             if platform == 'twitter':
                 # Process Twitter data with new format
                 data = self.process_twitter_data(raw_data, account_info)
+            elif platform == 'facebook':
+                # Process Facebook data with new format
+                data = self.process_facebook_data(raw_data, account_info)
             else:
                 # Process Instagram data (existing logic)
                 if isinstance(raw_data, list) and raw_data and 'latestPosts' in raw_data[0]:
@@ -414,6 +518,20 @@ class ContentRecommendationSystem:
                 if competitors_data:
                     data['competitor_posts'] = competitors_data
                     logger.info(f"Added {len(competitors_data)} competitor posts to the data")
+
+            # Handle competitor data files for Facebook
+            elif platform == 'facebook' and '/' in data_key:
+                # NEW SCHEMA: facebook/username/username.json
+                if data_key.startswith('facebook/'):
+                    path_parts = data_key.split('/')
+                    if len(path_parts) >= 2:
+                        parent_dir = f"facebook/{path_parts[1]}"  # facebook/username
+                
+                    # Load competitor files from the same directory
+                    competitors_data = self._load_competitor_files(parent_dir, data['profile']['username'])
+                    if competitors_data:
+                        data['competitor_posts'] = competitors_data
+                        logger.info(f"Added {len(competitors_data)} Facebook competitor posts to the data")
 
             return data
 
@@ -1941,191 +2059,29 @@ class ContentRecommendationSystem:
 
     def export_content_plan_sections(self, content_plan):
         """Export modular content plan sections with clear module recognition."""
-        from datetime import datetime
-        import json
-
+        from export_content_plan import ContentPlanExporter
+        
         logger.info("Exporting modular content plan sections...")
         try:
             if not content_plan:
                 logger.error("No content plan to export")
                 return False
             
-            # Extract metadata module
-            platform = content_plan.get('platform', 'instagram').lower()
-            username = content_plan.get('primary_username', 'unknown_user')
-            account_type = content_plan.get('account_type', 'personal')
-            is_branding = account_type in ['branding', 'business', 'brand', 'company']
-            secondary_usernames = content_plan.get('secondary_usernames', [])
+            # Initialize the exporter
+            exporter = ContentPlanExporter(self.r2_storage)
             
-            logger.info(f"Exporting {platform} content plan for {username} ({'branding' if is_branding else 'personal'} account)")
+            # Export using the new exporter
+            success = exporter.export_content_plan(content_plan)
             
-            # Create modular directory structure
-            base_dirs = {
-                'main_intelligence': f"main_intelligence/{platform}/{username}/",
-                'next_posts': f"next_posts/{platform}/{username}/",
-                'improvement_recs': f"recommendations/{platform}/{username}/",  # USE EXISTING SCHEMA
-                'competitor_analysis': f"competitor_analysis/{platform}/{username}/",
-                'engagement_strategies': f"engagement_strategies/{platform}/{username}/",
-                'trending_topics': f"trending_topics/{platform}/{username}/"
-            }
-            
-            # Ensure directories exist
-            for dir_path in base_dirs.values():
-                self._ensure_directory_exists(dir_path)
-            
-            export_results = {}
-            
-            # MODULE 1: Export Main Intelligence Module
-            main_rec = content_plan.get('main_recommendation', {})
-            if main_rec:
-                file_num = self._get_next_file_number(f"main_intelligence/{platform}", username, "intelligence")
-                intelligence_path = f"{base_dirs['main_intelligence']}intelligence_{file_num}.json"
-                
-                intelligence_data = {
-                    "module_type": "main_intelligence",
-                    "platform": platform,
-                    "username": username,
-                    "intelligence_data": main_rec,
-                    "generated_at": datetime.now().isoformat()
-                }
-                
-                export_results['main_intelligence'] = self.r2_storage.upload_file(
-                    key=intelligence_path,
-                    file_obj=io.BytesIO(json.dumps(intelligence_data, indent=2).encode('utf-8')),
-                    bucket='tasks'
-                )
-                logger.info(f"Main intelligence module exported: {intelligence_path}")
-            
-            # MODULE 2: Export Next Post Module
-            next_post = content_plan.get('next_post_prediction', {})
-            if next_post:
-                file_num = self._get_next_file_number(f"next_posts/{platform}", username, "post")
-                next_post_path = f"{base_dirs['next_posts']}post_{file_num}.json"
-                
-                # 🎯 BULLETPROOF: Ensure next_post has image_prompt for Image Generator compatibility
-                standardized_next_post = self._standardize_next_post_format(next_post, platform, username)
-                
-                next_post_data = {
-                    "module_type": "next_post_prediction",
-                    "platform": platform,
-                    "username": username,
-                    "post_data": standardized_next_post,
-                    "generated_at": datetime.now().isoformat(),
-                    "status": "pending"  # Required for Image Generator
-                }
-                
-                export_results['next_post'] = self.r2_storage.upload_file(
-                    key=next_post_path,
-                    file_obj=io.BytesIO(json.dumps(next_post_data, indent=2).encode('utf-8')),
-                    bucket='tasks'
-                )
-                logger.info(f"Next post module exported with standardized format: {next_post_path}")
-            
-            # MODULE 3: Export Improvement Recommendations Module
-            improvement_recs = content_plan.get('improvement_recommendations', {})
-            if improvement_recs:
-                file_num = self._get_next_file_number(f"recommendations/{platform}", username, "recommendations")
-                improvement_path = f"{base_dirs['improvement_recs']}recommendations_{file_num}.json"
-                
-                improvement_data = {
-                    "module_type": "recommendations",  # USE EXISTING SCHEMA
-                    "platform": platform,
-                    "username": username,
-                    "recommendations_data": improvement_recs,
-                    "generated_at": datetime.now().isoformat()
-                }
-                
-                export_results['improvement_recommendations'] = self.r2_storage.upload_file(
-                    key=improvement_path,
-                    file_obj=io.BytesIO(json.dumps(improvement_data, indent=2).encode('utf-8')),
-                    bucket='tasks'
-                )
-                logger.info(f"Improvement recommendations module exported: {improvement_path}")
-            
-            # MODULE 4: Export Competitor Analysis Module (branding accounts only)
-            if is_branding and 'competitor_analysis' in content_plan:
-                competitor_analysis = content_plan['competitor_analysis']
-                for competitor, analysis in competitor_analysis.items():
-                    competitor_dir = f"{base_dirs['competitor_analysis']}{competitor}/"
-                    self._ensure_directory_exists(competitor_dir)
-                    
-                    file_num = self._get_next_file_number(f"competitor_analysis/{platform}", f"{username}/{competitor}", "analysis")
-                    analysis_path = f"{competitor_dir}analysis_{file_num}.json"
-                    
-                    competitor_data = {
-                        "module_type": "competitor_analysis",
-                        "platform": platform,
-                        "primary_username": username,
-                        "competitor_username": competitor,
-                        "analysis_data": analysis,
-                        "generated_at": datetime.now().isoformat()
-                    }
-                    
-                    competitor_result = self.r2_storage.upload_file(
-                        key=analysis_path,
-                        file_obj=io.BytesIO(json.dumps(competitor_data, indent=2).encode('utf-8')),
-                        bucket='tasks'
-                    )
-                    
-                    if 'competitor_analysis' not in export_results:
-                        export_results['competitor_analysis'] = {}
-                    export_results['competitor_analysis'][competitor] = competitor_result
-                    
-                    logger.info(f"Competitor analysis for {competitor} exported: {analysis_path}")
-            
-            # MODULE 5: Export Engagement Strategies Module (non-branding accounts only)
-            if not is_branding and 'engagement_strategies' in content_plan:
-                engagement_strategies = content_plan['engagement_strategies']
-                file_num = self._get_next_file_number(f"engagement_strategies/{platform}", username, "strategies")
-                strategies_path = f"{base_dirs['engagement_strategies']}strategies_{file_num}.json"
-                
-                strategies_data = {
-                    "module_type": "engagement_strategies",
-                    "platform": platform,
-                    "username": username,
-                    "strategies_data": engagement_strategies,
-                    "generated_at": datetime.now().isoformat()
-                }
-                
-                export_results['engagement_strategies'] = self.r2_storage.upload_file(
-                    key=strategies_path,
-                    file_obj=io.BytesIO(json.dumps(strategies_data, indent=2).encode('utf-8')),
-                    bucket='tasks'
-                )
-                logger.info(f"Engagement strategies module exported: {strategies_path}")
-            
-            # MODULE 6: Export Trending Topics Module
-            trending_topics = content_plan.get('trending_topics', [])
-            if trending_topics:
-                file_num = self._get_next_file_number(f"trending_topics/{platform}", username, "trending")
-                trending_path = f"{base_dirs['trending_topics']}trending_{file_num}.json"
-                
-                trending_data = {
-                    "module_type": "trending_topics",
-                    "platform": platform,
-                    "username": username,
-                    "trending_data": trending_topics,
-                    "generated_at": datetime.now().isoformat()
-                }
-                
-                export_results['trending_topics'] = self.r2_storage.upload_file(
-                    key=trending_path,
-                    file_obj=io.BytesIO(json.dumps(trending_data, indent=2).encode('utf-8')),
-                    bucket='tasks'
-                )
-                logger.info(f"Trending topics module exported: {trending_path}")
-            
-            # Verify all exports completed successfully
-            failed_exports = [module for module, result in export_results.items() if not result]
-            if failed_exports:
-                logger.error(f"Failed to export modules: {failed_exports}")
+            if success:
+                logger.info("Successfully exported all content plan sections")
+                return True
+            else:
+                logger.error("Failed to export some content plan sections")
                 return False
-            
-            logger.info(f"Successfully exported {len(export_results)} modules for {username}")
-            return True
-            
+                
         except Exception as e:
-            logger.error(f"Error exporting modular content plan: {str(e)}")
+            logger.error(f"Error exporting content plan sections: {str(e)}")
             return False
 
     def _generate_competitor_analysis(self, content_plan, competitor_usernames):
@@ -4108,6 +4064,218 @@ class ContentRecommendationSystem:
             logger.error(traceback.format_exc())
             return None
 
+    def process_facebook_data(self, raw_data, account_info=None, authoritative_primary_username=None):
+        """Process Facebook data into expected structure with strict validation matching Instagram and Twitter."""
+        try:
+            if not isinstance(raw_data, list) or not raw_data:
+                logger.warning("Invalid Facebook data format")
+                return None
+
+            logger.info(f"Processing {len(raw_data)} Facebook items")
+            
+            # STRICT: Only use account info from info.json file (authoritative source) - SAME AS INSTAGRAM/TWITTER
+            # FIXED: Check for both field name variations to handle all cases
+            account_type_from_info = (account_info.get('accountType') or account_info.get('account_type') if account_info else None)
+            posting_style_from_info = (account_info.get('postingStyle') or account_info.get('posting_style') if account_info else None)
+            
+            if not (account_info and isinstance(account_info, dict) and account_type_from_info and posting_style_from_info):
+                logger.error("CRITICAL: Facebook Account info (info.json) missing or incomplete. 'accountType'/'account_type' and 'postingStyle'/'posting_style' are required. Aborting processing.")
+                logger.error(f"Facebook account info received: {account_info}")
+                return None
+
+            account_type = account_type_from_info
+            posting_style = posting_style_from_info
+            logger.info(f"USING AUTHORITATIVE VALUES FROM Facebook info.json - account_type: {account_type}, posting_style: {posting_style}")
+            
+            # CRITICAL: Use authoritative primary username if provided (preferred)
+            if authoritative_primary_username:
+                authoritative_username = authoritative_primary_username
+                logger.info(f"🔒 USING AUTHORITATIVE PRIMARY USERNAME: {authoritative_username} (not from scraped data)")
+            elif account_info and account_info.get('username'):
+                authoritative_username = account_info.get('username')
+                logger.info(f"🔒 USING PRIMARY USERNAME FROM ACCOUNT_INFO: {authoritative_username}")
+            else:
+                logger.error("CRITICAL: No authoritative username found. Cannot determine primary username.")
+                return None
+            
+            logger.info(f"🔧 AUTHORITATIVE PRIMARY USERNAME: '{authoritative_username}'")
+            
+            # Process Facebook data and posts
+            posts = []
+            engagement_history = []
+            primary_username = authoritative_username  # Use authoritative username ALWAYS
+            profile_data = {}
+            
+            # Facebook posts format: user.name, text, likes, comments, timestamp
+            for item in raw_data:
+                if 'text' in item and item.get('text', '').strip():
+                    # Facebook data structure: user.name contains the author name
+                    post_author = item.get('user', {}).get('name', '').strip() if 'user' in item else ''
+                    page_name = item.get('pageName', '').strip()
+                    
+                    # For Facebook, we need flexible matching since authoritative_username might be 'zuck' 
+                    # but the data contains 'Mark Zuckerberg' or page name 'zuck'
+                    author_match = False
+                    normalized_auth = authoritative_username.lower()
+                    
+                    if post_author:
+                        normalized_post_author = post_author.lower()
+                        # Check if username appears in the author name or vice versa
+                        if (normalized_auth in normalized_post_author or 
+                            normalized_post_author in normalized_auth or
+                            # Handle case where username is 'zuck' but author is 'Mark Zuckerberg'
+                            any(word in normalized_post_author for word in normalized_auth.split()) or
+                            any(word in normalized_auth for word in normalized_post_author.split())):
+                            author_match = True
+                    
+                    # Also check page name for matching
+                    if page_name:
+                        normalized_page_name = page_name.lower()
+                        if (normalized_auth in normalized_page_name or 
+                            normalized_page_name in normalized_auth):
+                            author_match = True
+                    
+                    # If we have a Facebook URL, check if it contains the username
+                    facebook_url = item.get('facebookUrl', '')
+                    if facebook_url and normalized_auth in facebook_url.lower():
+                        author_match = True
+                    
+                    if author_match:
+                        post_text = item.get('text', '').strip()
+                        
+                        # Handle Facebook engagement fields
+                        likes = item.get('likes', 0) or 0
+                        comments = item.get('comments', 0) or 0
+                        shares = item.get('shares', 0) or 0
+                        
+                        # Make sure engagement is always at least 1
+                        engagement = likes + comments + shares
+                        if engagement == 0:
+                            engagement = 1  # Set minimum engagement
+                        
+                        post_obj = {
+                            'id': str(item.get('postId', '')),
+                            'caption': post_text,
+                            'hashtags': [],
+                            'engagement': engagement,
+                            'likes': likes,
+                            'comments': comments,
+                            'shares': shares,
+                            'timestamp': item.get('time', item.get('timestamp', '')),
+                            'url': item.get('url', ''),
+                            'type': 'facebook_post',
+                            'username': authoritative_username,  # Always use authoritative username
+                            'authorName': post_author,
+                            'pageName': page_name
+                        }
+                        
+                        # Extract hashtags from post text
+                        import re
+                        hashtags = re.findall(r'#(\w+)', post_text)
+                        post_obj['hashtags'] = [f"#{tag}" for tag in hashtags]
+                        
+                        posts.append(post_obj)
+                        
+                        # Add to engagement history if timestamp exists
+                        timestamp = item.get('time', item.get('timestamp', ''))
+                        if timestamp:
+                            engagement_history.append({
+                                'timestamp': timestamp,
+                                'engagement': engagement
+                            })
+
+            logger.info(f"Processed {len(posts)} Facebook posts with content for authoritative username: {authoritative_username}")
+
+            # Extract profile data from the authoritative user's posts (minimal for Facebook)
+            if posts:
+                first_post = posts[0]
+                profile_data = {
+                    'username': authoritative_username,  # Always use authoritative username
+                    'fullName': first_post.get('authorName', ''),
+                    'followersCount': 0,  # Facebook doesn't provide detailed metrics
+                    'followsCount': 0,
+                    'postsCount': len(posts),
+                    'biography': '',
+                    'verified': False,
+                    'private': False,
+                    'profilePicUrl': '',
+                    'profilePicUrlHD': '',
+                    'externalUrl': '',
+                    'account_type': account_type,
+                    'posting_style': posting_style,
+                    'profile_exploitation_skipped': True  # Facebook skips detailed profile info
+                }
+                logger.info(f"✅ Successfully extracted minimal Facebook profile for: {authoritative_username}")
+            else:
+                # Create minimal profile even if no posts
+                profile_data = {
+                    'username': authoritative_username,
+                    'fullName': '',
+                    'followersCount': 0,
+                    'followsCount': 0,
+                    'postsCount': 0,
+                    'biography': '',
+                    'verified': False,
+                    'private': False,
+                    'profilePicUrl': '',
+                    'profilePicUrlHD': '',
+                    'externalUrl': '',
+                    'account_type': account_type,
+                    'posting_style': posting_style,
+                    'profile_exploitation_skipped': True
+                }
+
+            if not posts:
+                logger.warning("No posts with content extracted from Facebook data")
+                # Create synthetic engagement history for empty posts
+                now = datetime.now()
+                for i in range(3):
+                    timestamp = (now - pd.Timedelta(days=i)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
+                    engagement_history.append({
+                        'timestamp': timestamp,
+                        'engagement': 300 - (i * 30)  # Lower baseline for Facebook
+                    })
+                logger.info(f"Created {len(engagement_history)} synthetic engagement records")
+
+            engagement_history.sort(key=lambda x: x['timestamp'])
+
+            # Get competitors from account_info if available
+            competitors = []
+            competitors_field = account_info.get('competitors') or account_info.get('secondary_usernames', [])
+            if competitors_field and isinstance(competitors_field, list):
+                competitors = competitors_field
+                logger.info(f"Using competitors from Facebook info.json: {competitors}")
+
+            # CRITICAL: These values should NEVER be overridden anywhere else in the pipeline
+            logger.warning(f"IMPORTANT: Facebook account_type '{account_type}' and posting_style '{posting_style}' must be preserved throughout the pipeline")
+            logger.warning(f"IMPORTANT: Facebook primary username '{authoritative_username}' is AUTHORITATIVE and must be preserved throughout the pipeline")
+
+            # Construct final data structure with the preserved account_type and posting_style
+            processed_data = {
+                'posts': posts,
+                'engagement_history': engagement_history,
+                'profile': profile_data,
+                'account_type': account_type,  # PRESERVE THIS VALUE
+                'posting_style': posting_style,  # PRESERVE THIS VALUE
+                'primary_username': authoritative_username,  # PRESERVE AUTHORITATIVE USERNAME
+                'platform': 'facebook'  # Explicitly set platform
+            }
+
+            # Add competitors if available
+            if competitors:
+                processed_data['secondary_usernames'] = competitors
+
+            logger.info(f"FINAL VALUES FOR FACEBOOK PROCESSING - primary_username: {authoritative_username}, account_type: {account_type}, posting_style: {posting_style}")
+            logger.info(f"🔒 FINAL FACEBOOK PRIMARY USERNAME: {authoritative_username}")
+
+            return processed_data
+
+        except Exception as e:
+            logger.error(f"Error processing Facebook data: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return None
+
     def process_twitter_username(self, username, results_limit=10, force_fresh=False):
         """Process a Twitter username and return object_key with complete pipeline execution."""
         try:
@@ -4237,13 +4405,143 @@ class ContentRecommendationSystem:
             logger.error(traceback.format_exc())
             return {"success": False, "message": f"Error processing Twitter username {username}: {str(e)}"}
 
+    def process_facebook_username(self, username, results_limit=50, force_fresh=False):
+        """Process a Facebook username and return object_key with complete pipeline execution."""
+        try:
+            logger.info(f"Processing Facebook username: {username} (force_fresh={force_fresh})")
+            
+            # For automated sequential processing, we should prioritize fresh data
+            # but for direct user calls, we can allow cached data unless explicitly requested
+            if not force_fresh:
+                logger.info(f"💡 TIP: Use force_fresh=True to ensure latest Facebook updates for {username}")
+            
+            # Check if we have any data for this username in R2 (EXACT Instagram/Twitter format)
+            object_key = f"facebook/{username}/{username}.json"
+            
+            # Try to get existing data from R2 first (unless force_fresh is True)
+            raw_data = None
+            if not force_fresh:
+                try:
+                    raw_data = self.data_retriever.get_json_data(object_key)
+                    logger.info(f"Found existing Facebook data for {username} in R2 (using cached data)")
+                except Exception as e:
+                    logger.info(f"No existing Facebook data found for {username}, will need to scrape: {str(e)}")
+            else:
+                logger.info(f"🔄 Force fresh scraping enabled - ignoring any existing data for {username}")
+            
+            # If no existing data OR force_fresh is True, scrape it
+            if not raw_data or force_fresh:
+                logger.info(f"🔄 FRESH SCRAPING: Attempting to scrape latest Facebook data for {username}")
+                from facebook_scraper import FacebookScraper
+                scraper = FacebookScraper()
+                
+                # Try to scrape and upload the data
+                profile_info = scraper.scrape_and_upload(username, results_limit)
+                if not profile_info:
+                    logger.error(f"Failed to scrape Facebook profile for {username}")
+                    return {"success": False, "message": f"Failed to scrape Facebook profile for {username}"}
+                
+                logger.info(f"✅ Successfully scraped fresh Facebook profile for {username}")
+                
+                # Try to get the newly uploaded data
+                try:
+                    raw_data = self.data_retriever.get_json_data(object_key)
+                    logger.info(f"Retrieved newly scraped Facebook data for {username}")
+                except Exception as e:
+                    logger.warning(f"Could not retrieve newly scraped data from R2: {str(e)}")
+                    
+                    # Use scraped data directly if R2 retrieval fails
+                    logger.info(f"Using direct scraped data for Facebook processing of {username}")
+                    direct_data = self.process_facebook_data(raw_data, None, username)
+                    if not direct_data:
+                        logger.error(f"Failed to process direct Facebook data for {username}")
+                        return {"success": False, "message": f"Failed to process direct Facebook data for {username}"}
+                    
+                    # Add platform and username to direct data
+                    direct_data['platform'] = 'facebook'
+                    direct_data['primary_username'] = username
+                    
+                    # Run the pipeline with the direct data
+                    try:
+                        pipeline_result = self.run_pipeline(data=direct_data)
+                        if pipeline_result and pipeline_result.get('success', False):
+                            logger.info(f"Successfully processed Facebook user {username} via direct data")
+                            return {"success": True, "message": f"Facebook profile processed: {username}", "object_key": None}
+                        else:
+                            logger.error(f"Pipeline failed for Facebook user {username} with direct data")
+                            return {"success": False, "message": f"Pipeline failed for Facebook user {username}"}
+                    except Exception as pipeline_e:
+                        logger.error(f"Pipeline error for Facebook direct data: {str(pipeline_e)}")
+                        return {"success": False, "message": f"Pipeline error for Facebook user {username}: {str(pipeline_e)}"}
+            else:
+                logger.info(f"📦 Using cached Facebook data for {username} (use force_fresh=True for latest updates)")
+            
+            # Standard processing - Try to run the pipeline with the object key
+            try:
+                logger.info(f"Running Facebook pipeline for object_key: {object_key}")
+                pipeline_result = self.run_pipeline(object_key=object_key)
+                
+                if pipeline_result and pipeline_result.get('success', False):
+                    logger.info(f"Successfully processed Facebook user {username}")
+                    
+                    # CRITICAL: Ensure all exports are completed for Facebook
+                    
+                    # 1. Export Prophet analysis for Facebook
+                    try:
+                        # Retrieve the processed posts for Prophet analysis
+                        data = self.process_social_data(object_key)
+                        if data and 'posts' in data and data['posts']:
+                            logger.info(f"Exporting Facebook Prophet analysis for {username}")
+                            prophet_result = self.export_primary_prophet_analysis(data['posts'], username, platform="facebook")
+                            if prophet_result:
+                                logger.info(f"Successfully exported Facebook Prophet analysis for {username}")
+                            else:
+                                logger.warning(f"Failed to export Facebook Prophet analysis for {username}")
+                        else:
+                            logger.warning(f"No posts available for Facebook Prophet analysis for {username}")
+                    except Exception as prophet_e:
+                        logger.error(f"Error exporting Facebook Prophet analysis for {username}: {str(prophet_e)}")
+                    
+                    # 2. Export Time Series analysis for Facebook
+                    try:
+                        if data and 'engagement_history' in data and data['engagement_history']:
+                            logger.info(f"Running Facebook time series analysis for {username}")
+                            time_series = TimeSeriesAnalyzer()
+                            time_series_results = time_series.analyze_data(data['engagement_history'], primary_username=username)
+                            if time_series_results:
+                                export_result = time_series.export_prophet_analysis(time_series_results, username, platform="facebook")
+                                if export_result:
+                                    logger.info(f"Successfully exported Facebook time series analysis for {username}")
+                                else:
+                                    logger.warning(f"Failed to export Facebook time series analysis for {username}")
+                        else:
+                            logger.warning(f"No engagement history available for Facebook time series analysis for {username}")
+                    except Exception as ts_e:
+                        logger.error(f"Error in Facebook time series analysis for {username}: {str(ts_e)}")
+                    
+                    return {"success": True, "message": f"Facebook profile processed: {username}", "object_key": object_key}
+                else:
+                    logger.error(f"Pipeline failed for Facebook user {username}")
+                    return {"success": False, "message": f"Pipeline failed for Facebook user {username}"}
+                    
+            except Exception as pipeline_error:
+                logger.error(f"Pipeline execution error for Facebook user {username}: {str(pipeline_error)}")
+                return {"success": False, "message": f"Pipeline execution error for Facebook user {username}: {str(pipeline_error)}"}
+        
+        except Exception as e:
+            logger.error(f"Error processing Facebook username {username}: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return {"success": False, "message": f"Error processing Facebook username {username}: {str(e)}"}
+
     def sequential_multi_platform_processing_loop(self, sleep_interval=300):
         """
-        Sequential multi-platform processing loop that handles Twitter FIRST, then Instagram.
+        Sequential multi-platform processing loop that handles Twitter FIRST, then Instagram, then Facebook.
         
         **PRIORITY ORDER AS REQUESTED BY USER:**
         Twitter Priority: Process ALL pending Twitter accounts through full pipeline FIRST (scraping + recommendations + exportation)
-        Instagram Priority: Only process Instagram accounts when NO Twitter accounts are pending
+        Instagram Priority: Process Instagram accounts when NO Twitter accounts are pending
+        Facebook Priority: Process Facebook accounts when NO Twitter or Instagram accounts are pending
         
         **FRESH SCRAPING GUARANTEE:**
         NEVER skips scraping - Always gets latest updates when processing unprocessed info.json files
@@ -4253,7 +4551,7 @@ class ContentRecommendationSystem:
         """
         self.running = True
         logger.info("🚀 Starting sequential multi-platform processing loop")
-        logger.info("🎯 **USER REQUESTED PRIORITY ORDER**: 1) Complete ALL Twitter accounts FIRST, 2) Then process Instagram accounts")
+        logger.info("🎯 **USER REQUESTED PRIORITY ORDER**: 1) Complete ALL Twitter accounts FIRST, 2) Then process Instagram accounts, 3) Then process Facebook accounts")
         logger.info("🔄 **FRESH SCRAPING GUARANTEE**: NEVER skips scraping - Always gets latest social media updates")
         
         try:
@@ -4276,8 +4574,18 @@ class ContentRecommendationSystem:
                 if instagram_processed > 0:
                     logger.info(f"✅ Processed {instagram_processed} Instagram accounts through FULL pipeline with fresh data")
                     processed_any = True
+                    
+                    # Continue processing Instagram accounts if more exist - NO Facebook processing until Instagram is done
+                    continue
                 
-                # If nothing was processed for either platform, sleep for the full interval
+                # 🥉 PRIORITY 3: Process Facebook accounts ONLY when NO Twitter or Instagram accounts are pending
+                logger.info("🔍 No Twitter or Instagram accounts pending. Checking Facebook accounts with FRESH SCRAPING...")
+                facebook_processed = self._process_platform_accounts('facebook')
+                if facebook_processed > 0:
+                    logger.info(f"✅ Processed {facebook_processed} Facebook accounts through FULL pipeline with fresh data")
+                    processed_any = True
+                
+                # If nothing was processed for any platform, sleep for the full interval
                 if not processed_any:
                     logger.info(f"😴 No pending accounts found on any platform. Sleeping for {sleep_interval} seconds")
                     time.sleep(sleep_interval)
@@ -4299,7 +4607,7 @@ class ContentRecommendationSystem:
         Process accounts for a specific platform by checking AccountInfo files.
         
         Args:
-            platform: Platform name ('instagram' or 'twitter')
+            platform: Platform name ('instagram', 'twitter', or 'facebook')
             
         Returns:
             int: Number of accounts processed
@@ -4345,6 +4653,9 @@ class ContentRecommendationSystem:
                     elif platform == 'twitter':
                         # Twitter: Use the _process_twitter_account_from_info which now ALWAYS scrapes fresh
                         success = self._process_twitter_account_from_info(username, account_info)
+                    elif platform == 'facebook':
+                        # Facebook: Use the _process_facebook_account_from_info which now ALWAYS scrapes fresh
+                        success = self._process_facebook_account_from_info(username, account_info)
                     
                     # Update status
                     if success:
@@ -4388,7 +4699,7 @@ class ContentRecommendationSystem:
         Find unprocessed AccountInfo files for a specific platform.
         
         Args:
-            platform: Platform name ('instagram' or 'twitter')
+            platform: Platform name ('instagram', 'twitter', or 'facebook')
             
         Returns:
             List of unprocessed account info file objects
@@ -4692,6 +5003,103 @@ class ContentRecommendationSystem:
                 
         except Exception as e:
             logger.error(f"Error processing Twitter account {username}: {str(e)}")
+            return False
+
+    def _process_facebook_account_from_info(self, username, account_info):
+        """
+        Process Facebook account using account info data.
+        
+        Args:
+            username: Facebook username
+            account_info: Account information dictionary
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            logger.info(f"Processing Facebook account: {username}")
+            
+            # Extract account details
+            account_type = account_info.get('accountType', '')
+            posting_style = account_info.get('postingStyle', '')
+            competitors = account_info.get('competitors', [])
+            
+            # Ensure competitors is a list of strings
+            if isinstance(competitors, str):
+                competitors = [comp.strip() for comp in competitors.split(',') if comp.strip()]
+            elif isinstance(competitors, list):
+                competitor_list = []
+                for comp in competitors:
+                    if isinstance(comp, dict) and 'username' in comp:
+                        competitor_list.append(comp['username'])
+                    elif isinstance(comp, str):
+                        competitor_list.append(comp)
+                competitors = competitor_list
+            
+            logger.info(f"Facebook account {username}: type={account_type}, style={posting_style}, competitors={len(competitors)}")
+            
+            # FIXED: ALWAYS scrape fresh data when processing unprocessed info.json files
+            # Never skip scraping to ensure we get the latest updates
+            logger.info(f"🔄 ALWAYS FRESH SCRAPING: Processing unprocessed info.json for {username} - calling Facebook scraper for latest data")
+            
+            # Call Facebook scraper to scrape and upload fresh data
+            from facebook_scraper import FacebookScraper
+            scraper = FacebookScraper()
+            
+            # Process the account batch (scraping + uploading) with fresh data
+            scraper_result = scraper.process_account_batch(
+                parent_username=username,
+                competitor_usernames=competitors,
+                results_limit=50,
+                info_metadata=account_info
+            )
+            
+            if not scraper_result.get('success', False):
+                logger.error(f"Facebook scraper failed for {username}: {scraper_result.get('message', 'Unknown error')}")
+                return False
+            
+            logger.info(f"✅ Facebook fresh scraping successful for {username}, proceeding with pipeline")
+            
+            # Get the freshly scraped data (EXACT Instagram/Twitter format)
+            object_key = f"facebook/{username}/{username}.json"
+            facebook_data = self.data_retriever.get_json_data(object_key)
+            if not facebook_data:
+                logger.error(f"No Facebook data found for {username} after fresh scraping")
+                return False
+            
+            # Process the Facebook data
+            processed_data = self.process_facebook_data(
+                raw_data=facebook_data,
+                account_info={
+                    'username': username,  # CRITICAL: Pass the authoritative username from info.json
+                    'accountType': account_type,  # Use consistent field names
+                    'postingStyle': posting_style,  # Use consistent field names
+                    'competitors': competitors,
+                    'platform': 'facebook'
+                },
+                authoritative_primary_username=username  # CRITICAL: Pass authoritative username
+            )
+            
+            if not processed_data:
+                logger.error(f"Failed to process Facebook data for {username}")
+                return False
+            
+            # CRITICAL: Ensure platform is explicitly set to prevent misunderstanding
+            processed_data['platform'] = 'facebook'
+            logger.info(f"🔧 FACEBOOK PLATFORM ENFORCEMENT: Set processed_data.platform = 'facebook' for {username}")
+            
+            # Run the complete pipeline
+            result = self.run_pipeline(data=processed_data)
+            
+            if result:
+                logger.info(f"Successfully completed Facebook pipeline for {username}")
+                return True
+            else:
+                logger.error(f"Facebook pipeline failed for {username}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error processing Facebook account {username}: {str(e)}")
             return False
 
     def stop_processing(self):

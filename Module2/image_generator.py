@@ -24,8 +24,13 @@ class ImageGenerator:
             "bucket_name": "tasks"  # NextPost files are in tasks bucket
         })
         
-        # Output: Write ready posts to structuredb bucket
-        self.output_r2_client = R2Client(config=STRUCTUREDB_R2_CONFIG)
+        # Output: Write ready posts to tasks bucket (not structuredb)
+        self.output_r2_client = R2Client(config={
+            "endpoint_url": R2_CONFIG["endpoint_url"],
+            "aws_access_key_id": R2_CONFIG["aws_access_key_id"],
+            "aws_secret_access_key": R2_CONFIG["aws_secret_access_key"],
+            "bucket_name": "tasks"  # Ready posts should also go to tasks bucket
+        })
         
         # Status manager uses tasks bucket to track processing status
         self.status_manager = StatusManager()
@@ -33,7 +38,7 @@ class ImageGenerator:
         
         self.input_prefix = "next_posts/"
         self.output_prefix = "ready_post/"
-        self.platforms = ["instagram", "twitter"]  # Support both platforms
+        self.platforms = ["instagram", "twitter", "facebook"]  # Support all three platforms
 
     def fix_post_data(self, data, key):
         """
@@ -145,12 +150,19 @@ class ImageGenerator:
             # Extract the actual post content
             post_content = None
             
-            if "next_post_prediction" in data:
+            # Check for the exported structure where content is in data.data (nested)
+            if "module_type" in data and data.get("module_type") == "next_post_prediction" and "data" in data:
+                post_content = data["data"]
+                logger.debug(f"📦 Using exported module format next_post_prediction.data from {key}")
+            # Check for direct next_post_prediction field
+            elif "next_post_prediction" in data:
                 post_content = data["next_post_prediction"]
                 logger.debug(f"📦 Using next_post_prediction content from {key}")
+            # Check for post_data format
             elif "post_data" in data:
                 post_content = data["post_data"]
                 logger.debug(f"📦 Using post_data content from {key}")
+            # Check for wrapped post_data format with module_type
             elif "module_type" in data and "post_data" in data:
                 post_content = data["post_data"]
                 logger.debug(f"📦 Using wrapped post_data content from {key}")
@@ -163,12 +175,16 @@ class ImageGenerator:
             standardized = {
                 "post": self._standardize_post_fields(post_content, key),
                 "status": data.get("status", "pending"),  # Use existing status if available
-                "platform": data.get("platform", "instagram"),
-                "username": data.get("username", "unknown"),
+                "platform": data.get("platform", post_content.get("platform", "instagram")),
+                "username": data.get("primary_username", data.get("username", "unknown")),
                 "original_format": "nextpost_module"
             }
             
+            # Log the standardization result
             logger.info(f"✅ Successfully converted NextPost format to standard format: {key}")
+            logger.debug(f"📊 Original data keys: {list(data.keys())}")
+            logger.debug(f"📊 Standardized format: {standardized}")
+            
             return standardized
             
         except Exception as e:
@@ -326,81 +342,66 @@ class ImageGenerator:
             return None
 
     def _standardize_post_fields(self, post_content, key):
-        """Standardize post fields to expected format."""
+        """Standardize post fields while preserving original content exactly."""
         try:
-            # Handle different caption field names
-            caption = (post_content.get("caption") or 
-                      post_content.get("tweet_text") or 
-                      post_content.get("text") or 
-                      post_content.get("content") or 
-                      "Engaging content coming soon!")
+            # Start with required fields
+            standard_post = {}
             
-            # Ensure caption is a string
-            if not isinstance(caption, str):
-                caption = str(caption)
-            
-            # Handle hashtags
-            hashtags = post_content.get("hashtags", [])
-            if not isinstance(hashtags, list):
-                if isinstance(hashtags, str):
-                    # Extract hashtags from string
-                    hashtags = re.findall(r'#\w+', hashtags)
-                else:
-                    hashtags = ["#Content", "#Engagement"]
-            
-            # Ensure we have at least some hashtags
-            if not hashtags:
-                hashtags = ["#Content", "#Engagement"]
-            
-            # Handle call to action
-            call_to_action = (post_content.get("call_to_action") or 
-                             post_content.get("cta") or 
-                             "Share your thoughts!")
-            
-            if not isinstance(call_to_action, str):
-                call_to_action = str(call_to_action)
-            
-            # 🎯 CRITICAL: Handle image prompt with multiple fallbacks
-            image_prompt = (post_content.get("image_prompt") or 
-                           post_content.get("visual_prompt") or 
-                           post_content.get("media_suggestion") or 
-                           post_content.get("visual_direction") or
-                           post_content.get("image_description"))
-            
-            # If no image prompt found, create a reasonable default
-            if not image_prompt:
-                platform = post_content.get("platform", "instagram")
-                if platform == "twitter":
-                    image_prompt = "High-quality engaging visual for Twitter post"
-                else:
-                    image_prompt = "High-quality engaging visual for Instagram post"
-                logger.warning(f"⚠️ No image prompt found in {key}, using default: {image_prompt}")
+            # CRITICAL: Preserve caption exactly as is
+            caption_field = None
+            if "caption" in post_content:
+                caption_field = "caption"
+            elif "tweet_text" in post_content:
+                caption_field = "tweet_text"
+                
+            if caption_field:
+                standard_post["caption"] = post_content[caption_field]
             else:
-                logger.info(f"✅ Found image prompt in {key}: {str(image_prompt)[:50]}...")
+                logger.warning(f"⚠️ No caption/tweet_text found in {key}, using empty string")
+                standard_post["caption"] = ""
             
-            # Ensure image prompt is a string
-            if not isinstance(image_prompt, str):
-                image_prompt = str(image_prompt)
+            # CRITICAL: Preserve hashtags exactly as is
+            if "hashtags" in post_content:
+                standard_post["hashtags"] = post_content["hashtags"]
+            else:
+                logger.warning(f"⚠️ No hashtags found in {key}, using empty list")
+                standard_post["hashtags"] = []
             
-            # Validate image prompt length
-            if len(image_prompt.strip()) < 10:
-                image_prompt = f"High-quality engaging visual content: {image_prompt}"
-                logger.warning(f"⚠️ Image prompt too short in {key}, enhanced to: {image_prompt[:50]}...")
+            # CRITICAL: Preserve call_to_action exactly as is
+            if "call_to_action" in post_content:
+                standard_post["call_to_action"] = post_content["call_to_action"]
+            else:
+                logger.warning(f"⚠️ No call_to_action found in {key}, using empty string")
+                standard_post["call_to_action"] = ""
             
-            return {
-                "caption": caption,
-                "hashtags": hashtags,
-                "call_to_action": call_to_action,
-                "image_prompt": image_prompt
-            }
+            # Handle image_prompt - try various field names but preserve content exactly
+            image_prompt = None
+            for field in ["image_prompt", "visual_prompt", "media_suggestion", "image_description"]:
+                if field in post_content:
+                    image_prompt = post_content[field]
+                    standard_post[field] = image_prompt
+                    break
+                    
+            if not image_prompt:
+                logger.warning(f"⚠️ No image prompt found in {key}, field will need to be generated")
+            
+            # Copy any other fields as-is
+            for key, value in post_content.items():
+                if key not in standard_post:
+                    standard_post[key] = value
+            
+            # Verify preservation of key fields
+            logger.info(f"✓ Standardized post fields while preserving original content for {key}")
+            return standard_post
             
         except Exception as e:
-            logger.error(f"🚨 Error standardizing post fields for {key}: {e}")
+            logger.error(f"🚨 Error in _standardize_post_fields for {key}: {e}")
+            # Return minimal structure
             return {
-                "caption": "Content coming soon!",
-                "hashtags": ["#Content", "#Update"],
-                "call_to_action": "Stay tuned!",
-                "image_prompt": "High-quality engaging visual content"
+                "caption": post_content.get("caption", post_content.get("tweet_text", "")),
+                "hashtags": post_content.get("hashtags", []),
+                "call_to_action": post_content.get("call_to_action", ""),
+                "image_prompt": post_content.get("image_prompt", post_content.get("visual_prompt", ""))
             }
 
     def _fix_missing_image_prompt(self, post, original_data, key):
@@ -911,57 +912,62 @@ class ImageGenerator:
     def _create_output_post(self, post, image_key, platform, username, original_data):
         """Create enhanced output post with robust field handling."""
         try:
-            # Extract and validate fields with fallbacks
-            caption = post.get("caption", post.get("tweet_text", "Amazing content coming soon!"))
-            if not isinstance(caption, str):
-                caption = str(caption)
-            
+            # Extract fields - CRITICAL: Preserve exact original values without modifications
+            caption = post.get("caption", post.get("tweet_text", ""))
             hashtags = post.get("hashtags", [])
-            if not isinstance(hashtags, list):
-                if isinstance(hashtags, str):
-                    import re
-                    hashtags = re.findall(r'#\w+', hashtags)
-                else:
-                    hashtags = ["#Content", "#Update"]
+            call_to_action = post.get("call_to_action", "")
             
-            call_to_action = post.get("call_to_action", "Share your thoughts!")
-            if not isinstance(call_to_action, str):
-                call_to_action = str(call_to_action)
-            
+            # IMPORTANT: Don't modify the caption or other text content - preserve exactly as is
             output_post = {
                 "post": {
-                    "caption": caption,
-                    "hashtags": hashtags,
-                    "call_to_action": call_to_action,
+                    "caption": caption,  # Keep original caption exactly as is
+                    "hashtags": hashtags,  # Keep original hashtags exactly as is
+                    "call_to_action": call_to_action,  # Keep original call_to_action exactly as is
                     "image_url": image_key,
                     "platform": platform,
                     "username": username
                 },
-                "status": "pending",  # 🔧 FIX 4: Status should be pending (not processed) for frontend to handle
+                "status": "pending",  # Status should be pending for frontend to handle
                 "processed_at": datetime.now().isoformat(),
                 "image_generated": True,
                 "original_format": original_data.get("original_format", "unknown")
             }
             
-            # Add platform-specific fields
+            # Add platform-specific fields - but keep content identical
             if platform.lower() == "twitter":
-                output_post["post"]["tweet_text"] = caption
+                output_post["post"]["tweet_text"] = caption  # Same as caption for Twitter
             
-            logger.info(f"✅ Created enhanced output post structure for {username} with status: pending")
+            # Verify content preservation
+            logger.info(f"✅ Created output post preserving original content for {username}")
+            logger.debug(f"Original caption: {caption[:30]}...")
+            logger.debug(f"Original hashtags: {hashtags[:3]}...")
+            
             return output_post
             
         except Exception as e:
             logger.error(f"🚨 Error creating output post: {e}")
+            # Even in fallback, try to preserve original content
+            fallback_caption = ""
+            fallback_hashtags = []
+            fallback_cta = ""
+            
+            try:
+                fallback_caption = post.get("caption", post.get("tweet_text", ""))
+                fallback_hashtags = post.get("hashtags", [])
+                fallback_cta = post.get("call_to_action", "")
+            except:
+                pass
+            
             return {
                 "post": {
-                    "caption": "Content processed successfully!",
-                    "hashtags": ["#Processed", "#Content"],
-                    "call_to_action": "Check it out!",
+                    "caption": fallback_caption if fallback_caption else "Content processed successfully!",
+                    "hashtags": fallback_hashtags if fallback_hashtags else ["#Processed", "#Content"],
+                    "call_to_action": fallback_cta if fallback_cta else "Check it out!",
                     "image_url": image_key,
                     "platform": platform,
                     "username": username
                 },
-                "status": "pending",  # 🔧 FIX 4: Status should be pending (not processed) for frontend to handle
+                "status": "pending", 
                 "processed_at": datetime.now().isoformat(),
                 "image_generated": True,
                 "fallback_used": True

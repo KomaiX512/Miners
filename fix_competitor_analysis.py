@@ -108,7 +108,7 @@ def fix_competitor_analysis(content_plan_file='content_plan.json'):
                         else:
                             # Enhance existing analysis for better quality
                             comp_data = threat_assessment_competitor_analysis[competitor]
-                            
+                
                             # Check if the overview needs improvement
                             if "overview" not in comp_data or len(comp_data["overview"]) < 50:
                                 comp_data["overview"] = f"In-depth analysis of {competitor} reveals both strategic challenges and opportunities. This competitor operates with distinct methodologies in the market that require careful consideration for effective response."
@@ -141,8 +141,8 @@ def fix_competitor_analysis(content_plan_file='content_plan.json'):
                                             f"Emphasize unique value propositions absent from {competitor}'s content",
                                             f"Develop community engagement tactics to outperform {competitor}'s weaker areas"
                                         ]
-                                    fixed = True
-                    
+                fixed = True
+        
         # Save updated content plan
         if fixed:
             with open(content_plan_file, 'w') as f:
@@ -246,7 +246,7 @@ def verify_competitor_fields(content_plan_file='content_plan.json'):
             
         with open(content_plan_file, 'r') as f:
             content_plan = json.load(f)
-        
+            
         # Check if top-level competitor_analysis exists and flag as error
         if 'competitor_analysis' in content_plan:
             logger.error("Invalid top-level competitor_analysis found (should only exist in recommendation)")
@@ -279,12 +279,12 @@ def verify_competitor_fields(content_plan_file='content_plan.json'):
                 elif field == "overview":
                     if not isinstance(data[field], str) or len(data[field]) < 10:
                         logger.error(f"Invalid '{field}' for competitor '{competitor}': too short or wrong type")
-                        all_valid = False
-                else:
+                all_valid = False
+            else:
                     if not isinstance(data[field], list) or len(data[field]) < 1:
                         logger.error(f"Invalid '{field}' for competitor '{competitor}': empty or wrong type")
                         all_valid = False
-                        
+                
         return all_valid
             
     except Exception as e:
@@ -304,7 +304,7 @@ if __name__ == "__main__":
         if verify_competitor_fields():
             logger.info("✅ Competitor analysis verified and valid")
             print("✅ Successfully fixed competitor analysis")
-            sys.exit(0)
+        sys.exit(0)
         else:
             logger.error("❌ Competitor analysis verification failed")
             print("⚠️ Fixed but verification failed - may need manual review")

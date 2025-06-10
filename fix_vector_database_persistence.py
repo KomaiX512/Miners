@@ -103,7 +103,7 @@ def fix_vector_database_persistence():
         # Test fallback database
         print("\n🧪 Testing fallback database with sample data...")
         test_data = [
-            {
+                {
                 "id": "test_2",
                 "caption": "Test post for fallback database verification",
                 "engagement": 200,
@@ -140,7 +140,7 @@ def fix_vector_database_persistence():
         # Test competitor query specifically
         print("\n🧪 Testing competitor query functionality...")
         competitor_test_data = [
-            {
+                {
                 "id": "comp_test_1",
                 "caption": "Competitor test post for verification",
                 "engagement": 500,
@@ -192,7 +192,7 @@ def fix_vector_database_persistence():
         if chroma_working and competitor_query_working:
             print("✅ ChromaDB is fully functional - will use as primary database with fallback safety")
             vdb.use_fallback = False
-        else:
+            else:
             print("⚠️ ChromaDB had issues - will use fallback database as primary")
             vdb.use_fallback = True
             
