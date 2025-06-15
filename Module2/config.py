@@ -30,3 +30,33 @@ GEMINI_CONFIG = {
     "top_p": 0.95,
     "top_k": 40
 }
+
+# Platform Configuration - Dynamic support for all three platforms
+PLATFORM_CONFIG = {
+    "supported_platforms": ["instagram", "twitter", "facebook"],
+    "platform_features": {
+        "instagram": {
+            "content_type": "caption",
+            "max_hashtags": 30,
+            "character_limit": 2200,
+            "tone": "casual_visual",
+            "focus": "visual_storytelling"
+        },
+        "twitter": {
+            "content_type": "tweet_text", 
+            "max_hashtags": 5,
+            "character_limit": 280,
+            "tone": "concise_impactful",
+            "focus": "quick_engagement"
+        },
+        "facebook": {
+            "content_type": "caption",
+            "max_hashtags": 15,
+            "character_limit": 63206,
+            "tone": "conversational_community",
+            "focus": "community_engagement"
+        }
+    },
+    "platform_detection": True,
+    "auto_platform_optimization": True
+}

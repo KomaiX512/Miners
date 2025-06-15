@@ -39,6 +39,135 @@ class FacebookScraper:
         self.running = False
         self.last_check_time = None
     
+    def scrape_profile_info(self, username):
+        """Scrape Facebook profile information using Apify facebook-pages-scraper."""
+        if not username or not isinstance(username, str):
+            logger.error(f"Invalid username for profile info: {username}")
+            return None
+        
+        logger.info(f"🔍 Scraping Facebook profile info: {username}")
+        
+        client = ApifyClient(self.api_token)
+        
+        # Clean up username for the Facebook URL format
+        clean_username = username.strip()
+        if clean_username.startswith('@'):
+            clean_username = clean_username[1:]
+        
+        # Facebook profile info scraper input format
+        run_input = {
+            "startUrls": [
+                {
+                    "url": f"https://www.facebook.com/{clean_username}/",
+                    "method": "GET"
+                }
+            ]
+        }
+        
+        logger.info(f"🚀 Starting Facebook profile info scraping for {username} with input: {run_input}")
+        
+        # RETRY MECHANISM - Try up to 3 times for profile info
+        for attempt in range(1, 4):
+            try:
+                logger.info(f"🚀 ATTEMPT {attempt}/3: Starting Facebook profile info scraping for {username}")
+                
+                # Use Facebook pages scraper actor for profile information
+                actor = client.actor("apify/facebook-pages-scraper")
+                run = actor.call(run_input=run_input)
+                
+                if not run:
+                    logger.warning(f"❌ Attempt {attempt}: Profile info actor run failed for {username}")
+                    if attempt < 3:
+                        time.sleep(10)  # Wait before retry
+                        continue
+                    return None
+                
+                run_id = run["id"]
+                logger.info(f"✅ Attempt {attempt}: Facebook profile info run started with ID: {run_id}")
+                
+                # Wait for completion
+                logger.info(f"⏳ Waiting for Facebook profile info scraping to complete for {username}...")
+                max_wait_time = 300  # 5 minutes max wait for profile info
+                check_interval = 15   # Check every 15 seconds
+                
+                run_completed = False
+                final_status = "UNKNOWN"
+                
+                for i in range(0, max_wait_time, check_interval):
+                    try:
+                        run_status = client.run(run_id).get()
+                        final_status = run_status.get("status", "UNKNOWN")
+                        
+                        logger.info(f"📊 Attempt {attempt}: Profile info status for {username}: {final_status} | Waited: {i}s/{max_wait_time}s")
+                        
+                        if final_status in ["SUCCEEDED", "FAILED", "ABORTED", "TIMED-OUT"]:
+                            run_completed = True
+                            break
+                        
+                        time.sleep(check_interval)
+                    except Exception as e:
+                        logger.warning(f"⚠️ Error checking profile info run status: {str(e)}")
+                        time.sleep(check_interval)
+                
+                # Retrieve profile info data
+                try:
+                    dataset = client.dataset(run["defaultDatasetId"])
+                    items = dataset.list_items().items
+                    
+                    logger.info(f"📦 Attempt {attempt}: Retrieved {len(items) if items else 0} profile info items for {username}")
+                    
+                    # SUCCESS CONDITIONS for profile info
+                    if items and len(items) > 0:
+                        logger.info(f"🎉 SUCCESS on attempt {attempt}: Found profile info for Facebook user {username}")
+                        
+                        # Validate the scraped profile data
+                        profile_item = items[0]
+                        if isinstance(profile_item, dict):
+                            logger.info(f"✅ Profile info validation passed for {username}")
+                            logger.debug(f"Profile info keys: {list(profile_item.keys())}")
+                        
+                        return profile_item  # Return single profile info object
+                    
+                    # PARTIAL SUCCESS - Even if no items, check if run was successful
+                    elif final_status == "SUCCEEDED":
+                        logger.warning(f"⚠️ Attempt {attempt}: Profile info run succeeded but no items for {username} - may be private/protected page")
+                        
+                        if attempt == 3:  # Last attempt
+                            logger.info(f"🔒 No profile info available for {username} - returning None")
+                            return None
+                    
+                    # FAILED RUN - Try again
+                    else:
+                        logger.warning(f"❌ Attempt {attempt}: Profile info run status {final_status} with no items for {username}")
+                        
+                        if attempt < 3:
+                            time.sleep(15)  # Wait before retry
+                            continue
+                
+                except Exception as dataset_error:
+                    logger.error(f"❌ Attempt {attempt}: Error retrieving profile info dataset for {username}: {str(dataset_error)}")
+                    if attempt < 3:
+                        time.sleep(10)
+                        continue
+                
+                if attempt < 3:
+                    logger.info(f"🔄 Retrying Facebook profile info scraping for {username} (attempt {attempt + 1}/3)")
+                    time.sleep(10)
+                    continue
+                else:
+                    logger.error(f"❌ All profile info attempts failed for Facebook user {username}")
+                    return None
+                    
+            except Exception as e:
+                logger.error(f"❌ Attempt {attempt}: Error scraping Facebook profile info {username}: {str(e)}")
+                if attempt < 3:
+                    time.sleep(10)
+                    continue
+                else:
+                    return None
+        
+        return None
+    
     def scrape_profile(self, username, results_limit=50):
         """Scrape Facebook profile using Apify."""
         if not username or not isinstance(username, str):
@@ -190,6 +319,43 @@ class FacebookScraper:
                     return None
         
         return None
+    
+    def combine_profile_and_posts_data(self, profile_info, posts_data, username):
+        """Combine profile info and posts data into a single JSON structure with profile info at the top."""
+        try:
+            combined_data = {}
+            
+            # Add profile info at the top if available
+            if profile_info and isinstance(profile_info, dict):
+                combined_data["profileInfo"] = profile_info
+                logger.info(f"✅ Added profile info to combined data for {username}")
+            else:
+                logger.warning(f"⚠️ No profile info available for {username}, continuing with posts only")
+                combined_data["profileInfo"] = None
+            
+            # Add posts data
+            if posts_data and isinstance(posts_data, list):
+                combined_data["posts"] = posts_data
+                logger.info(f"✅ Added {len(posts_data)} posts to combined data for {username}")
+            else:
+                logger.warning(f"⚠️ No posts data available for {username}")
+                combined_data["posts"] = []
+            
+            # Add metadata
+            combined_data["metadata"] = {
+                "username": username,
+                "platform": "facebook",
+                "scrape_timestamp": datetime.now().isoformat(),
+                "profile_info_available": profile_info is not None,
+                "posts_count": len(posts_data) if posts_data else 0
+            }
+            
+            logger.info(f"🔗 Successfully combined profile info and posts data for {username}")
+            return combined_data
+            
+        except Exception as e:
+            logger.error(f"❌ Error combining profile and posts data for {username}: {str(e)}")
+            return None
     
     def create_local_directory(self, directory_name):
         """Create a local directory for storing scraped files."""
@@ -372,34 +538,86 @@ class FacebookScraper:
             "success": success
         }
     
-    def extract_short_profile_info(self, profile_data):
+    def extract_short_profile_info(self, combined_data):
         """
-        Extract shortened profile information from Facebook data.
-        SKIP PROFILE INFO EXPLOITATION for Facebook as requested.
+        Extract shortened profile information from Facebook combined data (profile info + posts).
+        Now uses REAL profile info from facebook-pages-scraper actor.
         """
         try:
-            logger.info("🚫 SKIPPING Profile Info Exploitation for Facebook as requested")
-            logger.info("📋 Facebook doesn't provide detailed profile metrics like Instagram/Twitter")
+            logger.info("🔍 Extracting Facebook profile info from combined data")
             
-            # Return minimal profile info for Facebook
-            if not profile_data or not isinstance(profile_data, list) or len(profile_data) == 0:
-                logger.warning("No valid Facebook profile data to extract from")
+            if not combined_data or not isinstance(combined_data, dict):
+                logger.warning("No valid Facebook combined data to extract from")
                 return None
             
-            # Get basic info from first post
-            first_item = profile_data[0] if profile_data else {}
+            # Get profile info from combined data
+            profile_info_raw = combined_data.get("profileInfo")
+            posts_data = combined_data.get("posts", [])
+            metadata = combined_data.get("metadata", {})
+            username = metadata.get("username", "unknown")
             
-            # Extract minimal user information available from Facebook posts
-            profile_info = {
-                "username": first_item.get("authorName", "unknown"),
-                "platform": "facebook",
-                "posts_count": len(profile_data),
-                "profile_exploitation_skipped": True,
-                "extraction_timestamp": datetime.now().isoformat(),
-                "note": "Facebook profile info exploitation skipped - limited public data available"
-            }
+            # Build comprehensive profile info using actual scraped profile data
+            if profile_info_raw and isinstance(profile_info_raw, dict):
+                logger.info(f"✅ Using REAL profile info data for {username}")
+                
+                # Extract all available profile information
+                profile_info = {
+                    "username": username,
+                    "platform": "facebook",
+                    "facebookUrl": profile_info_raw.get("facebookUrl"),
+                    "pageId": profile_info_raw.get("pageId"),
+                    "pageName": profile_info_raw.get("pageName"),
+                    "pageUrl": profile_info_raw.get("pageUrl"),
+                    "title": profile_info_raw.get("title"),
+                    "categories": profile_info_raw.get("categories", []),
+                    "info": profile_info_raw.get("info", []),
+                    "likes": profile_info_raw.get("likes"),
+                    "followers": profile_info_raw.get("followers"),
+                    "priceRange": profile_info_raw.get("priceRange"),
+                    "address": profile_info_raw.get("address"),
+                    "phone": profile_info_raw.get("phone"),
+                    "email": profile_info_raw.get("email"),
+                    "website": profile_info_raw.get("website"),
+                    "websites": profile_info_raw.get("websites", []),
+                    "services": profile_info_raw.get("services"),
+                    "intro": profile_info_raw.get("intro"),
+                    "about_me": profile_info_raw.get("about_me"),
+                    "rating": profile_info_raw.get("rating"),
+                    "ratingOverall": profile_info_raw.get("ratingOverall"),
+                    "ratingCount": profile_info_raw.get("ratingCount"),
+                    "profilePictureUrl": profile_info_raw.get("profilePictureUrl"),
+                    "coverPhotoUrl": profile_info_raw.get("coverPhotoUrl"),
+                    "profilePhoto": profile_info_raw.get("profilePhoto"),
+                    "facebookId": profile_info_raw.get("facebookId"),
+                    "creation_date": profile_info_raw.get("creation_date"),
+                    "ad_status": profile_info_raw.get("ad_status"),
+                    "pageAdLibrary": profile_info_raw.get("pageAdLibrary"),
+                    "messenger": profile_info_raw.get("messenger"),
+                    "posts_count": len(posts_data),
+                    "profile_info_available": True,
+                    "extraction_timestamp": datetime.now().isoformat()
+                }
+                
+                logger.info(f"📋 Extracted COMPREHENSIVE Facebook profile info for {username}: {profile_info.get('pageName', 'N/A')} with {len(posts_data)} posts")
+                
+            else:
+                logger.warning(f"⚠️ No profile info available for {username}, using minimal data from posts")
+                
+                # Fallback to minimal profile info from posts data
+                first_post = posts_data[0] if posts_data and len(posts_data) > 0 else {}
+                
+                profile_info = {
+                    "username": username,
+                    "platform": "facebook", 
+                    "posts_count": len(posts_data),
+                    "profile_info_available": False,
+                    "authorName": first_post.get("authorName", username),
+                    "extraction_timestamp": datetime.now().isoformat(),
+                    "note": "Profile info not available - using minimal data from posts"
+                }
+                
+                logger.info(f"📋 Extracted minimal Facebook profile info for {username} with {len(posts_data)} posts")
             
-            logger.info(f"📋 Extracted minimal Facebook profile info: {profile_info['username']} with {profile_info['posts_count']} posts")
             return profile_info
             
         except Exception as e:
@@ -424,8 +642,8 @@ class FacebookScraper:
             tasks_bucket = "tasks"
             username = profile_info.get("username", "unknown")
             
-            # Facebook profile info path
-            profile_key = f"profile_info/facebook/{username}/profile_info.json"
+            # Facebook profile info path - CONSISTENT with Instagram and Twitter
+            profile_key = f"ProfileInfo/facebook/{username}.json"
             
             # Check if profile info already exists
             if self._check_object_exists(tasks_bucket, profile_key):
@@ -486,7 +704,7 @@ class FacebookScraper:
             return False
     
     def process_account_batch(self, parent_username, competitor_usernames, results_limit=50, info_metadata=None):
-        """Process a batch of Facebook accounts (parent + competitors) matching Instagram/Twitter structure."""
+        """Process a batch of Facebook accounts (parent + competitors) WITH PROFILE INFO integration."""
         logger.info(f"🚀 Starting Facebook batch processing for {parent_username} with {len(competitor_usernames)} competitors")
         
         # Store info metadata if provided (only in tasks bucket)
@@ -495,11 +713,26 @@ class FacebookScraper:
             info_metadata["platform"] = "facebook"
             self.store_info_metadata(info_metadata)
         
-        # Process parent account and get raw data
-        parent_data = self.scrape_profile(parent_username, results_limit)
-        if not parent_data:
-            logger.error(f"Failed to scrape parent Facebook account: {parent_username}")
-            return {"success": False, "message": f"Failed to scrape parent Facebook account: {parent_username}"}
+        # 🔍 STEP 1: Scrape parent profile info + posts data
+        logger.info(f"📋 Step 1: Scraping profile info for parent account: {parent_username}")
+        parent_profile_info = self.scrape_profile_info(parent_username)
+        
+        logger.info(f"📋 Step 2: Scraping posts data for parent account: {parent_username}")
+        parent_posts_data = self.scrape_profile(parent_username, results_limit)
+        if not parent_posts_data:
+            logger.error(f"Failed to scrape parent Facebook posts: {parent_username}")
+            return {"success": False, "message": f"Failed to scrape parent Facebook posts: {parent_username}"}
+        
+        # 🔗 STEP 3: Combine profile info + posts for parent
+        parent_combined_data = self.combine_profile_and_posts_data(parent_profile_info, parent_posts_data, parent_username)
+        if not parent_combined_data:
+            logger.error(f"Failed to combine parent data: {parent_username}")
+            return {"success": False, "message": f"Failed to combine parent data: {parent_username}"}
+        
+        # 📤 STEP 4: Extract and upload profile info to tasks bucket
+        parent_profile_summary = self.extract_short_profile_info(parent_combined_data)
+        if parent_profile_summary:
+            self.upload_short_profile_to_tasks(parent_profile_summary)
         
         # Create local directory for batch processing
         os.makedirs('temp', exist_ok=True)
@@ -508,33 +741,48 @@ class FacebookScraper:
             logger.error(f"Failed to create local directory for {parent_username}")
             return {"success": False, "message": f"Failed to create local directory for {parent_username}"}
         
-        # Save parent data as primary_username.json (EXACTLY like Instagram/Twitter)
+        # Save parent COMBINED data as primary_username.json (profile info + posts)
         parent_file = f"{parent_username}.json"
-        parent_path = self.save_to_local_file(parent_data, local_dir, parent_file)
+        parent_path = self.save_to_local_file(parent_combined_data, local_dir, parent_file)
         if not parent_path:
-            logger.error(f"Failed to save parent data locally: {parent_username}")
-            return {"success": False, "message": f"Failed to save parent data locally: {parent_username}"}
+            logger.error(f"Failed to save parent combined data locally: {parent_username}")
+            return {"success": False, "message": f"Failed to save parent combined data locally: {parent_username}"}
         
-        # Process competitor accounts and save as competitor_username.json
+        # 🏃‍♂️ STEP 5: Process competitor accounts with profile info + posts
         processed_competitors = []
         for competitor in competitor_usernames:
             if competitor and competitor.strip():
-                competitor_data = self.scrape_profile(competitor.strip(), results_limit)
-                if not competitor_data:
-                    logger.warning(f"Failed to scrape competitor profile: {competitor}")
+                competitor_username = competitor.strip()
+                logger.info(f"🔍 Processing competitor: {competitor_username}")
+                
+                # Scrape competitor profile info + posts
+                competitor_profile_info = self.scrape_profile_info(competitor_username)
+                competitor_posts_data = self.scrape_profile(competitor_username, results_limit)
+                
+                if not competitor_posts_data:
+                    logger.warning(f"Failed to scrape competitor posts: {competitor_username}")
                     continue
                 
-                competitor_file = f"{competitor.strip()}.json"
-                competitor_path = self.save_to_local_file(competitor_data, local_dir, competitor_file)
+                # Combine competitor data
+                competitor_combined_data = self.combine_profile_and_posts_data(
+                    competitor_profile_info, competitor_posts_data, competitor_username
+                )
+                if not competitor_combined_data:
+                    logger.warning(f"Failed to combine competitor data: {competitor_username}")
+                    continue
+                
+                competitor_file = f"{competitor_username}.json"
+                competitor_path = self.save_to_local_file(competitor_combined_data, local_dir, competitor_file)
                 if not competitor_path:
-                    logger.warning(f"Failed to save competitor data locally: {competitor}")
+                    logger.warning(f"Failed to save competitor combined data locally: {competitor_username}")
                     continue
                 
-                processed_competitors.append(competitor.strip())
-                logger.info(f"Successfully processed competitor: {competitor}")
+                processed_competitors.append(competitor_username)
+                logger.info(f"✅ Successfully processed competitor with profile info: {competitor_username}")
         
         # Upload directory to structuredb bucket following EXACT Instagram/Twitter pattern
         # STRUCTURE: facebook/primary_username/primary_username.json + facebook/primary_username/competitor.json
+        # BUT NOW with profile info at the top of each JSON file
         upload_result = self.upload_directory_to_both_buckets(local_dir, parent_username)
         
         # Clean up local directory
@@ -546,13 +794,14 @@ class FacebookScraper:
         
         successful_competitors = len(processed_competitors)
         
-        logger.info(f"✅ Facebook batch processing completed: {parent_username} (success), {successful_competitors}/{len(competitor_usernames)} competitors")
+        logger.info(f"✅ Facebook batch processing WITH PROFILE INFO completed: {parent_username} (success), {successful_competitors}/{len(competitor_usernames)} competitors")
         
         return {
             "success": upload_result["success"],
-            "message": f"Facebook batch processing completed",
+            "message": f"Facebook batch processing with profile info completed",
             "parent_username": parent_username,
             "parent_success": True,
+            "parent_profile_info_available": parent_profile_info is not None,
             "competitors_processed": len(competitor_usernames),
             "competitors_successful": successful_competitors,
             "competitor_results": [{"username": comp, "success": True} for comp in processed_competitors],
@@ -561,14 +810,30 @@ class FacebookScraper:
         }
     
     def scrape_and_upload(self, username, results_limit=50, info_metadata=None):
-        """Scrape Facebook profile and upload to R2 storage - INDIVIDUAL PROCESSING (not batch)."""
-        logger.info(f"🚀 Starting Facebook scrape and upload for: {username}")
+        """Scrape Facebook profile WITH PROFILE INFO and upload to R2 storage - INDIVIDUAL PROCESSING."""
+        logger.info(f"🚀 Starting Facebook scrape and upload WITH PROFILE INFO for: {username}")
         
-        # Scrape the profile
-        profile_data = self.scrape_profile(username, results_limit)
-        if not profile_data:
-            logger.error(f"Failed to scrape Facebook profile: {username}")
+        # 🔍 STEP 1: Scrape profile info
+        logger.info(f"📋 Step 1: Scraping profile info for: {username}")
+        profile_info = self.scrape_profile_info(username)
+        
+        # 📋 STEP 2: Scrape posts data
+        logger.info(f"📋 Step 2: Scraping posts data for: {username}")
+        posts_data = self.scrape_profile(username, results_limit)
+        if not posts_data:
+            logger.error(f"Failed to scrape Facebook posts: {username}")
             return None
+        
+        # 🔗 STEP 3: Combine profile info + posts
+        combined_data = self.combine_profile_and_posts_data(profile_info, posts_data, username)
+        if not combined_data:
+            logger.error(f"Failed to combine Facebook data: {username}")
+            return None
+        
+        # 📤 STEP 4: Extract and upload profile info to tasks bucket
+        profile_summary = self.extract_short_profile_info(combined_data)
+        if profile_summary:
+            self.upload_short_profile_to_tasks(profile_summary)
         
         # Create local directory
         local_directory = self.create_local_directory(f"facebook_{username}_{int(time.time())}")
@@ -576,13 +841,13 @@ class FacebookScraper:
             logger.error(f"Failed to create local directory for {username}")
             return None
         
-        # Save ONLY raw data as username.json (NO profile info files in structuredb)
-        raw_file = self.save_to_local_file(profile_data, local_directory, f"{username}.json")
-        if not raw_file:
-            logger.error(f"Failed to save raw Facebook data for {username}")
+        # Save COMBINED data as username.json (profile info + posts at top)
+        combined_file = self.save_to_local_file(combined_data, local_directory, f"{username}.json")
+        if not combined_file:
+            logger.error(f"Failed to save combined Facebook data for {username}")
             return None
         
-        # Upload to R2 buckets (will only upload .json files, not profile info)
+        # Upload to R2 buckets (will upload combined data with profile info at top)
         upload_result = self.upload_directory_to_both_buckets(local_directory, username)
         
         # Cleanup local directory
@@ -593,12 +858,14 @@ class FacebookScraper:
             logger.warning(f"Error cleaning up local directory: {str(e)}")
         
         if upload_result["success"]:
-            logger.info(f"✅ Successfully completed Facebook scrape and upload for: {username}")
+            logger.info(f"✅ Successfully completed Facebook scrape and upload WITH PROFILE INFO for: {username}")
             return {
                 "username": username,
                 "platform": "facebook",
                 "success": True,
-                "posts_scraped": len(profile_data),
+                "posts_scraped": len(posts_data),
+                "profile_info_available": profile_info is not None,
+                "combined_data_structure": True,
                 "upload_result": upload_result
             }
         else:
@@ -749,21 +1016,155 @@ class FacebookScraper:
         self.running = False
 
 def test_facebook_scraper():
-    """Test function for Facebook scraper."""
-    logger.info("🧪 Testing Facebook scraper...")
+    """Test function for Facebook scraper with PROFILE INFO integration."""
+    logger.info("🧪 Testing Facebook scraper WITH PROFILE INFO...")
     
     scraper = FacebookScraper()
     
-    # Test scraping a Facebook profile
-    test_username = "zuck"  # Mark Zuckerberg's public Facebook page
-    result = scraper.scrape_profile(test_username, results_limit=10)
+    # Test usernames for validation
+    test_usernames = ["zuck", "copperkettleyqr"]  # Mark Zuckerberg + provided test page
     
-    if result:
-        logger.info(f"✅ Facebook scraper test successful! Scraped {len(result)} items for {test_username}")
+    for test_username in test_usernames:
+        logger.info(f"🧪 Testing Facebook scraper for: {test_username}")
+        
+        # TEST 1: Profile Info Scraping
+        logger.info(f"📋 Test 1: Profile info scraping for {test_username}")
+        profile_info = scraper.scrape_profile_info(test_username)
+        
+        if profile_info:
+            logger.info(f"✅ Profile info test successful for {test_username}!")
+            logger.info(f"📋 Profile info keys: {list(profile_info.keys())}")
+            
+            # Validate key profile info fields
+            expected_fields = ["facebookUrl", "pageId", "pageName", "title", "categories"]
+            available_fields = [field for field in expected_fields if profile_info.get(field)]
+            logger.info(f"✅ Available profile fields: {available_fields}")
+            
+        else:
+            logger.warning(f"⚠️ Profile info test failed/empty for {test_username}")
+        
+        # TEST 2: Posts Scraping  
+        logger.info(f"📋 Test 2: Posts scraping for {test_username}")
+        posts_result = scraper.scrape_profile(test_username, results_limit=5)
+        
+        if posts_result:
+            logger.info(f"✅ Posts scraper test successful! Scraped {len(posts_result)} posts for {test_username}")
+        else:
+            logger.warning(f"⚠️ Posts scraper test failed/empty for {test_username}")
+        
+        # TEST 3: Combined Data Structure
+        logger.info(f"📋 Test 3: Combined data structure for {test_username}")
+        combined_data = scraper.combine_profile_and_posts_data(profile_info, posts_result, test_username)
+        
+        if combined_data:
+            logger.info(f"✅ Combined data test successful for {test_username}!")
+            logger.info(f"🔗 Combined data structure: {list(combined_data.keys())}")
+            
+            # Validate combined structure
+            if "profileInfo" in combined_data and "posts" in combined_data and "metadata" in combined_data:
+                logger.info(f"✅ Perfect combined data structure for {test_username}")
+                
+                # TEST 4: Profile Info Extraction
+                profile_summary = scraper.extract_short_profile_info(combined_data)
+                if profile_summary:
+                    logger.info(f"✅ Profile summary extraction successful for {test_username}!")
+                    logger.info(f"📋 Profile summary keys: {list(profile_summary.keys())}")
+                else:
+                    logger.warning(f"⚠️ Profile summary extraction failed for {test_username}")
+            else:
+                logger.error(f"❌ Invalid combined data structure for {test_username}")
+        else:
+            logger.error(f"❌ Combined data test failed for {test_username}")
+        
+        logger.info(f"{'='*60}")
+    
+    logger.info("🎉 Facebook scraper WITH PROFILE INFO testing completed!")
+    return True
+
+def test_profile_info_validation():
+    """Validate profile info extraction with test input format."""
+    logger.info("🧪 Testing Facebook profile info validation...")
+    
+    # Test profile info format (based on provided template)
+    test_profile_info = {
+        "facebookUrl": "https://www.facebook.com/testpage/",
+        "categories": ["Business", "Restaurant"],
+        "info": ["Great food", "Family owned", "Since 1990"],
+        "likes": 1234,
+        "messenger": "Available",
+        "priceRange": "$$",
+        "title": "Test Restaurant",
+        "address": "123 Test Street, Test City",
+        "pageId": "123456789",
+        "pageName": "Test Restaurant Page",
+        "pageUrl": "https://www.facebook.com/testpage/",
+        "intro": "Welcome to our test restaurant!",
+        "websites": ["https://testrestaurant.com"],
+        "phone": "+1234567890",
+        "email": "test@testrestaurant.com",
+        "website": "testrestaurant.com",
+        "services": "Dine-in, Takeout, Delivery",
+        "rating": "4.5 stars",
+        "followers": 5678,
+        "profilePictureUrl": "https://example.com/profile.jpg",
+        "coverPhotoUrl": "https://example.com/cover.jpg",
+        "profilePhoto": "https://example.com/photo.jpg",
+        "ratingOverall": 4.5,
+        "ratingCount": 150,
+        "creation_date": "2020-01-01",
+        "ad_status": "Active",
+        "about_me": {
+            "text": "We are a family restaurant",
+            "urls": []
+        },
+        "facebookId": "123456789",
+        "pageAdLibrary": {
+            "is_business_page_active": True,
+            "id": "ad_lib_123"
+        }
+    }
+    
+    test_posts = [
+        {"text": "Today's special!", "authorName": "Test Restaurant"},
+        {"text": "Happy Friday!", "authorName": "Test Restaurant"}
+    ]
+    
+    scraper = FacebookScraper()
+    
+    # Test combining data
+    combined_data = scraper.combine_profile_and_posts_data(test_profile_info, test_posts, "testrestaurant")
+    
+    if combined_data:
+        logger.info("✅ Profile info validation - Combined data structure created successfully!")
+        
+        # Test extraction
+        profile_summary = scraper.extract_short_profile_info(combined_data)
+        
+        if profile_summary:
+            logger.info("✅ Profile info validation - Profile summary extracted successfully!")
+            logger.info(f"📋 Extracted fields: {list(profile_summary.keys())}")
+            
+            # Validate specific fields are extracted
+            important_fields = ["username", "platform", "facebookUrl", "pageName", "likes", "followers"]
+            extracted_fields = [field for field in important_fields if profile_summary.get(field) is not None]
+            logger.info(f"✅ Important fields extracted: {extracted_fields}")
+            
+            return True
+        else:
+            logger.error("❌ Profile info validation - Profile summary extraction failed!")
+            return False
     else:
-        logger.error(f"❌ Facebook scraper test failed for {test_username}")
-    
-    return result
+        logger.error("❌ Profile info validation - Combined data structure creation failed!")
+        return False
 
 if __name__ == "__main__":
+    # Run comprehensive tests
+    logger.info("🚀 Starting Facebook scraper comprehensive testing...")
+    
+    # Test 1: Basic scraper functionality with profile info
     test_facebook_scraper()
+    
+    # Test 2: Profile info validation
+    test_profile_info_validation()
+    
+    logger.info("🎉 All Facebook scraper tests completed!")

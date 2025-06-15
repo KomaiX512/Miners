@@ -158,6 +158,13 @@ class RecommendationGenerator:
                     'generation_attempt': attempt + 1
                 }
                 
+                # CRITICAL: Include threat_assessment from RAG result if available
+                if 'threat_assessment' in unified_result:
+                    formatted_result['threat_assessment'] = unified_result['threat_assessment']
+                    logger.info(f"✅ Threat assessment included with competitor analysis for {len(cleaned_secondary)} competitors")
+                else:
+                    logger.warning(f"⚠️ No threat_assessment found in RAG unified result")
+                
                 logger.info(f"✅ BULLETPROOF SUCCESS: All 3 modules verified for {platform} {'' if is_branding else 'non-'}branding")
                 return formatted_result
                 

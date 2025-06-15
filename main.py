@@ -2540,22 +2540,11 @@ class ContentRecommendationSystem:
                                 break
                     
                     if primary_profile and 'username' in primary_profile:
-                        # Use the VERIFIED primary profile data
-                        profile_data = {
-                            "username": primary_username,  # USE AUTHORITATIVE USERNAME
-                            "fullName": primary_profile.get("fullName", ""),
-                            "biography": primary_profile.get("biography", ""),
-                            "followersCount": primary_profile.get("followersCount", 0),
-                            "followsCount": primary_profile.get("followsCount", 0),
-                            "profilePicUrl": primary_profile.get("profilePicUrl", ""),
-                            "profilePicUrlHD": primary_profile.get("profilePicUrlHD", ""),
-                            "private": primary_profile.get("private", False),
-                            "verified": primary_profile.get("verified", False)
-                        }
-                        self.export_profile_info(profile_data, primary_username, platform)
-                        logger.info(f"✅ Exported VERIFIED profile data for {primary_username}: {primary_profile.get('fullName', 'N/A')}")
+                        # CRITICAL FIX: Do NOT export profile info here - already handled by scraper
+                        # The scrapers export complete profile data via upload_short_profile_to_tasks()
+                        logger.info(f"✅ Found VERIFIED profile data for {primary_username}: {primary_profile.get('fullName', 'N/A')} - but skipping export (handled by scraper)")
                     else:
-                        logger.warning(f"⚠️ Could not find verified primary profile for {primary_username} in raw_data - skipping raw profile export")
+                        logger.warning(f"⚠️ Could not find verified primary profile for {primary_username} in raw_data - but this is fine as scraper handles ProfileInfo export")
                 
             # Try to extract username from object_key or data - setting it early to avoid NameError
             # CRITICAL FIX: ONLY use primary_username if already set in processed_data (authoritative)
@@ -2581,45 +2570,10 @@ class ContentRecommendationSystem:
                 
             logger.info(f"Processing pipeline for {platform} primary username: {primary_username}")
             
-            # Export profile information to R2 bucket from processed data
-            if 'profile' in data:
-                self.export_profile_info(data['profile'], primary_username, platform)
-                
-                # Also export competitor profiles if available
-                if 'competitor_posts' in data and isinstance(data['competitor_posts'], list):
-                    competitor_usernames = set()
-                    for post in data['competitor_posts']:
-                        if 'username' in post and post['username'] != primary_username:
-                            competitor_usernames.add(post['username'])
-                    
-                    for competitor in competitor_usernames:
-                        # Find competitor profile info from posts
-                        competitor_posts = [p for p in data['competitor_posts'] if p.get('username') == competitor]
-                        if competitor_posts:
-                            # Create minimal profile info from post data
-                            competitor_profile = {
-                                "username": competitor,
-                                "extractedAt": datetime.now().isoformat()
-                            }
-                            self.export_profile_info(competitor_profile, competitor, platform)
-                
-                # Also export secondary usernames if defined
-                if 'secondary_usernames' in data and isinstance(data['secondary_usernames'], list):
-                    for competitor in data['secondary_usernames']:
-                        if isinstance(competitor, dict) and 'username' in competitor:
-                            competitor_username = competitor['username']
-                            if competitor_username != primary_username:
-                                competitor_profile = {
-                                    "username": competitor_username,
-                                    "extractedAt": datetime.now().isoformat()
-                                }
-                                self.export_profile_info(competitor_profile, competitor_username, platform)
-                        elif isinstance(competitor, str) and competitor != primary_username:
-                            competitor_profile = {
-                                "username": competitor,
-                                "extractedAt": datetime.now().isoformat()
-                            }
-                            self.export_profile_info(competitor_profile, competitor, platform)
+            # CRITICAL FIX: ProfileInfo is already exported by scrapers via upload_short_profile_to_tasks()
+            # Do NOT export profile info again here to prevent overwriting good data with empty values
+            # The scrapers handle ProfileInfo export with complete data during the scraping process
+            logger.info(f"Skipping ProfileInfo export in main.py - already handled by {platform} scraper with complete data")
             
             # Extract account type and posting style from the data WITHOUT ANY MODIFICATION
             account_type = data.get('account_type', '')
@@ -2792,47 +2746,10 @@ class ContentRecommendationSystem:
             print(f"Recommendations generated: {recommendations_count}")
             print(f"Account type: {'Branding' if is_branding else 'Non-branding'}")
             
-            # CRITICAL FIX: SINGLE PROFILE EXPORT SECTION - Remove duplicate exports
-            # Export profile information to R2 bucket ONLY ONCE with complete data
-            if 'profile' in data:
-                logger.info("🔄 PERFORMING SINGLE AUTHORITATIVE PROFILE EXPORT (preventing duplicates)")
-                self.export_profile_info(data['profile'], primary_username, platform)
-                
-                # Also export competitor profiles if available
-                if 'competitor_posts' in data and isinstance(data['competitor_posts'], list):
-                    competitor_usernames = set()
-                    for post in data['competitor_posts']:
-                        if 'username' in post and post['username'] != primary_username:
-                            competitor_usernames.add(post['username'])
-                    
-                    for competitor in competitor_usernames:
-                        # Find competitor profile info from posts
-                        competitor_posts = [p for p in data['competitor_posts'] if p.get('username') == competitor]
-                        if competitor_posts:
-                            # Create minimal profile info from post data
-                            competitor_profile = {
-                                "username": competitor,
-                                "extractedAt": datetime.now().isoformat()
-                            }
-                            self.export_profile_info(competitor_profile, competitor, platform)
-                
-                # Also export secondary usernames if defined
-                if 'secondary_usernames' in data and isinstance(data['secondary_usernames'], list):
-                    for competitor in data['secondary_usernames']:
-                        if isinstance(competitor, dict) and 'username' in competitor:
-                            competitor_username = competitor['username']
-                            if competitor_username != primary_username:
-                                competitor_profile = {
-                                    "username": competitor_username,
-                                    "extractedAt": datetime.now().isoformat()
-                                }
-                                self.export_profile_info(competitor_profile, competitor_username, platform)
-                        elif isinstance(competitor, str) and competitor != primary_username:
-                            competitor_profile = {
-                                "username": competitor,
-                                "extractedAt": datetime.now().isoformat()
-                            }
-                            self.export_profile_info(competitor_profile, competitor, platform)
+            # CRITICAL FIX: ProfileInfo exports removed from main.py
+            # All ProfileInfo exports are now handled exclusively by scrapers via upload_short_profile_to_tasks()
+            # This prevents duplicate exports that overwrite good data with empty values
+            logger.info("✅ ProfileInfo exports handled by scrapers - no duplicate exports from main.py")
             
             # Export primary Prophet/profile analysis ONLY ONCE
             if 'posts' in data and 'primary_username' in data:
@@ -3614,10 +3531,10 @@ class ContentRecommendationSystem:
                     "profilePicUrlHD": raw_data[0].get("profilePicUrlHD", ""),
                 }
                 
-                # Export the profile data back to the ProfileInfo directory
+                # CRITICAL FIX: Do NOT export profile data from main.py - let scraper handle it
+                # ProfileInfo exports should only happen from scrapers to prevent duplicates
                 if profile_data.get("profilePicUrl") or profile_data.get("profilePicUrlHD"):
-                    logger.info(f"Exporting refreshed profile data with URLs for {username}")
-                    self.export_profile_info(profile_data, username, "instagram")
+                    logger.info(f"Found refreshed profile data with URLs for {username} - but skipping export (handled by scraper)")
                     return True
             
             # If that fails, try using the scraper to refresh the profile

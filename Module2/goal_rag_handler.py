@@ -793,6 +793,8 @@ class ContentGenerator:
             return ["#Instagram", "#Engagement", "#VisualContent"]
         elif platform.lower() == "twitter":
             return ["#Twitter", "#Trending"]
+        elif platform.lower() == "facebook":
+            return ["#Facebook", "#Community", "#SocialConnection", "#Engagement"]
         else:
             return ["#SocialMedia", "#Content"]
 
@@ -816,6 +818,8 @@ class ContentGenerator:
             return ["#Instagram", "#Content", "#Engagement", "#Quality", "#Brand"]
         elif platform.lower() == "twitter":
             return ["#Twitter", "#Update", "#Engagement", "#Content"]
+        elif platform.lower() == "facebook":
+            return ["#Facebook", "#Community", "#SocialConnection", "#Content", "#Engagement"]
         else:
             return ["#SocialMedia", "#Content", "#Engagement", "#Quality", "#Brand"]
 
@@ -829,7 +833,7 @@ class EnhancedGoalHandler:
         self.strategy_calculator = StrategyCalculator(self.rag_analyzer)
         self.content_generator = ContentGenerator(self.rag_analyzer)
         self.processed_files = set()
-        self.platforms = ["instagram", "twitter"]
+        self.platforms = ["instagram", "twitter", "facebook"]  # Support all three platforms
     
     async def process_goal_file(self, goal_key: str) -> None:
         """Process goal file with new schema: goal/<platform>/<username>/goal_*.json"""

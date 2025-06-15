@@ -36,7 +36,7 @@ class SequentialQueryHandler:
     def __init__(self):
         self.r2_client = R2Client(config=R2_CONFIG)  # Tasks bucket
         self.r2_client_structuredb = R2Client(config=STRUCTUREDB_R2_CONFIG)  # Structuredb bucket
-        self.platforms = ["instagram", "twitter"]
+        self.platforms = ["instagram", "twitter", "facebook"]  # Support all three platforms
         self.retry_interval = 10  # 10 seconds retry interval
         
     async def run_continuous_processing(self):
@@ -298,9 +298,9 @@ class SequentialQueryHandler:
         4. Generate detailed image prompt from the visual description
         
         For {platform}:
-        {"- Use casual, engaging tone with emojis" if platform == "instagram" else "- Use concise, impactful language"}
-        {"- Focus on visual storytelling" if platform == "instagram" else "- Focus on quick engagement"}
-        {"- Include relevant hashtags in caption" if platform == "instagram" else "- Keep hashtags minimal"}
+        {"- Use casual, engaging tone with emojis" if platform == "instagram" else "- Use conversational, community-focused tone" if platform == "facebook" else "- Use concise, impactful language"}
+        {"- Focus on visual storytelling" if platform == "instagram" else "- Focus on community engagement and conversations" if platform == "facebook" else "- Focus on quick engagement"}
+        {"- Include relevant hashtags in caption" if platform == "instagram" else "- Use community-focused hashtags" if platform == "facebook" else "- Keep hashtags minimal"}
         
         RESPOND ONLY with this JSON format:
         {{
@@ -361,7 +361,9 @@ class SequentialQueryHandler:
         # Basic hashtags based on platform
         if platform == "instagram":
             hashtags = ["#Instagram", "#Content", "#Engagement", "#Quality", "#Brand"]
-        else:
+        elif platform == "facebook":
+            hashtags = ["#Facebook", "#Community", "#SocialConnection", "#Engagement", "#Content"]
+        else:  # Twitter
             hashtags = ["#Twitter", "#Update", "#Engagement"]
         
         # Extract image prompt from 3rd sentence or create default
