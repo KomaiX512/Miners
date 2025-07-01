@@ -4,16 +4,16 @@ import os
 load_dotenv()
 
 R2_CONFIG = {
-    "endpoint_url": os.getenv("R2_ENDPOINT_URL", "https://b21d96e73b908d7d7b822d41516ccc64.r2.cloudflarestorage.com"),
-    "aws_access_key_id": os.getenv("R2_ACCESS_KEY", "986718fe67d6790c7fe4eeb78943adba"),
-    "aws_secret_access_key": os.getenv("R2_SECRET_KEY", "08fb3b012163cce35bee80b54d83e3a6924f2679f466790a9c7fdd9456bc44fe"),
+    "endpoint_url": os.getenv("R2_ENDPOINT_URL", "https://570f213f1410829ee9a733a77a5f40e3.r2.cloudflarestorage.com"),
+    "aws_access_key_id": os.getenv("R2_ACCESS_KEY", "18f60c98e08f1a24040de7cb7aab646c"),
+    "aws_secret_access_key": os.getenv("R2_SECRET_KEY", "0a8c50865ecab3c410baec4d751f35493fd981f4851203fe205fe0f86063a5f6"),
     "bucket_name": os.getenv("R2_BUCKET_NAME", "tasks")
 }
 
 STRUCTUREDB_R2_CONFIG = {
     "endpoint_url": os.getenv("STRUCTUREDB_ENDPOINT_URL", "https://b21d96e73b908d7d7b822d41516ccc64.r2.cloudflarestorage.com"),
-    "aws_access_key_id": os.getenv("STRUCTUREDB_ACCESS_KEY", os.getenv("R2_ACCESS_KEY", "986718fe67d6790c7fe4eeb78943adba")),
-    "aws_secret_access_key": os.getenv("STRUCTUREDB_SECRET_KEY", os.getenv("R2_SECRET_KEY", "08fb3b012163cce35bee80b54d83e3a6924f2679f466790a9c7fdd9456bc44fe")),
+    "aws_access_key_id": os.getenv("STRUCTUREDB_ACCESS_KEY", os.getenv("R2_ACCESS_KEY", "18f60c98e08f1a24040de7cb7aab646c")),
+    "aws_secret_access_key": os.getenv("STRUCTUREDB_SECRET_KEY", os.getenv("R2_SECRET_KEY", "0a8c50865ecab3c410baec4d751f35493fd981f4851203fe205fe0f86063a5f6")),
     "bucket_name": os.getenv("STRUCTUREDB_BUCKET_NAME", "structuredb")
 }
 
@@ -23,12 +23,20 @@ AI_HORDE_CONFIG = {
 }
 
 GEMINI_CONFIG = {
-    "api_key": os.getenv("GEMINI_API_KEY", "AIzaSyA3CCL8Oyl29e7RK5UST5sNFW0wYhCZNsI"),
+    "api_key": os.getenv("GEMINI_API_KEY", "AIzaSyAdap8Q8Srg_AKJXUsDcFChnK5lScWqgEY"),
     "model": "gemini-2.0-flash",
     "max_tokens": 2000,
     "temperature": 0.2,
     "top_p": 0.95,
-    "top_k": 40
+    "top_k": 40,
+    "rate_limiting": {
+        "requests_per_minute": 14,
+        "min_delay_seconds": 4.0,
+        "max_delay_seconds": 10.0,
+        "enable_caching": True,
+        "cache_duration": 1800,
+        "fallback_to_mock": False
+    }
 }
 
 # Platform Configuration - Dynamic support for all three platforms

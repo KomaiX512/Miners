@@ -19,7 +19,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Apify API token for Twitter scraper - UPDATED with fresh token
-APIFY_API_TOKEN = "apify_api_JLerP1Lsh5WW1sqJZzhXvHQdCwrUNm1K5j20"
+APIFY_API_TOKEN = "apify_api_qYg6Pct3Uo7u18pmPpgMmGWUm3kj8E0WWZIW"
 TWITTER_ACTOR_ID = "memo23/apify-twitter-profile-scraper"  # New reliable actor
 
 class TwitterScraper:
@@ -873,13 +873,13 @@ class TwitterScraper:
         
         return processed_users
 
-    def continuous_processing_loop(self, sleep_interval=86400, check_interval=300):
+    def continuous_processing_loop(self, sleep_interval=86400, check_interval=10):
         """
         Continuously process Twitter profileinfo.json files in an event-driven manner.
         
         Args:
             sleep_interval: Time to sleep after processing all files (in seconds, default 24 hours)
-            check_interval: Time to wait between checks for new files during sleep (in seconds, default 5 minutes)
+            check_interval: Time to wait between checks for new files during sleep (in seconds, default 10 seconds)
         """
         self.running = True
         logger.info(f"Starting Twitter continuous processing loop with sleep interval of {sleep_interval} seconds")
@@ -1409,10 +1409,10 @@ if __name__ == "__main__":
     try:
         # Start the continuous processing loop with configurable intervals
         # Default: 24 hours (86400 seconds) sleep between full cycles
-        # Check for new files every 5 minutes (300 seconds) during sleep
+        # Check for new files every 10 seconds during sleep
         scraper.continuous_processing_loop(
             sleep_interval=86400,  # 24 hours
-            check_interval=300     # 5 minutes
+            check_interval=10      # 10 seconds
         )
     except KeyboardInterrupt:
         logger.info("Twitter scraper interrupted by user")

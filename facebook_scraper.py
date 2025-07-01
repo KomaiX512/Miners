@@ -19,7 +19,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Apify API token for Facebook scraper
-APIFY_API_TOKEN = "apify_api_vSeStT6lqBddgKi2B0AgMcpus9nHYG03uFHH"
+APIFY_API_TOKEN = "apify_api_qYg6Pct3Uo7u18pmPpgMmGWUm3kj8E0WWZIW"
 
 class FacebookScraper:
     """Class for scraping Facebook profiles and uploading to R2 storage."""
@@ -872,7 +872,7 @@ class FacebookScraper:
             logger.error(f"❌ Failed to upload Facebook data for: {username}")
             return None
     
-    def continuous_processing_loop(self, sleep_interval=86400, check_interval=300):
+    def continuous_processing_loop(self, sleep_interval=86400, check_interval=10):
         """Run continuous processing loop for Facebook accounts."""
         logger.info(f"🚀 Starting Facebook continuous processing loop (sleep: {sleep_interval}s, check: {check_interval}s)")
         self.running = True

@@ -2,9 +2,9 @@
 
 # R2 Storage Configuration
 R2_CONFIG = {
-    'endpoint_url': f'https://b21d96e73b908d7d7b822d41516ccc64.r2.cloudflarestorage.com',
-    'aws_access_key_id': '986718fe67d6790c7fe4eeb78943adba',
-    'aws_secret_access_key': '08fb3b012163cce35bee80b54d83e3a6924f2679f466790a9c7fdd9456bc44fe',
+    'endpoint_url': f'https://570f213f1410829ee9a733a77a5f40e3.r2.cloudflarestorage.com',
+    'aws_access_key_id': '18f60c98e08f1a24040de7cb7aab646c',
+    'aws_secret_access_key': '0a8c50865ecab3c410baec4d751f35493fd981f4851203fe205fe0f86063a5f6',
     'bucket_name': 'structuredb',
     'personal_bucket_name': 'miner',  # Personal bucket for miner validation
     'bucket_name2': 'tasks',
@@ -30,14 +30,22 @@ VECTOR_DB_CONFIG = {
 
 # Gemini API Configuration
 GEMINI_CONFIG = {
-    'api_key': 'AIzaSyA3CCL8Oyl29e7RK5UST5sNFW0wYhCZNsI',
-    'model': 'gemini-2.0-flash',
-    'max_tokens': 2000,
+    'api_key': 'AIzaSyAdap8Q8Srg_AKJXUsDcFChnK5lScWqgEY',
+    'model': 'gemini-2.0-flash',  # Back to 2.0 for better performance
+    'max_tokens': 2000,  # Increased back to 2000 for better quality
     'temperature': 0.2,  # Lower temperature for more focused, analytical responses
     'top_p': 0.95,       # Slightly more deterministic for business analysis
     'top_k': 40,         # Broader selection of tokens for more detailed responses
     'twitter_enabled': True,  # Enable Twitter-specific processing
-    'platform_detection': True  # Enable automatic platform detection
+    'platform_detection': True,  # Enable automatic platform detection
+    'rate_limiting': {
+        'requests_per_minute': 14,  # Conservative 14 RPM (leaving 1 RPM buffer)
+        'min_delay_seconds': 4.0,   # 60/14 = ~4.3s, using 4s for safety
+        'max_delay_seconds': 10.0,  # Maximum delay for backoff
+        'enable_caching': True,     # Enable response caching
+        'cache_duration': 1800,     # Cache for 30 minutes
+        'fallback_to_mock': False   # NEVER fallback to mock mode - real content only
+    }
 }
 
 # Content Templates
