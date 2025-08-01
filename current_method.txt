@@ -1,0 +1,45 @@
+    def _extract_rag_competitor_insights(self, rag_content, competitor_name):
+        """Extract specific competitor insights from RAG content."""
+        try:
+            # Simple extraction logic for competitor-specific insights
+            competitor_insights = {
+                "overview": f"RAG analysis of {competitor_name}",
+                "strengths": [],
+                "vulnerabilities": [],
+                "recommended_counter_strategies": [],
+                "themes": [],
+                "positioning": f"Strategic positioning vs {competitor_name}",
+                "differentiation": f"Differentiation strategy from {competitor_name}",
+                "opportunity": f"Market opportunity vs {competitor_name}"
+            }
+            
+            # Look for competitor-specific mentions in RAG content
+            lines = rag_content.split('\n')
+            for line in lines:
+                if competitor_name.lower() in line.lower():
+                    if 'strength' in line.lower() or 'advantage' in line.lower():
+                        competitor_insights["strengths"].append(line.strip()[:100])
+                    elif 'vulnerability' in line.lower() or 'weakness' in line.lower() or 'opportunity' in line.lower():
+                        competitor_insights["vulnerabilities"].append(line.strip()[:100])
+                    elif 'strategy' in line.lower() or 'recommend' in line.lower():
+                        competitor_insights["recommended_counter_strategies"].append(line.strip()[:100])
+                    elif '#' in line:
+                        # Extract themes/hashtags
+                        import re
+                        themes = re.findall(r'#\w+', line)
+                        competitor_insights["themes"].extend(themes[:3])
+            
+            return competitor_insights
+            
+        except Exception as e:
+            logger.error(f"Error extracting RAG insights for {competitor_name}: {str(e)}")
+            return {
+                "overview": f"RAG extraction failed for {competitor_name}",
+                "strengths": [],
+                "vulnerabilities": [],
+                "recommended_counter_strategies": [],
+                "themes": [],
+                "positioning": f"RAG positioning analysis needed for {competitor_name}",
+                "differentiation": f"RAG differentiation analysis needed for {competitor_name}",
+                "opportunity": f"RAG opportunity analysis needed for {competitor_name}"
+            }

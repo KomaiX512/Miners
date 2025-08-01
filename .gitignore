@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Large files
+*.gguf
+*.bin
+*.pth
+*.pt
+*.h5
+*.hdf5
+*.npy
+*.npz
+
+# Logs
+*.log
+
+# Local configuration
+config.local.py
+
+# Generated files
+content_plan.json
+humansofny_humansofny_*.json
+instagram.db
+myenv/
+test_forecast.html

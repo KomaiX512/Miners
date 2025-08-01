@@ -1,0 +1,15 @@
+{
+  "module_type": "competitor_analysis",
+  "platform": "facebook",
+  "primary_username": "Appleas",
+  "competitor": "no_competitors_available",
+  "timestamp": "2025-08-01T09:55:11.812913",
+  "data": {
+    "analysis_summary": "No competitor data available for Appleas analysis",
+    "status": "pending_data_collection",
+    "recommendation": "Start posting content to enable comprehensive competitor analysis",
+    "data_source": "no_competitor_data_available",
+    "note": "Zero-data scenario: No competitor data available for Appleas"
+  },
+  "data_quality": "no_data_available"
+}

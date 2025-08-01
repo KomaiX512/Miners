@@ -1,0 +1,62 @@
+{
+  "timestamp": "2025-08-01T19:56:29.242827",
+  "success_rate": 100.0,
+  "quota_success_rate": 100.0,
+  "total_time": 80.95695567131042,
+  "quota_errors": 0,
+  "test_results": [
+    {
+      "username": "elonmusk",
+      "success": true,
+      "domain": "tech_innovation",
+      "keywords": [
+        "space exploration",
+        "electric vehicles",
+        "artificial intelligence",
+        "neuralink",
+        "renewable energy"
+      ],
+      "content_length": 345,
+      "request_time": 20.992093563079834,
+      "no_quota_errors": true,
+      "breaking_news": "\ud83d\udea8 Zuckerberg unveils Meta's audacious AI vision: \"personal superintelligence for everyone!\" This bold move intensifies the AI race, potentially reshap..."
+    },
+    {
+      "username": "geoffreyhinton",
+      "success": true,
+      "domain": "academia",
+      "keywords": [
+        "deep learning",
+        "neural networks",
+        "artificial intelligence",
+        "machine learning",
+        "cognitive science"
+      ],
+      "content_length": 334,
+      "request_time": 30.339741230010986,
+      "no_quota_errors": true,
+      "breaking_news": "\ud83d\udea8 Academic spotlight shines on Hilary Egan, a rising star forging an interdisciplinary path! Her journey from astrophysics to applied AI at NREL is ge..."
+    },
+    {
+      "username": "sama",
+      "success": true,
+      "domain": "ai_research",
+      "keywords": [
+        "artificial general intelligence",
+        "large language models",
+        "transformer networks",
+        "reinforcement learning",
+        "AI safety"
+      ],
+      "content_length": 309,
+      "request_time": 29.624773740768433,
+      "no_quota_errors": true,
+      "breaking_news": "\ud83d\udea8 Apple signals major AI push with openness to acquisitions! CEO Tim Cook hints at M&A to accelerate its AI roadmap, targeting companies of all sizes...."
+    }
+  ],
+  "rate_limiter_config": {
+    "requests_per_minute": 6,
+    "min_delay": 10.0,
+    "buffer_factor": 0.8
+  }
+}

@@ -1,0 +1,254 @@
+[
+  {
+    "test_case": "Instagram Branding",
+    "success": true,
+    "errors": [],
+    "has_intelligence_type": true,
+    "has_tactical_recommendations": true,
+    "has_next_post": true,
+    "has_content_field": true,
+    "sample_content": {
+      "intelligence": {
+        "account_analysis": "@sephora's Instagram showcases a blend of product highlights and influencer collaborations, averaging around 100 engagements per post. Ulta Beauty focuses more on in-store experiences and diverse beauty solutions, while Fenty Beauty leverages Rihanna's celebrity status and inclusive shade ranges. @sephora's engagement lags behind Fenty's viral moments but surpasses Ulta's in specific product demo reels.",
+        "brand strategy, market positioning, competitive analysis": "@sephora can amplify its 'beauty authority' positioning by showcasing expert tutorials featuring Sephora Collection products. Ulta Beauty emphasizes accessibility and value, while Fenty Beauty champions inclusivity and trendsetting. @sephora should highlight its curated selection of high-end brands and exclusive product launches to differentiate itself. Measurable growth opportunities lie in increasing video content showcasing application techniques, aiming for a 20% increase in engagement.",
+        "strategic_positioning": "@sephora's strategic positioning should center on being the 'go-to destination for curated beauty expertise.' Unlike Ulta's broad appeal and Fenty's celebrity-driven approach, @sephora can leverage its knowledgeable staff and exclusive brand partnerships. By focusing on high-quality content showcasing application techniques and product knowledge, @sephora can aim to replicate peak performance posts that reached 500 engagements, solidifying its position as a beauty authority.",
+        "competitive_analysis": "Detailed competitive landscape analysis with strategic positioning for market advantage"
+      },
+      "tactical_recommendations": [
+        "Launch a weekly 'Sephora Pro Tip' series featuring Sephora Collection brushes and palettes, aiming for a 15% increase in engagement on these posts by showcasing unique application techniques and product combinations.",
+        "Analyze Ulta Beauty's successful in-store event promotions and Fenty Beauty's viral makeup challenges. @sephora can create a 'Sephora Squad Challenge' encouraging users to recreate makeup looks using Sephora-exclusive brands, measuring success by tracking hashtag usage and user-generated content submissions."
+      ],
+      "next_post": {
+        "caption": "Unlock your inner artist with the Sephora Collection PRO Palette! \u2728 Our experts are obsessed with the pigment payoff and blendability. What masterpiece will you create? #SephoraCollection #ProPalette #MakeupArtist #SephoraSquad",
+        "hashtags": [
+          "#sephora",
+          "#sephoracollection",
+          "#propalette",
+          "#makeuptutorial",
+          "#beautyhacks",
+          "#sephorasquad",
+          "#makeupartist",
+          "#beautycommunity"
+        ],
+        "call_to_action": "Tag a friend who needs this palette in their life! \ud83d\udc47",
+        "image_prompt": "Close-up shot of the Sephora Collection PRO Palette with vibrant colors and a hand applying the eyeshadow with a brush. Focus on the texture and pigment of the product. Include a clean, well-lit background."
+      }
+    },
+    "full_result": {
+      "competitive_intelligence": {
+        "account_analysis": "@sephora's Instagram showcases a blend of product highlights and influencer collaborations, averaging around 100 engagements per post. Ulta Beauty focuses more on in-store experiences and diverse beauty solutions, while Fenty Beauty leverages Rihanna's celebrity status and inclusive shade ranges. @sephora's engagement lags behind Fenty's viral moments but surpasses Ulta's in specific product demo reels.",
+        "brand strategy, market positioning, competitive analysis": "@sephora can amplify its 'beauty authority' positioning by showcasing expert tutorials featuring Sephora Collection products. Ulta Beauty emphasizes accessibility and value, while Fenty Beauty champions inclusivity and trendsetting. @sephora should highlight its curated selection of high-end brands and exclusive product launches to differentiate itself. Measurable growth opportunities lie in increasing video content showcasing application techniques, aiming for a 20% increase in engagement.",
+        "strategic_positioning": "@sephora's strategic positioning should center on being the 'go-to destination for curated beauty expertise.' Unlike Ulta's broad appeal and Fenty's celebrity-driven approach, @sephora can leverage its knowledgeable staff and exclusive brand partnerships. By focusing on high-quality content showcasing application techniques and product knowledge, @sephora can aim to replicate peak performance posts that reached 500 engagements, solidifying its position as a beauty authority.",
+        "competitive_analysis": "Detailed competitive landscape analysis with strategic positioning for market advantage"
+      },
+      "tactical_recommendations": [
+        "Launch a weekly 'Sephora Pro Tip' series featuring Sephora Collection brushes and palettes, aiming for a 15% increase in engagement on these posts by showcasing unique application techniques and product combinations.",
+        "Analyze Ulta Beauty's successful in-store event promotions and Fenty Beauty's viral makeup challenges. @sephora can create a 'Sephora Squad Challenge' encouraging users to recreate makeup looks using Sephora-exclusive brands, measuring success by tracking hashtag usage and user-generated content submissions.",
+        "Implement a 'Behind the Counter' series showcasing Sephora employees' favorite products and application tips. This humanizes the brand and leverages internal expertise, fostering a stronger connection with the audience and increasing brand loyalty."
+      ],
+      "next_post_prediction": {
+        "caption": "Unlock your inner artist with the Sephora Collection PRO Palette! \u2728 Our experts are obsessed with the pigment payoff and blendability. What masterpiece will you create? #SephoraCollection #ProPalette #MakeupArtist #SephoraSquad",
+        "hashtags": [
+          "#sephora",
+          "#sephoracollection",
+          "#propalette",
+          "#makeuptutorial",
+          "#beautyhacks",
+          "#sephorasquad",
+          "#makeupartist",
+          "#beautycommunity"
+        ],
+        "call_to_action": "Tag a friend who needs this palette in their life! \ud83d\udc47",
+        "image_prompt": "Close-up shot of the Sephora Collection PRO Palette with vibrant colors and a hand applying the eyeshadow with a brush. Focus on the texture and pigment of the product. Include a clean, well-lit background."
+      }
+    }
+  },
+  {
+    "test_case": "Instagram Personal",
+    "success": true,
+    "errors": [],
+    "has_intelligence_type": true,
+    "has_tactical_recommendations": true,
+    "has_next_post": true,
+    "has_content_field": true,
+    "sample_content": {
+      "intelligence": {
+        "account_analysis": "Emma Chamberlain's Instagram showcases a relatable, unfiltered aesthetic, fostering genuine connection. With an average engagement of 100, there's potential to amplify reach. Hailey Bieber projects polished sophistication, while Addison Rae leverages trends; Emma's strength lies in her authentic, 'day-in-the-life' content. Capitalizing on this relatability can boost engagement. Focus on content showcasing her coffee brand, Chamberlain Coffee, in everyday scenarios.",
+        "personal branding, authentic voice, community building": "Emma's authentic voice is her superpower. To build a stronger community, she can leverage interactive Q&A sessions about Chamberlain Coffee blends or her travel experiences, mirroring Hailey Bieber's brand partnerships but with Emma's signature humor. Addison Rae's dance challenges could be adapted into 'Brew-tiful Morning' routines featuring Chamberlain Coffee, encouraging user-generated content. Measurable growth lies in increasing comment participation by 25% through these interactive strategies.",
+        "strategic_positioning": "Emma's strategic positioning should emphasize 'relatable luxury.' While Hailey Bieber embodies aspirational glamour and Addison Rae chases viral trends, Emma can own the space of accessible chic. By showcasing everyday moments elevated by Chamberlain Coffee and her unique style, she can attract a loyal following. Capitalizing on peak performance of 500 engagements, she can launch limited-edition Chamberlain Coffee merchandise tied to specific travel destinations, creating a sense of exclusivity and wanderlust.",
+        "growth_opportunities": "Personal brand development opportunities with authentic voice enhancement strategies"
+      },
+      "tactical_recommendations": [
+        "Launch a 'Chamberlain Coffee Recipe Challenge' encouraging followers to create unique drinks using different blends. Offer a grand prize of a year's supply of Chamberlain Coffee and a feature on Emma's Instagram. Target: Increase user-generated content by 40%.",
+        "Analyze Hailey Bieber's successful brand collaborations (e.g., Rhode Skin) and Addison Rae's TikTok partnerships. Explore collaborations with sustainable fashion brands or travel companies that align with Emma's values. Measurable outcome: Secure one brand partnership within the next quarter."
+      ],
+      "next_post": {
+        "caption": "Okay besties, let's talk about my new obsession: the Family Blend from @chamberlaincoffee! \u2615\ufe0f Seriously, this stuff is a game changer. Perfect for cozy mornings or late-night study sessions. What's your go-to Chamberlain Coffee blend? Tell me in the comments! \ud83d\udc47",
+        "hashtags": [
+          "#emmachamberlain",
+          "#chamberlaincoffee",
+          "#coffeelover",
+          "#familyblend",
+          "#coffeetime",
+          "#relatable",
+          "#morningroutine",
+          "#butfirstcoffee",
+          "#coffeeshop",
+          "#coffeegram"
+        ],
+        "call_to_action": "Share your favorite Chamberlain Coffee memory in the comments below! I'll be reading them all and maybe even feature some on my story! \u2728",
+        "image_prompt": "A candid shot of Emma Chamberlain casually sitting at her desk, surrounded by books and art supplies, with a steaming mug of Chamberlain Coffee's Family Blend in hand. The lighting should be warm and inviting, emphasizing the cozy atmosphere. Include a subtle glimpse of Chamberlain Coffee merchandise in the background."
+      }
+    },
+    "full_result": {
+      "personal_intelligence": {
+        "account_analysis": "Emma Chamberlain's Instagram showcases a relatable, unfiltered aesthetic, fostering genuine connection. With an average engagement of 100, there's potential to amplify reach. Hailey Bieber projects polished sophistication, while Addison Rae leverages trends; Emma's strength lies in her authentic, 'day-in-the-life' content. Capitalizing on this relatability can boost engagement. Focus on content showcasing her coffee brand, Chamberlain Coffee, in everyday scenarios.",
+        "personal branding, authentic voice, community building": "Emma's authentic voice is her superpower. To build a stronger community, she can leverage interactive Q&A sessions about Chamberlain Coffee blends or her travel experiences, mirroring Hailey Bieber's brand partnerships but with Emma's signature humor. Addison Rae's dance challenges could be adapted into 'Brew-tiful Morning' routines featuring Chamberlain Coffee, encouraging user-generated content. Measurable growth lies in increasing comment participation by 25% through these interactive strategies.",
+        "strategic_positioning": "Emma's strategic positioning should emphasize 'relatable luxury.' While Hailey Bieber embodies aspirational glamour and Addison Rae chases viral trends, Emma can own the space of accessible chic. By showcasing everyday moments elevated by Chamberlain Coffee and her unique style, she can attract a loyal following. Capitalizing on peak performance of 500 engagements, she can launch limited-edition Chamberlain Coffee merchandise tied to specific travel destinations, creating a sense of exclusivity and wanderlust.",
+        "growth_opportunities": "Personal brand development opportunities with authentic voice enhancement strategies"
+      },
+      "tactical_recommendations": [
+        "Launch a 'Chamberlain Coffee Recipe Challenge' encouraging followers to create unique drinks using different blends. Offer a grand prize of a year's supply of Chamberlain Coffee and a feature on Emma's Instagram. Target: Increase user-generated content by 40%.",
+        "Analyze Hailey Bieber's successful brand collaborations (e.g., Rhode Skin) and Addison Rae's TikTok partnerships. Explore collaborations with sustainable fashion brands or travel companies that align with Emma's values. Measurable outcome: Secure one brand partnership within the next quarter.",
+        "Create a consistent 'Emma's Day in a Mug' series showcasing her daily routine with Chamberlain Coffee, highlighting different blends and their benefits. Include behind-the-scenes glimpses of her creative process. Implementation steps: Schedule weekly posts, use high-quality visuals, and engage with comments."
+      ],
+      "next_post_prediction": {
+        "caption": "Okay besties, let's talk about my new obsession: the Family Blend from @chamberlaincoffee! \u2615\ufe0f Seriously, this stuff is a game changer. Perfect for cozy mornings or late-night study sessions. What's your go-to Chamberlain Coffee blend? Tell me in the comments! \ud83d\udc47",
+        "hashtags": [
+          "#emmachamberlain",
+          "#chamberlaincoffee",
+          "#coffeelover",
+          "#familyblend",
+          "#coffeetime",
+          "#relatable",
+          "#morningroutine",
+          "#butfirstcoffee",
+          "#coffeeshop",
+          "#coffeegram"
+        ],
+        "call_to_action": "Share your favorite Chamberlain Coffee memory in the comments below! I'll be reading them all and maybe even feature some on my story! \u2728",
+        "image_prompt": "A candid shot of Emma Chamberlain casually sitting at her desk, surrounded by books and art supplies, with a steaming mug of Chamberlain Coffee's Family Blend in hand. The lighting should be warm and inviting, emphasizing the cozy atmosphere. Include a subtle glimpse of Chamberlain Coffee merchandise in the background."
+      }
+    }
+  },
+  {
+    "test_case": "Twitter Branding",
+    "success": true,
+    "errors": [],
+    "has_intelligence_type": true,
+    "has_tactical_recommendations": true,
+    "has_next_post": true,
+    "has_content_field": true,
+    "sample_content": {
+      "intelligence": {
+        "account_analysis": "@tesla's Twitter shows a strong focus on product showcases and Elon Musk's pronouncements, averaging around 100 engagements per tweet. RivianAutomotive leverages aspirational lifestyle imagery, while LucidMotors emphasizes luxury and technological innovation. Tesla could benefit from diversifying content beyond product reveals to include behind-the-scenes glimpses of manufacturing or engineering challenges, mirroring Rivian's approach to building community.",
+        "brand virality, thought leadership, industry positioning": "To enhance virality, @tesla can leverage its existing community by initiating user-generated content campaigns featuring owners' experiences with their vehicles and charging infrastructure. Comparing to Rivian's focus on adventure and Lucid's emphasis on luxury, Tesla can solidify its position as a technology leader by sharing more technical details about battery advancements and autonomous driving capabilities. This can drive thought leadership and differentiate Tesla from competitors.",
+        "strategic_positioning": "Tesla's strategic positioning can be enhanced by highlighting its commitment to sustainable energy solutions beyond just electric vehicles. While Rivian focuses on adventure and Lucid on luxury, Tesla can own the 'future of energy' narrative. By showcasing solar panels, energy storage solutions, and their impact on reducing carbon emissions, Tesla can differentiate itself. A peak performance post showcasing a breakthrough in battery technology reached 500 engagements, indicating strong interest in this area.",
+        "competitive_analysis": "Detailed competitive landscape analysis with strategic positioning for market advantage"
+      },
+      "tactical_recommendations": [
+        "Launch a #TeslaInnovation campaign encouraging owners to share how Tesla products (cars, solar panels, Powerwalls) have improved their lives. Aim for a 20% increase in engagement by incentivizing participation with Tesla merchandise.",
+        "Analyze RivianAutomotive and LucidMotors' most engaging content related to sustainability and luxury, respectively. Create content that directly addresses these themes from a Tesla perspective, highlighting Tesla's technological superiority and affordability. Track engagement metrics for a 15% improvement in likes and retweets."
+      ],
+      "next_post": {
+        "tweet_text": "Explore the groundbreaking advancements in Tesla's Autopilot system! Learn how our neural network is constantly evolving to make driving safer and more efficient. #TeslaAutopilot #AI #Innovation",
+        "hashtags": [
+          "#tesla",
+          "#Autopilot",
+          "#AI",
+          "#Innovation",
+          "#ElectricVehicles",
+          "#FutureofDriving"
+        ],
+        "call_to_action": "What's your favorite Autopilot feature? Share your experiences in the comments!",
+        "image_prompt": "A visually compelling graphic showcasing the neural network architecture of Tesla's Autopilot system, highlighting its key components and functionalities."
+      }
+    },
+    "full_result": {
+      "competitive_intelligence": {
+        "account_analysis": "@tesla's Twitter shows a strong focus on product showcases and Elon Musk's pronouncements, averaging around 100 engagements per tweet. RivianAutomotive leverages aspirational lifestyle imagery, while LucidMotors emphasizes luxury and technological innovation. Tesla could benefit from diversifying content beyond product reveals to include behind-the-scenes glimpses of manufacturing or engineering challenges, mirroring Rivian's approach to building community.",
+        "brand virality, thought leadership, industry positioning": "To enhance virality, @tesla can leverage its existing community by initiating user-generated content campaigns featuring owners' experiences with their vehicles and charging infrastructure. Comparing to Rivian's focus on adventure and Lucid's emphasis on luxury, Tesla can solidify its position as a technology leader by sharing more technical details about battery advancements and autonomous driving capabilities. This can drive thought leadership and differentiate Tesla from competitors.",
+        "strategic_positioning": "Tesla's strategic positioning can be enhanced by highlighting its commitment to sustainable energy solutions beyond just electric vehicles. While Rivian focuses on adventure and Lucid on luxury, Tesla can own the 'future of energy' narrative. By showcasing solar panels, energy storage solutions, and their impact on reducing carbon emissions, Tesla can differentiate itself. A peak performance post showcasing a breakthrough in battery technology reached 500 engagements, indicating strong interest in this area.",
+        "competitive_analysis": "Detailed competitive landscape analysis with strategic positioning for market advantage"
+      },
+      "tactical_recommendations": [
+        "Launch a #TeslaInnovation campaign encouraging owners to share how Tesla products (cars, solar panels, Powerwalls) have improved their lives. Aim for a 20% increase in engagement by incentivizing participation with Tesla merchandise.",
+        "Analyze RivianAutomotive and LucidMotors' most engaging content related to sustainability and luxury, respectively. Create content that directly addresses these themes from a Tesla perspective, highlighting Tesla's technological superiority and affordability. Track engagement metrics for a 15% improvement in likes and retweets.",
+        "Implement a weekly 'Engineering Deep Dive' series on Twitter, showcasing the technical challenges and innovations behind Tesla's products. Use behind-the-scenes videos and infographics to explain complex concepts in an accessible way. Monitor audience feedback and adjust content based on engagement levels."
+      ],
+      "next_post_prediction": {
+        "tweet_text": "Explore the groundbreaking advancements in Tesla's Autopilot system! Learn how our neural network is constantly evolving to make driving safer and more efficient. #TeslaAutopilot #AI #Innovation",
+        "hashtags": [
+          "#tesla",
+          "#Autopilot",
+          "#AI",
+          "#Innovation",
+          "#ElectricVehicles",
+          "#FutureofDriving"
+        ],
+        "call_to_action": "What's your favorite Autopilot feature? Share your experiences in the comments!",
+        "image_prompt": "A visually compelling graphic showcasing the neural network architecture of Tesla's Autopilot system, highlighting its key components and functionalities."
+      }
+    }
+  },
+  {
+    "test_case": "Twitter Personal",
+    "success": true,
+    "errors": [],
+    "has_intelligence_type": true,
+    "has_tactical_recommendations": true,
+    "has_next_post": true,
+    "has_content_field": true,
+    "sample_content": {
+      "intelligence": {
+        "account_analysis": "@tferriss's Twitter shows a consistent, albeit moderate, engagement averaging around 100. Content themes revolve around self-improvement, book recommendations, and podcast snippets. Compared to Naval's philosophical depth and Andrew Huberman's science-backed insights, @tferriss's content leans towards practical life hacks and entrepreneurial advice. Naval excels in thought leadership, while Huberman dominates in the health/science niche, leaving @tferriss to carve a niche in accessible self-improvement.",
+        "personal influence, authentic thoughts, community engagement": "To amplify influence, @tferriss can leverage more personal anecdotes tied directly to his books and podcast episodes. While Naval builds a community through shared philosophical beliefs and Huberman through scientific understanding, @tferriss can foster a community around actionable self-improvement. Consider hosting live Q&A sessions about specific chapters from 'The 4-Hour Workweek' or 'Tools of Titans' to drive deeper engagement. Highlight user success stories stemming from his advice.",
+        "strategic_positioning": "Differentiate @tferriss by focusing on the 'applied' aspect of self-improvement. While Naval offers wisdom and Huberman provides scientific backing, @tferriss can position himself as the 'implementation expert.' Leverage past peak performance (500) by revisiting and updating popular content from that era, showcasing how his strategies have evolved. Emphasize the tangible results followers can achieve by applying his methods.",
+        "growth_opportunities": "Personal brand development opportunities with authentic voice enhancement strategies"
+      },
+      "tactical_recommendations": [
+        "Create a Twitter thread breaking down a specific chapter from 'The 4-Hour Workweek' into actionable steps, linking to relevant podcast episodes and resources. Aim for a 20% increase in engagement (likes, retweets) compared to average tweets.",
+        "Analyze Naval's and Andrew Huberman's most popular tweets and identify common themes (e.g., concise wisdom, science-backed claims). Adapt these themes to @tferriss's style, focusing on practical application and entrepreneurial insights. Track engagement metrics to measure the impact of this adaptation."
+      ],
+      "next_post": {
+        "tweet_text": "Feeling overwhelmed? Try the 80/20 rule. Identify the 20% of your efforts that yield 80% of your results and focus there. What's your biggest 80/20 win? #4HourWorkWeek",
+        "hashtags": [
+          "#tferriss",
+          "#productivity",
+          "#8020rule",
+          "#entrepreneurship",
+          "#selfimprovement",
+          "#timferriss"
+        ],
+        "call_to_action": "Share your biggest 80/20 win in the comments!",
+        "image_prompt": "A visually appealing graphic illustrating the 80/20 principle, using @tferriss's signature color palette and font. Include a subtle reference to 'The 4-Hour Workweek'."
+      }
+    },
+    "full_result": {
+      "personal_intelligence": {
+        "account_analysis": "@tferriss's Twitter shows a consistent, albeit moderate, engagement averaging around 100. Content themes revolve around self-improvement, book recommendations, and podcast snippets. Compared to Naval's philosophical depth and Andrew Huberman's science-backed insights, @tferriss's content leans towards practical life hacks and entrepreneurial advice. Naval excels in thought leadership, while Huberman dominates in the health/science niche, leaving @tferriss to carve a niche in accessible self-improvement.",
+        "personal influence, authentic thoughts, community engagement": "To amplify influence, @tferriss can leverage more personal anecdotes tied directly to his books and podcast episodes. While Naval builds a community through shared philosophical beliefs and Huberman through scientific understanding, @tferriss can foster a community around actionable self-improvement. Consider hosting live Q&A sessions about specific chapters from 'The 4-Hour Workweek' or 'Tools of Titans' to drive deeper engagement. Highlight user success stories stemming from his advice.",
+        "strategic_positioning": "Differentiate @tferriss by focusing on the 'applied' aspect of self-improvement. While Naval offers wisdom and Huberman provides scientific backing, @tferriss can position himself as the 'implementation expert.' Leverage past peak performance (500) by revisiting and updating popular content from that era, showcasing how his strategies have evolved. Emphasize the tangible results followers can achieve by applying his methods.",
+        "growth_opportunities": "Personal brand development opportunities with authentic voice enhancement strategies"
+      },
+      "tactical_recommendations": [
+        "Create a Twitter thread breaking down a specific chapter from 'The 4-Hour Workweek' into actionable steps, linking to relevant podcast episodes and resources. Aim for a 20% increase in engagement (likes, retweets) compared to average tweets.",
+        "Analyze Naval's and Andrew Huberman's most popular tweets and identify common themes (e.g., concise wisdom, science-backed claims). Adapt these themes to @tferriss's style, focusing on practical application and entrepreneurial insights. Track engagement metrics to measure the impact of this adaptation.",
+        "Launch a weekly 'Ask Tim Anything' session on Twitter Spaces, focusing on questions related to productivity, entrepreneurship, and personal development. Promote the session across all platforms and encourage followers to submit questions in advance. Use brand-specific visuals (e.g., a stylized image of @tferriss) to promote the session."
+      ],
+      "next_post_prediction": {
+        "tweet_text": "Feeling overwhelmed? Try the 80/20 rule. Identify the 20% of your efforts that yield 80% of your results and focus there. What's your biggest 80/20 win? #4HourWorkWeek",
+        "hashtags": [
+          "#tferriss",
+          "#productivity",
+          "#8020rule",
+          "#entrepreneurship",
+          "#selfimprovement",
+          "#timferriss"
+        ],
+        "call_to_action": "Share your biggest 80/20 win in the comments!",
+        "image_prompt": "A visually appealing graphic illustrating the 80/20 principle, using @tferriss's signature color palette and font. Include a subtle reference to 'The 4-Hour Workweek'."
+      }
+    }
+  }
+]

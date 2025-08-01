@@ -1,0 +1,32 @@
+{
+  "timestamp": "2025-08-01T19:27:35.490217",
+  "success_rate": 100.0,
+  "tests_passed": 4,
+  "total_tests": 4,
+  "primary_account": "geoffreyhinton",
+  "multi_account_results": [
+    {
+      "username": "elonmusk",
+      "success": true,
+      "domain": "general",
+      "stories": 3,
+      "quality": 0.30000000000000004
+    },
+    {
+      "username": "sama",
+      "success": true,
+      "domain": "general",
+      "stories": 3,
+      "quality": 0.30000000000000004
+    },
+    {
+      "username": "ylecun",
+      "success": true,
+      "domain": "general",
+      "stories": 3,
+      "quality": 0.30000000000000004
+    }
+  ],
+  "news_module_working": true,
+  "export_working": true
+}

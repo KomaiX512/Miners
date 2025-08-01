@@ -1,0 +1,130 @@
+{
+  "stage_1_info_loading": {
+    "status": "success",
+    "details": {
+      "username": "anastasiabeverlyhills",
+      "platform": "instagram",
+      "competitors": [
+        "fentybeauty",
+        "toofaced",
+        "narsissist"
+      ],
+      "account_type": "branding",
+      "posting_style": "xzczxczxczxc"
+    }
+  },
+  "stage_2_scraping_setup": {
+    "status": "success",
+    "details": {
+      "vector_db_initialized": true,
+      "vector_db_count": 12,
+      "content_system_initialized": true
+    }
+  },
+  "stage_3_primary_scraping": {
+    "status": "success",
+    "details": {
+      "username": "anastasiabeverlyhills",
+      "processing_result": true,
+      "primary_posts_in_vector_db": 0,
+      "total_vector_db_count": 0,
+      "zero_data_scenario": true
+    }
+  },
+  "stage_4_competitor_scraping": {
+    "status": "success",
+    "details": {
+      "competitors_processed": [
+        "fentybeauty",
+        "toofaced",
+        "narsissist"
+      ],
+      "competitor_results": {
+        "fentybeauty": {
+          "posts_found": 0,
+          "query_successful": true
+        },
+        "toofaced": {
+          "posts_found": 0,
+          "query_successful": true
+        },
+        "narsissist": {
+          "posts_found": 0,
+          "query_successful": true
+        }
+      },
+      "total_competitor_posts": 0,
+      "total_vector_db_count": 0
+    }
+  },
+  "stage_5_vector_indexing": {
+    "status": "success",
+    "details": {
+      "total_documents": 0,
+      "primary_posts": 0,
+      "competitor_posts": 0,
+      "metadata_analysis": {
+        "usernames_found": [],
+        "competitors_found": [],
+        "platforms_found": [],
+        "missing_metadata_count": 0
+      }
+    }
+  },
+  "stage_6_rag_generation": {
+    "status": "success",
+    "details": {
+      "rag_tests_conducted": 3,
+      "rag_tests_successful": 3,
+      "rag_results": {
+        "primary_account_query": {
+          "documents_found": 0,
+          "query_successful": true,
+          "query_params": {
+            "query": "beauty makeup tips",
+            "filter_username": "anastasiabeverlyhills",
+            "is_competitor": false
+          }
+        },
+        "competitor_query_fentybeauty": {
+          "documents_found": 0,
+          "query_successful": true,
+          "query_params": {
+            "query": "beauty products launch",
+            "filter_username": "fentybeauty",
+            "is_competitor": true
+          }
+        },
+        "general_beauty_query": {
+          "documents_found": 0,
+          "query_successful": true,
+          "query_params": {
+            "query": "skincare routine",
+            "filter_username": null,
+            "is_competitor": false
+          }
+        }
+      }
+    }
+  },
+  "stage_7_export_generation": {
+    "status": "success",
+    "details": {
+      "primary_data_available": false,
+      "content_generation_method": "zero_post_handler",
+      "content_plan_generated": true,
+      "username": "anastasiabeverlyhills",
+      "platform": "instagram"
+    }
+  },
+  "stage_8_r2_upload": {
+    "status": "success",
+    "details": {
+      "exporter_initialized": true,
+      "export_structure_valid": true,
+      "mock_data_prepared": true,
+      "username": "anastasiabeverlyhills",
+      "platform": "instagram"
+    }
+  }
+}

@@ -1,0 +1,141 @@
+{
+  "timestamp": "2025-08-01T19:48:43.372306",
+  "success_rate": 100.0,
+  "successful_tests": 7,
+  "total_tests": 7,
+  "test_results": [
+    {
+      "username": "elonmusk",
+      "success": true,
+      "domain_expected": "tech_innovation",
+      "domain_actual": "tech_innovation",
+      "keywords": [
+        "space exploration",
+        "electric vehicles",
+        "artificial intelligence",
+        "neuralink",
+        "sustainable energy"
+      ],
+      "content_length": 357,
+      "sentence_count": 3,
+      "has_url": true,
+      "relevance_score": 0.7,
+      "quality_score": 1.0,
+      "breaking_news": "\ud83d\udea8 Zuckerberg just unveiled Meta's ambitious plan to build \"personal superintelligence for everyone\"! This bold AI vision signals a major escalation in the race for AI dominance, challenging existing l..."
+    },
+    {
+      "username": "geoffreyhinton",
+      "success": true,
+      "domain_expected": "ai_research",
+      "domain_actual": "academia",
+      "keywords": [
+        "deep learning",
+        "neural networks",
+        "artificial intelligence",
+        "machine learning",
+        "cognitive science"
+      ],
+      "content_length": 366,
+      "sentence_count": 3,
+      "has_url": true,
+      "relevance_score": 0.9,
+      "quality_score": 0.75,
+      "breaking_news": "\ud83d\udea8 Landmark discovery in protein binder design promises enhanced precision and control! Researchers bypass limitations of current AI models using shape complementarity for more accurate protein-protein..."
+    },
+    {
+      "username": "gdb",
+      "success": true,
+      "domain_expected": "tech_innovation",
+      "domain_actual": "tech_innovation",
+      "keywords": [
+        "developer tools",
+        "software development",
+        "cloud computing",
+        "open source",
+        "programming languages"
+      ],
+      "content_length": 343,
+      "sentence_count": 3,
+      "has_url": true,
+      "relevance_score": 0.7,
+      "quality_score": 1.0,
+      "breaking_news": "\ud83d\udea8 UK regulator claims Amazon and Microsoft's cloud dominance is stifling competition! Investigation reveals technical barriers hindering switching, potentially impacting innovation. Will this lead to ..."
+    },
+    {
+      "username": "sama",
+      "success": true,
+      "domain_expected": "tech_innovation",
+      "domain_actual": "ai_research",
+      "keywords": [
+        "artificial general intelligence",
+        "ai safety",
+        "machine learning ethics",
+        "large language models",
+        "reinforcement learning"
+      ],
+      "content_length": 185,
+      "sentence_count": 3,
+      "has_url": true,
+      "relevance_score": 0.5,
+      "quality_score": 0.75,
+      "breaking_news": "\ud83d\udea8 Predict, Prevent, Protect: How AI Is Fighting Fraud In Crypto Transactions. Important developments are unfolding in this story. Stay tuned for more updates as this situation develops."
+    },
+    {
+      "username": "ylecun",
+      "success": true,
+      "domain_expected": "ai_research",
+      "domain_actual": "ai_research",
+      "keywords": [
+        "artificial intelligence",
+        "machine learning",
+        "deep learning",
+        "neural networks",
+        "AI research"
+      ],
+      "content_length": 178,
+      "sentence_count": 3,
+      "has_url": true,
+      "relevance_score": 0.7,
+      "quality_score": 1.0,
+      "breaking_news": "\ud83d\udea8 Zuckerberg shares AI superintelligence vision as Meta posts results. Important developments are unfolding in this story. Stay tuned for more updates as this situation develops."
+    },
+    {
+      "username": "fentybeauty",
+      "success": true,
+      "domain_expected": "fashion",
+      "domain_actual": "fashion",
+      "keywords": [
+        "breaking news",
+        "technology",
+        "business",
+        "innovation",
+        "trends"
+      ],
+      "content_length": 171,
+      "sentence_count": 3,
+      "has_url": true,
+      "relevance_score": 0.7,
+      "quality_score": 1.0,
+      "breaking_news": "\ud83d\udea8 IT ministry faces grilling over \u2018selective\u2019 AI collaboration. Important developments are unfolding in this story. Stay tuned for more updates as this situation develops."
+    },
+    {
+      "username": "nike",
+      "success": true,
+      "domain_expected": "sports",
+      "domain_actual": "sports",
+      "keywords": [
+        "breaking news",
+        "technology",
+        "business",
+        "innovation",
+        "trends"
+      ],
+      "content_length": 177,
+      "sentence_count": 3,
+      "has_url": true,
+      "relevance_score": 0.7,
+      "quality_score": 1.0,
+      "breaking_news": "\ud83d\udea8 CEO Tim Cook says Apple ready to open its wallet to catch up in AI. Important developments are unfolding in this story. Stay tuned for more updates as this situation develops."
+    }
+  ]
+}

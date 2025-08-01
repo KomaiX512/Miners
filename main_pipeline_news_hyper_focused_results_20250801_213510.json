@@ -1,0 +1,106 @@
+{
+  "timestamp": "2025-08-01T21:35:10.729977",
+  "test_type": "main_pipeline_news_hyper_focused",
+  "success_rate": 33.33333333333333,
+  "total_scenarios": 3,
+  "successful_tests": 1,
+  "platform_breakdown": {
+    "instagram": {
+      "success": 0,
+      "total": 1
+    },
+    "twitter": {
+      "success": 1,
+      "total": 1
+    },
+    "facebook": {
+      "success": 0,
+      "total": 1
+    }
+  },
+  "detailed_results": [
+    {
+      "scenario": "instagram_fentybeauty",
+      "platform": "instagram",
+      "username": "fentybeauty",
+      "expected_domain": "fashion/beauty",
+      "actual_domain": "fashion",
+      "profile_keywords": [
+        "cosmetics brand",
+        "makeup collection",
+        "inclusive beauty"
+      ],
+      "generation_time": 22.40340566635132,
+      "quality_analysis": {
+        "hyper_focused": false,
+        "niche_relevant": true,
+        "correct_length": true,
+        "has_url": true,
+        "profile_based": false,
+        "keyword_matches": 0,
+        "sentence_count": 3,
+        "content_length": 352
+      },
+      "quality_score": 0.6,
+      "news_summary": "\ud83d\udea8 Sydney Sweeney's radiant skin secrets REVEALED! The \"Euphoria\" star prioritizes hydration, SPF, and classic skincare over fleeting trends for her effortless glow. Could these simple yet effective rituals become the next must-have beauty hack for achieving Hollywood-worthy radiance?. Stay informed with the latest developments in this evolving story.",
+      "source_url": "https://www.news18.com/lifestyle/ice-spf-and-hydration-5-skincare-secrets-behind-sydney-sweeneys-effortless-glow-ws-l-9477066.html",
+      "success": true
+    },
+    {
+      "scenario": "twitter_gdb",
+      "platform": "twitter",
+      "username": "gdb",
+      "expected_domain": "tech/development",
+      "actual_domain": "tech_innovation",
+      "profile_keywords": [
+        "software engineering",
+        "coding",
+        "developer tools",
+        "code optimization"
+      ],
+      "generation_time": 31.367894411087036,
+      "quality_analysis": {
+        "hyper_focused": false,
+        "niche_relevant": true,
+        "correct_length": true,
+        "has_url": true,
+        "profile_based": true,
+        "keyword_matches": 0,
+        "sentence_count": 3,
+        "content_length": 185
+      },
+      "quality_score": 0.8,
+      "news_summary": "\ud83d\udea8 Quora\u2019s Poe releases a developer API with access to a bouquet of AI models. Important developments are unfolding in this story. Stay tuned for more updates as this situation develops.",
+      "source_url": "https://techcrunch.com/2025/07/31/quoras-poe-is-releasing-an-api-for-developers-to-easily-access-a-boquet-of-models/",
+      "success": true
+    },
+    {
+      "scenario": "facebook_nike",
+      "platform": "facebook",
+      "username": "nike",
+      "expected_domain": "sports/brand",
+      "actual_domain": "general",
+      "profile_keywords": [
+        "sports innovation",
+        "athletic wear",
+        "performance gear",
+        "tech"
+      ],
+      "generation_time": 177.42287969589233,
+      "quality_analysis": {
+        "hyper_focused": false,
+        "niche_relevant": false,
+        "correct_length": true,
+        "has_url": true,
+        "profile_based": true,
+        "keyword_matches": 0,
+        "sentence_count": 3,
+        "content_length": 224
+      },
+      "quality_score": 0.6,
+      "news_summary": "\ud83d\udea8 Elon Musk\u2019s Tesla, Other Ventures Face $100M Tab In Unpaid Bills To Small Businesses, Media Investigation Reveals. Important developments are unfolding in this story. Stay tuned for more updates as this situation develops.",
+      "source_url": "https://newsable.asianetnews.com/markets/elon-musk-s-tesla-other-ventures-face-100m-tab-in-unpaid-bills-to-small-businesses-media-investigation-reveals-articleshow-wb0c21v",
+      "success": true
+    }
+  ]
+}

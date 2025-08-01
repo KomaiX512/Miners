@@ -1,0 +1,74 @@
+[
+  {
+    "platform": "twitter",
+    "username": "geoffreyhinton",
+    "competitors": [
+      "elonmusk",
+      "ylecun",
+      "sama"
+    ],
+    "success": true,
+    "attempts_needed": 1,
+    "validation": {
+      "overall_status": "PERFECT",
+      "issues_found": [],
+      "content_quality": {
+        "next_post_complete": true,
+        "hashtags_count": 4,
+        "hashtags_contextual": true,
+        "image_prompt_present": true,
+        "competitor_analysis_count": 3,
+        "recommendations_count": 5
+      }
+    },
+    "timestamp": "2025-08-01T07:34:54.718397"
+  },
+  {
+    "platform": "instagram",
+    "username": "fentybeauty",
+    "competitors": [
+      "toofaced",
+      "narsissist",
+      "maccosmetics"
+    ],
+    "success": true,
+    "attempts_needed": 1,
+    "validation": {
+      "overall_status": "PERFECT",
+      "issues_found": [],
+      "content_quality": {
+        "next_post_complete": true,
+        "hashtags_count": 5,
+        "hashtags_contextual": true,
+        "image_prompt_present": true,
+        "competitor_analysis_count": 3,
+        "recommendations_count": 5
+      }
+    },
+    "timestamp": "2025-08-01T07:36:21.231649"
+  },
+  {
+    "platform": "facebook",
+    "username": "netflix",
+    "competitors": [
+      "cocacola",
+      "redbull",
+      "nike"
+    ],
+    "success": true,
+    "attempts_needed": 1,
+    "validation": {
+      "overall_status": "PERFECT",
+      "issues_found": [],
+      "content_quality": {
+        "next_post_complete": true,
+        "hashtags_count": 5,
+        "hashtags_contextual": true,
+        "image_prompt_present": true,
+        "competitor_analysis_count": 3,
+        "recommendations_count": 5
+      }
+    },
+    "timestamp": "2025-08-01T07:37:29.063191"
+  }
+]

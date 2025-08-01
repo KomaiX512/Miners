@@ -1,0 +1,106 @@
+{
+  "timestamp": "2025-08-01T20:17:48.813697",
+  "test_type": "main_pipeline_news_hyper_focused",
+  "success_rate": 66.66666666666666,
+  "total_scenarios": 3,
+  "successful_tests": 2,
+  "platform_breakdown": {
+    "instagram": {
+      "success": 0,
+      "total": 1
+    },
+    "twitter": {
+      "success": 1,
+      "total": 1
+    },
+    "facebook": {
+      "success": 1,
+      "total": 1
+    }
+  },
+  "detailed_results": [
+    {
+      "scenario": "instagram_fentybeauty",
+      "platform": "instagram",
+      "username": "fentybeauty",
+      "expected_domain": "fashion/beauty",
+      "actual_domain": "fashion",
+      "profile_keywords": [
+        "makeup collection",
+        "cosmetics brand",
+        "inclusive beauty"
+      ],
+      "generation_time": 21.111661672592163,
+      "quality_analysis": {
+        "hyper_focused": false,
+        "niche_relevant": true,
+        "correct_length": true,
+        "has_url": true,
+        "profile_based": false,
+        "keyword_matches": 0,
+        "sentence_count": 3,
+        "content_length": 393
+      },
+      "quality_score": 0.6,
+      "news_summary": "\ud83d\udea8 Microsexism in the beauty world is OUTRAGEOUS, and women are sharing their frustrating experiences! From dismissive comments to patronizing assumptions, these everyday biases highlight the challenges women face. Are you experiencing \"makeup shaming\" too? Share your #FentyBeauty experiences below and join the conversation!. Stay informed with the latest developments in this evolving story.",
+      "source_url": "https://www.buzzfeed.com/dannicaramirez/women-share-everyday-sexist-acts",
+      "success": true
+    },
+    {
+      "scenario": "twitter_gdb",
+      "platform": "twitter",
+      "username": "gdb",
+      "expected_domain": "tech/development",
+      "actual_domain": "tech_innovation",
+      "profile_keywords": [
+        "coding",
+        "code optimization",
+        "developer tools",
+        "software engineering"
+      ],
+      "generation_time": 26.56760549545288,
+      "quality_analysis": {
+        "hyper_focused": false,
+        "niche_relevant": true,
+        "correct_length": true,
+        "has_url": true,
+        "profile_based": true,
+        "keyword_matches": 0,
+        "sentence_count": 3,
+        "content_length": 286
+      },
+      "quality_score": 0.8,
+      "news_summary": "\ud83d\udea8 Cloud technology is revolutionizing sports broadcasting! Lewis Smithingham reveals how innovations are reshaping media production and distribution workflows. Could this be the future of how we experience live sports?. Stay informed with the latest developments in this evolving story.",
+      "source_url": "https://www.forbes.com/sites/moorinsights/2025/07/31/how-cloud-culture-and-innovation-are-transforming-sports-broadcasting/",
+      "success": true
+    },
+    {
+      "scenario": "facebook_nike",
+      "platform": "facebook",
+      "username": "nike",
+      "expected_domain": "sports/brand",
+      "actual_domain": "sports",
+      "profile_keywords": [
+        "sports innovation",
+        "performance gear",
+        "athletic wear",
+        "tech"
+      ],
+      "generation_time": 22.666967391967773,
+      "quality_analysis": {
+        "hyper_focused": false,
+        "niche_relevant": true,
+        "correct_length": true,
+        "has_url": true,
+        "profile_based": true,
+        "keyword_matches": 0,
+        "sentence_count": 3,
+        "content_length": 325
+      },
+      "quality_score": 0.8,
+      "news_summary": "\ud83d\udea8 Breaking: Layoffs loom at Nike, according to Jim Cramer! The athletic apparel giant, amidst a turnaround, might face more restructuring despite a 6% year-to-date gain. What does this mean for Nike's performance and the future of sports apparel innovation?. Stay informed with the latest developments in this evolving story.",
+      "source_url": "https://ca.finance.yahoo.com/news/nike-inc-nke-more-layoffs-081714568.html",
+      "success": true
+    }
+  ]
+}

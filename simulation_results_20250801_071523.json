@@ -1,0 +1,119 @@
+[
+  {
+    "platform": "twitter",
+    "username": "geoffreyhinton",
+    "competitors": [
+      "elonmusk",
+      "ylecun",
+      "sama"
+    ],
+    "success": true,
+    "pipeline_result": {
+      "success": true,
+      "posts_analyzed": 100,
+      "recommendations_count": 0,
+      "account_type": "branding"
+    },
+    "verification": {
+      "content_plan_exists": true,
+      "platform_match": true,
+      "username_match": true,
+      "competitors_match": true,
+      "modules_present": {
+        "next_post_prediction": true,
+        "improvement_recommendations": true,
+        "recommendation": true,
+        "competitor_analysis": true
+      },
+      "missing_modules": [],
+      "overall_status": "COMPLETE",
+      "content_quality": {
+        "next_post_has_hashtags": true,
+        "next_post_has_caption": true,
+        "next_post_has_image_prompt": true,
+        "recommendations_count": 5,
+        "competitor_analysis_count": 3,
+        "hashtags_are_contextual": false
+      }
+    },
+    "timestamp": "2025-08-01T07:13:10.275133"
+  },
+  {
+    "platform": "instagram",
+    "username": "fentybeauty",
+    "competitors": [
+      "toofaced",
+      "narsissist",
+      "maccosmetics"
+    ],
+    "success": true,
+    "pipeline_result": {
+      "success": true,
+      "posts_analyzed": 12,
+      "recommendations_count": 0,
+      "account_type": "branding"
+    },
+    "verification": {
+      "content_plan_exists": true,
+      "platform_match": true,
+      "username_match": true,
+      "competitors_match": true,
+      "modules_present": {
+        "next_post_prediction": true,
+        "improvement_recommendations": true,
+        "recommendation": true,
+        "competitor_analysis": true
+      },
+      "missing_modules": [],
+      "overall_status": "COMPLETE",
+      "content_quality": {
+        "next_post_has_hashtags": true,
+        "next_post_has_caption": true,
+        "next_post_has_image_prompt": true,
+        "recommendations_count": 5,
+        "competitor_analysis_count": 3,
+        "hashtags_are_contextual": false
+      }
+    },
+    "timestamp": "2025-08-01T07:14:23.828383"
+  },
+  {
+    "platform": "facebook",
+    "username": "netflix",
+    "competitors": [
+      "cocacola",
+      "redbull",
+      "nike"
+    ],
+    "success": true,
+    "pipeline_result": {
+      "success": true,
+      "posts_analyzed": 47,
+      "recommendations_count": 0,
+      "account_type": "branding"
+    },
+    "verification": {
+      "content_plan_exists": true,
+      "platform_match": true,
+      "username_match": true,
+      "competitors_match": true,
+      "modules_present": {
+        "next_post_prediction": true,
+        "improvement_recommendations": true,
+        "recommendation": true,
+        "competitor_analysis": true
+      },
+      "missing_modules": [],
+      "overall_status": "COMPLETE",
+      "content_quality": {
+        "next_post_has_hashtags": true,
+        "next_post_has_caption": true,
+        "next_post_has_image_prompt": true,
+        "recommendations_count": 5,
+        "competitor_analysis_count": 3,
+        "hashtags_are_contextual": false
+      }
+    },
+    "timestamp": "2025-08-01T07:15:23.527281"
+  }
+]

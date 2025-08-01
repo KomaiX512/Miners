@@ -1,0 +1,104 @@
+{
+  "timestamp": "2025-08-01T20:15:14.378371",
+  "test_type": "main_pipeline_news_hyper_focused",
+  "success_rate": 33.33333333333333,
+  "total_scenarios": 3,
+  "successful_tests": 1,
+  "platform_breakdown": {
+    "instagram": {
+      "success": 0,
+      "total": 1
+    },
+    "twitter": {
+      "success": 0,
+      "total": 1
+    },
+    "facebook": {
+      "success": 1,
+      "total": 1
+    }
+  },
+  "detailed_results": [
+    {
+      "scenario": "instagram_fentybeauty",
+      "platform": "instagram",
+      "username": "fentybeauty",
+      "expected_domain": "fashion/beauty",
+      "actual_domain": "fashion",
+      "profile_keywords": [
+        "cosmetics brand",
+        "makeup collection",
+        "inclusive beauty"
+      ],
+      "generation_time": 21.423792362213135,
+      "quality_analysis": {
+        "hyper_focused": false,
+        "niche_relevant": true,
+        "correct_length": true,
+        "has_url": true,
+        "profile_based": false,
+        "keyword_matches": 0,
+        "sentence_count": 3,
+        "content_length": 422
+      },
+      "quality_score": 0.6,
+      "news_summary": "\ud83d\udea8 Microsexism in the beauty world?! Women are sharing everyday frustrating experiences that reveal hidden biases in the fashion industry! From demeaning comments to being underestimated, these acts highlight a pervasive problem impacting women's careers and self-expression. Read the viral stories and join the conversation\u2014are you experiencing this too?. Stay informed with the latest developments in this evolving story.",
+      "source_url": "https://www.buzzfeed.com/dannicaramirez/women-share-everyday-sexist-acts",
+      "success": true
+    },
+    {
+      "scenario": "twitter_gdb",
+      "platform": "twitter",
+      "username": "gdb",
+      "expected_domain": "tech/development",
+      "actual_domain": "business_corporate",
+      "profile_keywords": [
+        "developer tools",
+        "code optimization",
+        "software engineering"
+      ],
+      "generation_time": 27.543180227279663,
+      "quality_analysis": {
+        "hyper_focused": false,
+        "niche_relevant": false,
+        "correct_length": true,
+        "has_url": true,
+        "profile_based": false,
+        "keyword_matches": 0,
+        "sentence_count": 3,
+        "content_length": 409
+      },
+      "quality_score": 0.4,
+      "news_summary": "\ud83d\udea8 Major win for Pakistani-Chinese collaboration as a Pakistani remote sensing satellite successfully reaches orbit! The new satellite promises to revolutionize urban planning, disaster management, and resource monitoring capabilities for Pakistan. Will this boost CPEC development and unlock new opportunities for international partnerships?. Stay informed with the latest developments in this evolving story.",
+      "source_url": "https://www.dawn.com/news/1927952/pakistani-satellite-reaches-orbit-after-launch-from-china",
+      "success": true
+    },
+    {
+      "scenario": "facebook_nike",
+      "platform": "facebook",
+      "username": "nike",
+      "expected_domain": "sports/brand",
+      "actual_domain": "sports",
+      "profile_keywords": [
+        "athletic wear",
+        "sports innovation",
+        "performance gear"
+      ],
+      "generation_time": 27.900752782821655,
+      "quality_analysis": {
+        "hyper_focused": true,
+        "niche_relevant": true,
+        "correct_length": true,
+        "has_url": true,
+        "profile_based": false,
+        "keyword_matches": 1,
+        "sentence_count": 3,
+        "content_length": 229
+      },
+      "quality_score": 0.8,
+      "news_summary": "\ud83d\udea8 Breaking: Layoffs Loom at Nike, Inc. according to Jim Cramer! The athletic apparel giant, amidst a turnaround, may face further workforce reductions. How will this impact Nike's performance and the future of sports innovation?.",
+      "source_url": "https://ca.finance.yahoo.com/news/nike-inc-nke-more-layoffs-081714568.html",
+      "success": true
+    }
+  ]
+}

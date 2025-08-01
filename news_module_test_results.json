@@ -1,0 +1,226 @@
+{
+  "test_timestamp": "2025-08-01T18:42:12.561934",
+  "test_account": "@elonmusk",
+  "platform": "twitter",
+  "news_module_results": {
+    "username": "elonmusk",
+    "platform": "twitter",
+    "generated_at": "2025-08-01T18:42:12.561102",
+    "domain_profile": {
+      "primary_domain": "business_corporate",
+      "confidence": 0.85,
+      "categories": [
+        "business",
+        "top"
+      ],
+      "keywords": [
+        "market",
+        "elonmusk",
+        "economy",
+        "finance",
+        "business",
+        "AI",
+        "corporate",
+        "TechInnovation",
+        "SpaceX"
+      ],
+      "content_themes": [
+        "TechInnovation",
+        "AI",
+        "SpaceX",
+        "Mars",
+        "Tesla"
+      ],
+      "account_type": "personal",
+      "targeting_focus": "business_corporate_personal_interest"
+    },
+    "curated_news": [
+      {
+        "article_id": "d1dba6d4414f344451215e93406263b1",
+        "title": "Braided Sleeving for Automotive In-depth Analysis of the 2025 Global Market Size and Growth Prospects: Forecast to 2031",
+        "link": "https://www.openpr.com/news/4128816/braided-sleeving-for-automotive-in-depth-analysis-of-the-2025",
+        "keywords": [
+          "advertising, media consulting, marketing research"
+        ],
+        "creator": [
+          "QY Research Inc."
+        ],
+        "description": "The global market for Braided Sleeving for Automotive was estimated to be worth US$ 585 million in 2024 and is forecast to a readjusted size of US$ 1175 million by 2031 with a CAGR of 10.6% during the forecast period",
+        "content": "ONLY AVAILABLE IN PAID PLANS",
+        "pubDate": "2025-08-01 01:39:31",
+        "pubDateTZ": "UTC",
+        "image_url": "https://cdn.open-pr.com/L/8/L801355943_g.jpg",
+        "video_url": null,
+        "source_id": "openpr",
+        "source_name": "Openpr.com",
+        "source_priority": 31972,
+        "source_url": "https://www.openpr.com",
+        "source_icon": "https://n.bytvi.com/openpr.png",
+        "language": "english",
+        "country": [
+          "germany"
+        ],
+        "category": [
+          "business"
+        ],
+        "sentiment": "ONLY AVAILABLE IN PROFESSIONAL AND CORPORATE PLANS",
+        "sentiment_stats": "ONLY AVAILABLE IN PROFESSIONAL AND CORPORATE PLANS",
+        "ai_tag": "ONLY AVAILABLE IN PROFESSIONAL AND CORPORATE PLANS",
+        "ai_region": "ONLY AVAILABLE IN CORPORATE PLANS",
+        "ai_org": "ONLY AVAILABLE IN CORPORATE PLANS",
+        "ai_summary": "ONLY AVAILABLE IN PAID PLANS",
+        "ai_content": "ONLY AVAILABLE IN PROFESSIONAL AND CORPORATE PLANS",
+        "duplicate": false,
+        "fetched_category": "business",
+        "fetch_timestamp": "2025-08-01T18:42:11.769368",
+        "relevance_score": 0.4,
+        "domain_alignment": 1.0,
+        "final_score": 0.58,
+        "curation_reason": "Perfect domain alignment",
+        "selection_rank": 1,
+        "selected_at": "2025-08-01T18:42:12.560961",
+        "selection_confidence": 0.78
+      },
+      {
+        "article_id": "b93a6488e4821dc7e4c8c949fb9644f4",
+        "title": "'Coolly, calmly and collectively forge a deal that is good for America, good for India,' says US Diplomat",
+        "link": "https://economictimes.indiatimes.com/news/economy/foreign-trade/coolly-calmly-and-collectively-forge-a-deal-that-is-good-for-america-good-for-india-says-us-diplomat/articleshow/123032701.cms",
+        "keywords": null,
+        "creator": null,
+        "description": "Atul Keshap, President of the US-India Business Council, addressed the US tariff imposition on India, highlighting the nervousness among American and Indian companies due to the uncertainty. He stressed the importance of a mutually beneficial deal to foster economic growth and achieve the $500 billion trade target.",
+        "content": "ONLY AVAILABLE IN PAID PLANS",
+        "pubDate": "2025-08-01 01:41:08",
+        "pubDateTZ": "UTC",
+        "image_url": null,
+        "video_url": null,
+        "source_id": "economictimes_indiatimes",
+        "source_name": "The Economic Times",
+        "source_priority": 231,
+        "source_url": "https://economictimes.indiatimes.com",
+        "source_icon": "https://n.bytvi.com/economictimes_indiatimes.png",
+        "language": "english",
+        "country": [
+          "india"
+        ],
+        "category": [
+          "top"
+        ],
+        "sentiment": "ONLY AVAILABLE IN PROFESSIONAL AND CORPORATE PLANS",
+        "sentiment_stats": "ONLY AVAILABLE IN PROFESSIONAL AND CORPORATE PLANS",
+        "ai_tag": "ONLY AVAILABLE IN PROFESSIONAL AND CORPORATE PLANS",
+        "ai_region": "ONLY AVAILABLE IN CORPORATE PLANS",
+        "ai_org": "ONLY AVAILABLE IN CORPORATE PLANS",
+        "ai_summary": "ONLY AVAILABLE IN PAID PLANS",
+        "ai_content": "ONLY AVAILABLE IN PROFESSIONAL AND CORPORATE PLANS",
+        "duplicate": false,
+        "fetched_category": "top",
+        "fetch_timestamp": "2025-08-01T18:42:12.559820",
+        "relevance_score": 0.4,
+        "domain_alignment": 1.0,
+        "final_score": 0.58,
+        "curation_reason": "Perfect domain alignment",
+        "selection_rank": 2,
+        "selected_at": "2025-08-01T18:42:12.560967",
+        "selection_confidence": 0.78
+      },
+      {
+        "article_id": "195f247b47f5d6c6da6efe6e9e114e58",
+        "title": "Water Heavy Metal Monitoring System Global and Regional Perspectives on Market Size, Share, and Analysis 2025-2031",
+        "link": "https://www.openpr.com/news/4128817/water-heavy-metal-monitoring-system-global-and-regional",
+        "keywords": [
+          "advertising, media consulting, marketing research"
+        ],
+        "creator": [
+          "QY Research Inc."
+        ],
+        "description": "QYResearch's 2025 latest report \"Water Heavy Metal Monitoring System - Global Market Share and Ranking, Overall Sales and Demand Forecast 2025-2031\" delivers an authoritative analysis of market attributes, size assessments, and growth projections through granular segmentation, regional breakdowns, and country-specific",
+        "content": "ONLY AVAILABLE IN PAID PLANS",
+        "pubDate": "2025-08-01 01:40:33",
+        "pubDateTZ": "UTC",
+        "image_url": "https://cdn.open-pr.com/L/8/L801713025_g.jpg",
+        "video_url": null,
+        "source_id": "openpr",
+        "source_name": "Openpr.com",
+        "source_priority": 31972,
+        "source_url": "https://www.openpr.com",
+        "source_icon": "https://n.bytvi.com/openpr.png",
+        "language": "english",
+        "country": [
+          "germany"
+        ],
+        "category": [
+          "business"
+        ],
+        "sentiment": "ONLY AVAILABLE IN PROFESSIONAL AND CORPORATE PLANS",
+        "sentiment_stats": "ONLY AVAILABLE IN PROFESSIONAL AND CORPORATE PLANS",
+        "ai_tag": "ONLY AVAILABLE IN PROFESSIONAL AND CORPORATE PLANS",
+        "ai_region": "ONLY AVAILABLE IN CORPORATE PLANS",
+        "ai_org": "ONLY AVAILABLE IN CORPORATE PLANS",
+        "ai_summary": "ONLY AVAILABLE IN PAID PLANS",
+        "ai_content": "ONLY AVAILABLE IN PROFESSIONAL AND CORPORATE PLANS",
+        "duplicate": false,
+        "fetched_category": "business",
+        "fetch_timestamp": "2025-08-01T18:42:11.769367",
+        "relevance_score": 0.30000000000000004,
+        "domain_alignment": 1.0,
+        "final_score": 0.51,
+        "curation_reason": "Perfect domain alignment",
+        "selection_rank": 3,
+        "selected_at": "2025-08-01T18:42:12.560970",
+        "selection_confidence": 0.71
+      }
+    ],
+    "premium_summary": {
+      "daily_news_summary": [
+        {
+          "rank": 1,
+          "title": "Braided Sleeving for Automotive In-depth Analysis of the 2025 Global Market Size and Growth Prospects: Forecast to 2031",
+          "summary": "\ud83d\udcf0 The global market for Braided Sleeving for Automotive was estimated to be worth US$ 585 million in 2024 and is forecast to a readjusted size of US$ 1175 million by 2031 with a CAGR of 10. This developing story continues to gain attention. Stay informed on the latest updates.",
+          "source": "openpr",
+          "published_at": "2025-08-01 01:39:31",
+          "relevance_score": 0.4,
+          "news_url": "https://www.openpr.com/news/4128816/braided-sleeving-for-automotive-in-depth-analysis-of-the-2025",
+          "breaking_indicator": false
+        },
+        {
+          "rank": 2,
+          "title": "'Coolly, calmly and collectively forge a deal that is good for America, good for India,' says US Diplomat",
+          "summary": "\ud83d\udcf0 Atul Keshap, President of the US-India Business Council, addressed the US tariff imposition on India, highlighting the nervousness among American and Indian companies due to the uncertainty. This developing story continues to gain attention. Stay informed on the latest updates.",
+          "source": "economictimes_indiatimes",
+          "published_at": "2025-08-01 01:41:08",
+          "relevance_score": 0.4,
+          "news_url": "https://economictimes.indiatimes.com/news/economy/foreign-trade/coolly-calmly-and-collectively-forge-a-deal-that-is-good-for-america-good-for-india-says-us-diplomat/articleshow/123032701.cms",
+          "breaking_indicator": false
+        },
+        {
+          "rank": 3,
+          "title": "Water Heavy Metal Monitoring System Global and Regional Perspectives on Market Size, Share, and Analysis 2025-2031",
+          "summary": "\ud83d\udcf0 QYResearch's 2025 latest report \"Water Heavy Metal Monitoring System - Global Market Share and Ranking, Overall Sales and Demand Forecast 2025-2031\" delivers an authoritative analysis of market attributes, size assessments, and growth projections through granular segmentation, regional breakdowns, and country-specific. This developing story continues to gain attention. Stay informed on the latest updates.",
+          "source": "openpr",
+          "published_at": "2025-08-01 01:40:33",
+          "relevance_score": 0.30000000000000004,
+          "news_url": "https://www.openpr.com/news/4128817/water-heavy-metal-monitoring-system-global-and-regional",
+          "breaking_indicator": false
+        }
+      ],
+      "total_stories": 3,
+      "curation_quality": "premium",
+      "generated_for": "elonmusk",
+      "platform": "twitter"
+    },
+    "curation_metadata": {
+      "total_fetched": 20,
+      "after_filtering": 14,
+      "final_selection": 3,
+      "quality_score": 0.3666666666666667
+    }
+  },
+  "export_results": false,
+  "test_status": "SUCCESS",
+  "summary": {
+    "domain_detected": "business_corporate",
+    "news_curated": 3,
+    "summaries_generated": 3,
+    "quality_achieved": 0.3666666666666667
+  }
+}

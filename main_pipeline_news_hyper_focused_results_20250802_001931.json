@@ -1,0 +1,106 @@
+{
+  "timestamp": "2025-08-02T00:19:31.186089",
+  "test_type": "main_pipeline_news_hyper_focused",
+  "success_rate": 66.66666666666666,
+  "total_scenarios": 3,
+  "successful_tests": 2,
+  "platform_breakdown": {
+    "instagram": {
+      "success": 0,
+      "total": 1
+    },
+    "twitter": {
+      "success": 1,
+      "total": 1
+    },
+    "facebook": {
+      "success": 1,
+      "total": 1
+    }
+  },
+  "detailed_results": [
+    {
+      "scenario": "instagram_fentybeauty",
+      "platform": "instagram",
+      "username": "fentybeauty",
+      "expected_domain": "fashion/beauty",
+      "actual_domain": "fashion",
+      "profile_keywords": [
+        "makeup collection",
+        "inclusive beauty",
+        "cosmetics brand"
+      ],
+      "generation_time": 134.09794878959656,
+      "quality_analysis": {
+        "hyper_focused": false,
+        "niche_relevant": true,
+        "correct_length": true,
+        "has_url": true,
+        "profile_based": false,
+        "keyword_matches": 0,
+        "sentence_count": 3,
+        "content_length": 193
+      },
+      "quality_score": 0.6,
+      "news_summary": "\ud83d\udea8 9 things inside Sephora Manchester city centre store I'm buying as a beauty writer. Important developments are unfolding in this story. Stay tuned for more updates as this situation develops.",
+      "source_url": "https://www.manchestereveningnews.co.uk/news/fashion-news/9-things-inside-sephora-manchester-32173273",
+      "success": true
+    },
+    {
+      "scenario": "twitter_gdb",
+      "platform": "twitter",
+      "username": "gdb",
+      "expected_domain": "tech/development",
+      "actual_domain": "tech_innovation",
+      "profile_keywords": [
+        "developer tools",
+        "coding",
+        "code optimization",
+        "software engineering"
+      ],
+      "generation_time": 177.74638724327087,
+      "quality_analysis": {
+        "hyper_focused": false,
+        "niche_relevant": true,
+        "correct_length": true,
+        "has_url": true,
+        "profile_based": true,
+        "keyword_matches": 0,
+        "sentence_count": 3,
+        "content_length": 155
+      },
+      "quality_score": 0.8,
+      "news_summary": "\ud83d\udea8 A 4-step framework for generative AI success. Important developments are unfolding in this story. Stay tuned for more updates as this situation develops.",
+      "source_url": "https://www.cio.com/article/4030962/a-4-step-framework-for-generative-ai-success.html",
+      "success": true
+    },
+    {
+      "scenario": "facebook_nike",
+      "platform": "facebook",
+      "username": "nike",
+      "expected_domain": "sports/brand",
+      "actual_domain": "sports",
+      "profile_keywords": [
+        "athletic wear",
+        "tech",
+        "performance gear",
+        "sports innovation"
+      ],
+      "generation_time": 178.42032289505005,
+      "quality_analysis": {
+        "hyper_focused": false,
+        "niche_relevant": true,
+        "correct_length": true,
+        "has_url": true,
+        "profile_based": true,
+        "keyword_matches": 0,
+        "sentence_count": 3,
+        "content_length": 175
+      },
+      "quality_score": 0.8,
+      "news_summary": "\ud83d\udea8 Stanford hires former Nike CEO John Donahoe as athletic director. Important developments are unfolding in this story. Stay tuned for more updates as this situation develops.",
+      "source_url": "https://sports.yahoo.com/article/stanford-hires-former-nike-ceo-045555226.html",
+      "success": true
+    }
+  ]
+}

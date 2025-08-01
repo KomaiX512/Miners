@@ -1,0 +1,21 @@
+{
+    "profileInfo": {
+        "url": "https://www.facebook.com/Appleas/",
+        "error": "not_available",
+        "errorDescription": "This content isn't available because the owner only shared it with a small group of people or changed who can see it, or it's been deleted."
+    },
+    "posts": [
+        {
+            "url": "https://www.facebook.com/Appleas/",
+            "error": "not_available",
+            "errorDescription": "This content isn't available because the owner only shared it with a small group of people or changed who can see it, or it's been deleted."
+        }
+    ],
+    "metadata": {
+        "username": "Appleas",
+        "platform": "facebook",
+        "scrape_timestamp": "2025-08-01T09:10:04.504413",
+        "profile_info_available": true,
+        "posts_count": 1
+    }
+}

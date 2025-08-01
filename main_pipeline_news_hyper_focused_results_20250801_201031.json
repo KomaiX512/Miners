@@ -1,0 +1,64 @@
+{
+  "timestamp": "2025-08-01T20:10:31.875270",
+  "test_type": "main_pipeline_news_hyper_focused",
+  "success_rate": 0.0,
+  "total_scenarios": 3,
+  "successful_tests": 0,
+  "platform_breakdown": {
+    "instagram": {
+      "success": 0,
+      "total": 1
+    },
+    "twitter": {
+      "success": 0,
+      "total": 1
+    },
+    "facebook": {
+      "success": 0,
+      "total": 1
+    }
+  },
+  "detailed_results": [
+    {
+      "scenario": "instagram_fentybeauty",
+      "platform": "instagram",
+      "username": "fentybeauty",
+      "success": false,
+      "error": "'R2DataRetriever' object has no attribute 'get_instagram_data'"
+    },
+    {
+      "scenario": "twitter_gdb",
+      "platform": "twitter",
+      "username": "gdb",
+      "expected_domain": "tech/development",
+      "actual_domain": "business_corporate",
+      "profile_keywords": [
+        "software engineering",
+        "code optimization",
+        "developer tools"
+      ],
+      "generation_time": 36.235185623168945,
+      "quality_analysis": {
+        "hyper_focused": false,
+        "niche_relevant": false,
+        "correct_length": true,
+        "has_url": true,
+        "profile_based": false,
+        "keyword_matches": 0,
+        "sentence_count": 3,
+        "content_length": 214
+      },
+      "quality_score": 0.4,
+      "news_summary": "\ud83d\udea8 Sorry America, but it's not Australia's fault that your healthcare system is failing you | John Quiggin. Important developments are unfolding in this story. Stay tuned for more updates as this situation develops.",
+      "source_url": "https://www.theguardian.com/commentisfree/2025/aug/01/sorry-america-but-its-not-australias-fault-that-your-healthcare-system-is-failing-you",
+      "success": true
+    },
+    {
+      "scenario": "facebook_nike",
+      "platform": "facebook",
+      "username": "nike",
+      "success": false,
+      "error": "'R2DataRetriever' object has no attribute 'get_facebook_data'"
+    }
+  ]
+}

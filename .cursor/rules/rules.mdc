@@ -1,0 +1,17 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+Ensure the creation of robust, reusable, and dynamic code with an emphasis on effective pipelining implementation. Avoid fallback systems at all costs. Before proceeding with any new development, resolve all present errors.
+
+Issue Analysis and Debugging
+- Systematically narrow down the issue to fully debug and resolve it.
+- If any part of the issue is outside your scope, clearly communicate this without resorting to a fallback solution.
+- Maintain existing functionality unless it's necessary to alter it for improvement.
+
+Code Improvement Guidelines
+- Prioritize incremental code improvements without negatively impacting the codebase or adding careless changes.
+- Make professional-level contextual edits to resolve issues while being fully aware of the surrounding code. 
+
+Conduct all edits thoughtfully without disrupting adjacent lines of code. Ensure that every modification is reasonable and contextually appropriate. Maintain a high standard of professionalism throughout this process, demonstrating contextual intelligence in your approach.

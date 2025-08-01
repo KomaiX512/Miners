@@ -1,0 +1,1 @@
+import json; content_plan = json.load(open("content_plan.json")); print("Competitors:", content_plan.get("competitors")); print("\nCompetitor analysis fields:"); for comp in content_plan.get("competitor_analysis", {}): print(f"- {comp}:", sorted(content_plan["competitor_analysis"][comp].keys()))

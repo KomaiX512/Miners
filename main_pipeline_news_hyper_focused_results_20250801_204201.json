@@ -1,0 +1,106 @@
+{
+  "timestamp": "2025-08-01T20:42:01.426228",
+  "test_type": "main_pipeline_news_hyper_focused",
+  "success_rate": 33.33333333333333,
+  "total_scenarios": 3,
+  "successful_tests": 1,
+  "platform_breakdown": {
+    "instagram": {
+      "success": 0,
+      "total": 1
+    },
+    "twitter": {
+      "success": 0,
+      "total": 1
+    },
+    "facebook": {
+      "success": 1,
+      "total": 1
+    }
+  },
+  "detailed_results": [
+    {
+      "scenario": "instagram_fentybeauty",
+      "platform": "instagram",
+      "username": "fentybeauty",
+      "expected_domain": "fashion/beauty",
+      "actual_domain": "fashion",
+      "profile_keywords": [
+        "makeup collection",
+        "inclusive beauty",
+        "cosmetics brand"
+      ],
+      "generation_time": 23.825600147247314,
+      "quality_analysis": {
+        "hyper_focused": false,
+        "niche_relevant": true,
+        "correct_length": true,
+        "has_url": true,
+        "profile_based": false,
+        "keyword_matches": 0,
+        "sentence_count": 3,
+        "content_length": 287
+      },
+      "quality_score": 0.6,
+      "news_summary": "\ud83d\udea8 Skincare alert! Beauty guru Alix Earle reveals her go-to routine for tackling acne and regaining flawless skin. Get ready to revamp your makeup prep, as she swears by four Fenty Beauty must-haves to get her back on track. Are these the holy grail products for a perfect makeup canvas?.",
+      "source_url": "https://pagesix.com/2025/07/31/style/alix-earle-shares-update-on-her-acne-battle-and-current-skincare-routine/",
+      "success": true
+    },
+    {
+      "scenario": "twitter_gdb",
+      "platform": "twitter",
+      "username": "gdb",
+      "expected_domain": "tech/development",
+      "actual_domain": "academia",
+      "profile_keywords": [
+        "coding",
+        "code optimization",
+        "software engineering",
+        "developer tools"
+      ],
+      "generation_time": 25.788400888442993,
+      "quality_analysis": {
+        "hyper_focused": false,
+        "niche_relevant": false,
+        "correct_length": true,
+        "has_url": true,
+        "profile_based": true,
+        "keyword_matches": 0,
+        "sentence_count": 3,
+        "content_length": 386
+      },
+      "quality_score": 0.6,
+      "news_summary": "\ud83d\udea8 Groundbreaking insights reveal AI's \"magic\" is rooted in decades of logical evolution! A new discussion highlights the crucial need for system-level governance as AI rapidly expands its academic influence. How will these governance strategies shape the future of AI research and its applications in higher education?. Stay informed with the latest developments in this evolving story.",
+      "source_url": "https://www.thehindu.com/news/cities/chennai/ai-may-appear-magical-today-but-it-is-grounded-in-decades-of-evolving-logic/article69878070.ece",
+      "success": true
+    },
+    {
+      "scenario": "facebook_nike",
+      "platform": "facebook",
+      "username": "nike",
+      "expected_domain": "sports/brand",
+      "actual_domain": "sports",
+      "profile_keywords": [
+        "sports innovation",
+        "tech",
+        "athletic wear",
+        "performance gear"
+      ],
+      "generation_time": 27.886546850204468,
+      "quality_analysis": {
+        "hyper_focused": false,
+        "niche_relevant": true,
+        "correct_length": true,
+        "has_url": true,
+        "profile_based": true,
+        "keyword_matches": 0,
+        "sentence_count": 3,
+        "content_length": 385
+      },
+      "quality_score": 0.8,
+      "news_summary": "\ud83d\udea8 **Breaking: Layoffs Loom at Nike Amidst Turnaround Efforts!** Financial analyst Jim Cramer suggests Nike must undergo further layoffs despite recent gains. What does this mean for innovation and athlete endorsements at the global sports giant? Find out now and see how this impacts the future of your favorite gear!. Stay informed with the latest developments in this evolving story.",
+      "source_url": "https://ca.finance.yahoo.com/news/nike-inc-nke-more-layoffs-081714568.html",
+      "success": true
+    }
+  ]
+}

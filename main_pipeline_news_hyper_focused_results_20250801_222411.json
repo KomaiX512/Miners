@@ -1,0 +1,106 @@
+{
+  "timestamp": "2025-08-01T22:24:11.944607",
+  "test_type": "main_pipeline_news_hyper_focused",
+  "success_rate": 66.66666666666666,
+  "total_scenarios": 3,
+  "successful_tests": 2,
+  "platform_breakdown": {
+    "instagram": {
+      "success": 0,
+      "total": 1
+    },
+    "twitter": {
+      "success": 1,
+      "total": 1
+    },
+    "facebook": {
+      "success": 1,
+      "total": 1
+    }
+  },
+  "detailed_results": [
+    {
+      "scenario": "instagram_fentybeauty",
+      "platform": "instagram",
+      "username": "fentybeauty",
+      "expected_domain": "fashion/beauty",
+      "actual_domain": "fashion",
+      "profile_keywords": [
+        "inclusive beauty",
+        "cosmetics brand",
+        "makeup collection"
+      ],
+      "generation_time": 130.34974193572998,
+      "quality_analysis": {
+        "hyper_focused": false,
+        "niche_relevant": true,
+        "correct_length": true,
+        "has_url": true,
+        "profile_based": false,
+        "keyword_matches": 0,
+        "sentence_count": 3,
+        "content_length": 194
+      },
+      "quality_score": 0.6,
+      "news_summary": "\ud83d\udea8 Ice, SPF, And Hydration: 5 Skincare Secrets Behind Sydney Sweeney\u2019s Effortless Glow. Important developments are unfolding in this story. Stay tuned for more updates as this situation develops.",
+      "source_url": "https://www.news18.com/lifestyle/ice-spf-and-hydration-5-skincare-secrets-behind-sydney-sweeneys-effortless-glow-ws-l-9477066.html",
+      "success": true
+    },
+    {
+      "scenario": "twitter_gdb",
+      "platform": "twitter",
+      "username": "gdb",
+      "expected_domain": "tech/development",
+      "actual_domain": "tech_innovation",
+      "profile_keywords": [
+        "developer tools",
+        "code optimization",
+        "coding",
+        "software engineering"
+      ],
+      "generation_time": 175.74095344543457,
+      "quality_analysis": {
+        "hyper_focused": false,
+        "niche_relevant": true,
+        "correct_length": true,
+        "has_url": true,
+        "profile_based": true,
+        "keyword_matches": 0,
+        "sentence_count": 3,
+        "content_length": 199
+      },
+      "quality_score": 0.8,
+      "news_summary": "\ud83d\udea8 OpenAI kills ChatGPT feature that exposed personal chats on Google: All you need to know. Important developments are unfolding in this story. Stay tuned for more updates as this situation develops.",
+      "source_url": "https://www.livemint.com/technology/tech-news/openai-kills-chatgpt-feature-that-exposed-personal-chats-on-google-all-you-need-to-know-11754020916936.html",
+      "success": true
+    },
+    {
+      "scenario": "facebook_nike",
+      "platform": "facebook",
+      "username": "nike",
+      "expected_domain": "sports/brand",
+      "actual_domain": "sports",
+      "profile_keywords": [
+        "sports innovation",
+        "performance gear",
+        "athletic wear",
+        "tech"
+      ],
+      "generation_time": 177.503844499588,
+      "quality_analysis": {
+        "hyper_focused": false,
+        "niche_relevant": true,
+        "correct_length": true,
+        "has_url": true,
+        "profile_based": true,
+        "keyword_matches": 0,
+        "sentence_count": 3,
+        "content_length": 175
+      },
+      "quality_score": 0.8,
+      "news_summary": "\ud83d\udea8 Stanford hires former Nike CEO John Donahoe as athletic director. Important developments are unfolding in this story. Stay tuned for more updates as this situation develops.",
+      "source_url": "https://sports.yahoo.com/article/stanford-hires-former-nike-ceo-045555226.html",
+      "success": true
+    }
+  ]
+}
