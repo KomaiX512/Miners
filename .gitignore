@@ -26,6 +26,11 @@ venv/
 ENV/
 env/
 
+# Environment variables
+.env
+.env.local
+.env.*.local
+
 # IDE files
 .idea/
 .vscode/
@@ -49,7 +54,6 @@ env/
 config.local.py
 
 # Generated files
-content_plan.json
 humansofny_humansofny_*.json
 instagram.db
 myenv/

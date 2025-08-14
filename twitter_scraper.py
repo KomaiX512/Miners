@@ -10,6 +10,10 @@ from botocore.client import Config
 from botocore.exceptions import ClientError
 import boto3
 from config import R2_CONFIG, LOGGING_CONFIG
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Set up logging
 logging.basicConfig(
@@ -18,8 +22,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Apify API token for Twitter scraper - UPDATED with fresh token
-APIFY_API_TOKEN = "your_apify_token_here"
+# Apify API token from environment
+APIFY_API_TOKEN = os.getenv("APIFY_API_TOKEN")
 TWITTER_ACTOR_ID = "memo23/apify-twitter-profile-scraper"  # New reliable actor
 
 class TwitterScraper:
