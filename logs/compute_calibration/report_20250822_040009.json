@@ -1,0 +1,132 @@
+{
+  "timestamp": "20250822_040009",
+  "command": "python main.py run_all",
+  "duration_seconds": 300.0,
+  "sample_interval_seconds": 1.0,
+  "system": {
+    "cpu_total_percent": {
+      "avg": 8.527666666666667,
+      "p95": 10.1,
+      "max": 22.2
+    },
+    "ram_used_bytes": {
+      "avg": 33072023442.773335,
+      "p95": 33155290726.4,
+      "max": 33361629184.0
+    },
+    "disk_read_bytes_per_sec": {
+      "avg": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "disk_write_bytes_per_sec": {
+      "avg": 500080.64,
+      "p95": 672563.2000000002,
+      "max": 20799488.0
+    },
+    "net_sent_bytes_per_sec": {
+      "avg": 80258.58666666667,
+      "p95": 90127.3,
+      "max": 299525.0
+    },
+    "net_recv_bytes_per_sec": {
+      "avg": 24523.553333333333,
+      "p95": 49806.4500000001,
+      "max": 277755.0
+    }
+  },
+  "process_tree": {
+    "cpu_process_percent": {
+      "avg": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "ram_process_tree_bytes": {
+      "avg": 635254743.04,
+      "p95": 647933952.0,
+      "max": 647933952.0
+    }
+  },
+  "directories": {
+    "tracked": [
+      "logs",
+      "models",
+      "content_plan_backups",
+      "exported_content_plans",
+      "chroma_db",
+      "Module2/logs",
+      "Module2/models"
+    ],
+    "sizes_before": {
+      "logs": 569457,
+      "models": 1161040,
+      "content_plan_backups": 1377789,
+      "exported_content_plans": 27972,
+      "chroma_db": 35853000,
+      "Module2/logs": 106869101,
+      "Module2/models": 1107716
+    },
+    "sizes_after": {
+      "logs": 569457,
+      "models": 1161040,
+      "content_plan_backups": 1377789,
+      "exported_content_plans": 27972,
+      "chroma_db": 35853000,
+      "Module2/logs": 106982467,
+      "Module2/models": 1107716
+    },
+    "growth": {
+      "logs": {
+        "before_bytes": 569457.0,
+        "after_bytes": 569457.0,
+        "delta_bytes": 0.0,
+        "delta_per_minute_bytes": 0.0
+      },
+      "models": {
+        "before_bytes": 1161040.0,
+        "after_bytes": 1161040.0,
+        "delta_bytes": 0.0,
+        "delta_per_minute_bytes": 0.0
+      },
+      "content_plan_backups": {
+        "before_bytes": 1377789.0,
+        "after_bytes": 1377789.0,
+        "delta_bytes": 0.0,
+        "delta_per_minute_bytes": 0.0
+      },
+      "exported_content_plans": {
+        "before_bytes": 27972.0,
+        "after_bytes": 27972.0,
+        "delta_bytes": 0.0,
+        "delta_per_minute_bytes": 0.0
+      },
+      "chroma_db": {
+        "before_bytes": 35853000.0,
+        "after_bytes": 35853000.0,
+        "delta_bytes": 0.0,
+        "delta_per_minute_bytes": 0.0
+      },
+      "Module2/logs": {
+        "before_bytes": 106869101.0,
+        "after_bytes": 106982467.0,
+        "delta_bytes": 113366.0,
+        "delta_per_minute_bytes": 22673.2
+      },
+      "Module2/models": {
+        "before_bytes": 1107716.0,
+        "after_bytes": 1107716.0,
+        "delta_bytes": 0.0,
+        "delta_per_minute_bytes": 0.0
+      }
+    }
+  },
+  "recommendations": {
+    "ram_min_bytes": 2147483648,
+    "cpu_cores_min": 2,
+    "disk_write_min_bps": 1345126,
+    "disk_read_min_bps": 0,
+    "net_up_min_bps": 180254,
+    "net_down_min_bps": 99612,
+    "disk_capacity_min_bytes": 604171153
+  }
+}
