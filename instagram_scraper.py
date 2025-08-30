@@ -5,9 +5,13 @@ import os
 import shutil
 import logging
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
 from apify_client import ApifyClient
 from botocore.client import Config
 from botocore.exceptions import ClientError
+
+# Load environment variables from .env file
+load_dotenv()
 import boto3
 from config import R2_CONFIG, LOGGING_CONFIG
 
