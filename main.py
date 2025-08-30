@@ -78,10 +78,14 @@ def run_module2():
         module2_path = os.path.join(os.path.dirname(__file__), 'Module2')
         module2_main = os.path.join(module2_path, 'main.py')
         
+        # Use the virtual environment Python if available
+        venv_python = os.path.join(os.path.dirname(__file__), '.venv', 'bin', 'python')
+        python_executable = venv_python if os.path.exists(venv_python) else sys.executable
+        
         if os.path.exists(module2_main):
             # Run the Module2 main.py as a separate process
             process = subprocess.Popen(
-                [sys.executable, module2_main],
+                [python_executable, module2_main],
                 cwd=module2_path  # Set working directory to Module2
             )
             logger.info(f"Started Module2 as separate process (PID: {process.pid})")
