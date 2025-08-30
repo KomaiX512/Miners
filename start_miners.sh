@@ -17,9 +17,14 @@ source .venv/bin/activate
 echo "📦 Installing Python dependencies..."
 pip install --upgrade pip
 
-# Install all required packages
+# Install all required packages from requirements.txt
 pip install -r requirements.txt
-pip install aiobotocore loguru opentelemetry-instrumentation opentelemetry-instrumentation-fastapi
+
+# Ensure critical dependencies for Module2 are installed
+pip install watchdog tenacity loguru aiobotocore apify-client
+
+# Ensure ChromaDB dependencies
+pip install opentelemetry-instrumentation opentelemetry-instrumentation-fastapi
 
 echo "🔧 Checking environment configuration..."
 python test_env_setup.py
